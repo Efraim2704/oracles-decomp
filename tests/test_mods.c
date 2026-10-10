@@ -6,6 +6,7 @@
 #include "mods/overlay.h"
 #include "ui/ui.h"
 #include "wide/item.h"
+#include <signal.h>
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
@@ -323,11 +324,39 @@ static const char *make_mod(const char *id, const char *ini, const char *lua) {
   return root;
 }
 
+// Like make_mod, but writes mod.ini from an explicit byte buffer rather than a NUL-terminated
+// C string -- needed only by the embedded-NUL smuggling test below, since a plain `const char *`
+// can never represent a NUL byte in the middle of its own content.
+static const char *make_mod_bytes(const char *id, const unsigned char *ini_bytes, size_t ini_len) {
+  static char root[512];
+  const char *tmp = getenv("TMPDIR");
+  if (!tmp || !*tmp) tmp = "/tmp";
+  snprintf(root, sizeof root, "%s/test_mods_root", tmp);
+  char dir[640], path[768];
+  snprintf(dir, sizeof dir, "%s/%s", root, id);
+  char cmd[800];
+  snprintf(cmd, sizeof cmd, "mkdir -p '%s'", dir);
+  ASSERT_EQ(system(cmd), 0);
+  snprintf(path, sizeof path, "%s/mod.ini", dir);
+  FILE *f = fopen(path, "wb");
+  ASSERT(f);
+  ASSERT_EQ(fwrite(ini_bytes, 1, ini_len, f), ini_len);
+  fclose(f);
+  return root;
+}
+
+// chmod -R u+rwX before the rm -rf, not just rm -rf, so this self-heals if a previous run died
+// between an_unreadable_mods_directory_is_a_failure's chmod(dir, 0) and its restoring chmod back
+// -- exactly where a crash or an ASan abort would land while debugging mods.c itself. Without
+// this, a mode-000 leftover directory makes system()'s rm -rf fail silently (its status is
+// discarded below on purpose, since "nothing to remove" is the overwhelmingly common case and
+// not worth an assertion), and every later test run then dies in make_mod's own
+// ASSERT_EQ(system(cmd), 0) until a human manually fixes the permissions.
 static void clear_mods(void) {
   const char *tmp = getenv("TMPDIR");
   if (!tmp || !*tmp) tmp = "/tmp";
-  char cmd[600];
-  snprintf(cmd, sizeof cmd, "rm -rf '%s/test_mods_root'", tmp);
+  char cmd[700];
+  snprintf(cmd, sizeof cmd, "chmod -R u+rwX '%s/test_mods_root' 2>/dev/null; rm -rf '%s/test_mods_root'", tmp, tmp);
   (void)system(cmd);
 }
 
@@ -336,9 +365,19 @@ static void clear_mods(void) {
 // later check -- so a bare mods_count() assertion alone cannot tell "the dedicated check I'm
 // testing actually ran" apart from "it was deleted and some other check masked that". Confirmed
 // by mutation more than once below.
+//
+// `body` must never itself ASSERT: an assertion failing while stderr is dup2'd into this
+// function's temp file sends the FAIL line into that file instead of the terminal/CI log, so the
+// developer sees nothing but a bare nonzero exit, and the temp file (never reached by the
+// cleanup below, since ASSERT calls exit()) leaks. run_cap_mods_init below exists to avoid this:
+// it records mods_init's result in a static instead of asserting on it, so every caller asserts
+// on cap_result only after capture_stderr has returned and stderr is restored.
 static void capture_stderr(void (*body)(void), char *out, size_t out_size) {
   fflush(stderr);
-  char path[] = "/tmp/test_mods_stderr.XXXXXX";
+  const char *tmp = getenv("TMPDIR");
+  if (!tmp || !*tmp) tmp = "/tmp";
+  char path[768];
+  snprintf(path, sizeof path, "%s/test_mods_stderr.XXXXXX", tmp);
   int fd = mkstemp(path);
   ASSERT(fd >= 0);
   int saved = dup(fileno(stderr));
@@ -358,7 +397,8 @@ static void capture_stderr(void (*body)(void), char *out, size_t out_size) {
 
 static const char *cap_root;
 static bool cap_seasons;
-static void run_cap_mods_init(void) { ASSERT(mods_init(cap_root, cap_seasons)); }
+static bool cap_result;
+static void run_cap_mods_init(void) { cap_result = mods_init(cap_root, cap_seasons); }
 
 // mods_id_valid is the one gate standing between an attacker-controlled id and a path traversal
 // (correction A), so it gets its own direct, table-driven test rather than relying only on
@@ -367,6 +407,13 @@ static void run_cap_mods_init(void) { ASSERT(mods_init(cap_root, cap_seasons)); 
 // trailing dot, shell metacharacters, an embedded newline (as if a hostile field were spliced
 // into a format string elsewhere), and the near-misses a narrower check might still accept:
 // uppercase, underscore, embedded space, and empty.
+//
+// "a\\b" and "mods\\evil" are made of nothing but [a-z0-9-] plus one backslash -- unlike
+// "..\\evil" above, which also contains '.' and so would die for that reason alone even if the
+// backslash check were deleted. Both mods.h and mods.c name "\\" and the Windows/MinGW target
+// explicitly as why this check exists, so a mutant that quietly reopens that hole (adding
+// `|| *p == '\\'` to the accepted charset) needs a case that can only be caught by the backslash
+// check specifically.
 static void mods_id_valid_rejects_hostile_input(void) {
   static const struct { const char *id; bool want; } cases[] = {
     {"ok-mod-1", true},
@@ -378,6 +425,8 @@ static void mods_id_valid_rejects_hostile_input(void) {
     {".", false},
     {"../evil", false},
     {"..\\evil", false},
+    {"a\\b", false},
+    {"mods\\evil", false},
     {"/etc/passwd", false},
     {"a/b", false},
     {"a.b", false},
@@ -566,6 +615,7 @@ static void a_missing_id_is_refused(void) {
   cap_seasons = true;
   char out[4096];
   capture_stderr(run_cap_mods_init, out, sizeof out);
+  ASSERT(cap_result);
   ASSERT_EQ(mods_count(), 0);
   ASSERT(strstr(out, "noid") != NULL);
   ASSERT(strstr(out, "has no id=") != NULL);
@@ -581,44 +631,108 @@ static void a_badly_named_folder_is_skipped(void) {
   mods_shutdown();
 }
 
-// api is the compatibility gate: absence must refuse, not silently default to 0 and pass.
+// api is the compatibility gate: absence must refuse, not silently default to 0 and pass. This
+// is now one of three independently-worded refusals (absent / unparseable-or-out-of-range /
+// below-the-policy-minimum) rather than one shared "missing or non-numeric" sentinel, so each
+// gets its own stderr-message check: a mods_count() == 0 assertion alone can't tell which of the
+// three actually fired, since read_ini's api_present/api_parsed split and mods_init/load_one's
+// separate >= 1 policy check all funnel to the same refusal outcome for most malformed inputs.
 static void a_missing_api_is_refused(void) {
   clear_mods();
   const char *root = make_mod("noapi", "id=noapi\nname=NoApi\ngames=ages,seasons\n", "\n");
-  ASSERT(mods_init(root, true));
+  cap_root = root;
+  cap_seasons = true;
+  char out[4096];
+  capture_stderr(run_cap_mods_init, out, sizeof out);
+  ASSERT(cap_result);
   ASSERT_EQ(mods_count(), 0);
+  ASSERT(strstr(out, "has no api=") != NULL);
   mods_shutdown();
 }
 
 // atoi("1x") is 1 and would incorrectly pass; strtol with endptr checking must not accept it.
+// Must report "unparseable", specifically -- not the "absent" or "below minimum" wording, which
+// read_ini's api_present (true here) and the separate >= 1 policy check (never reached, since
+// api_parsed is false) would otherwise produce instead.
 static void a_non_numeric_api_is_refused(void) {
   clear_mods();
   const char *root = make_mod("badapi", "id=badapi\nname=BadApi\napi=1x\ngames=ages,seasons\n", "\n");
-  ASSERT(mods_init(root, true));
+  cap_root = root;
+  cap_seasons = true;
+  char out[4096];
+  capture_stderr(run_cap_mods_init, out, sizeof out);
+  ASSERT(cap_result);
   ASSERT_EQ(mods_count(), 0);
+  ASSERT(strstr(out, "unparseable or out-of-range") != NULL);
   mods_shutdown();
 }
 
-// api= with nothing after the '=' is a present-but-empty value, not a present-and-valid one.
-// (Distinct from api=0 below: an empty value is rejected by the "value is non-empty" guard
-// before strtol's result is even consulted, so this alone does not exercise the v >= 1 bound.)
+// api= with nothing after the '=' is a present-but-empty value, not a present-and-valid one --
+// also reported as "unparseable", since no digits were consumed at all.
 static void an_empty_api_value_is_refused(void) {
   clear_mods();
   const char *root = make_mod("emptyapi", "id=emptyapi\nname=EmptyApi\napi=\ngames=ages,seasons\n", "\n");
-  ASSERT(mods_init(root, true));
+  cap_root = root;
+  cap_seasons = true;
+  char out[4096];
+  capture_stderr(run_cap_mods_init, out, sizeof out);
+  ASSERT(cap_result);
   ASSERT_EQ(mods_count(), 0);
+  ASSERT(strstr(out, "unparseable or out-of-range") != NULL);
   mods_shutdown();
 }
 
-// api=0 is a well-formed number, so it's the one case that actually exercises the "v >= 1"
-// threshold rather than the empty-value guard or the non-numeric endptr check. Confirmed by
-// mutation: an_empty_api_value_is_refused above still passes unchanged if this bound is
-// weakened to "v >= 0", since "" never reaches the comparison at all.
+// api=0 is a well-formed, in-range number -- read_ini's api_parsed is genuinely true here, so
+// this is the one case that exercises the *policy* ">= 1" bound in mods_init/load_one, as
+// opposed to read_ini's syntax/range checks above. It must report "below the minimum", not
+// "unparseable" -- those used to be the same sentinel (-1) before the api_present/api_parsed
+// split, which is exactly the bug the reviewer flagged: api=0 was reported as "missing or
+// non-numeric", which is simply false for a well-formed "0".
 static void an_api_of_zero_is_refused(void) {
   clear_mods();
   const char *root = make_mod("zeroapi", "id=zeroapi\nname=ZeroApi\napi=0\ngames=ages,seasons\n", "\n");
-  ASSERT(mods_init(root, true));
+  cap_root = root;
+  cap_seasons = true;
+  char out[4096];
+  capture_stderr(run_cap_mods_init, out, sizeof out);
+  ASSERT(cap_result);
   ASSERT_EQ(mods_count(), 0);
+  ASSERT(strstr(out, "below the minimum of 1") != NULL);
+  mods_shutdown();
+}
+
+// 2147483648 is exactly INT_MAX + 1. On a 64-bit-long host, strtol parses it as the real value
+// (no overflow at the `long` level), so only the "v <= INT_MAX" check in read_ini rejects it. On
+// an LLP64 target (MinGW/Windows, 32-bit long == int), strtol itself cannot represent this value
+// and must clamp to LONG_MAX while setting errno = ERANGE -- which is exactly why read_ini
+// checks errno rather than relying on the v <= INT_MAX comparison alone, which a clamped result
+// would silently satisfy on that platform.
+static void an_api_over_int_max_is_refused(void) {
+  clear_mods();
+  const char *root = make_mod("bigapi", "id=bigapi\nname=BigApi\napi=2147483648\ngames=ages,seasons\n", "\n");
+  cap_root = root;
+  cap_seasons = true;
+  char out[4096];
+  capture_stderr(run_cap_mods_init, out, sizeof out);
+  ASSERT(cap_result);
+  ASSERT_EQ(mods_count(), 0);
+  ASSERT(strstr(out, "unparseable or out-of-range") != NULL);
+  mods_shutdown();
+}
+
+// Astronomically large, so even a 64-bit `long` overflows and strtol sets errno = ERANGE
+// regardless of platform -- unlike the INT_MAX+1 case above, which depends on the host's long
+// width to decide which specific guard catches it.
+static void an_astronomically_large_api_is_refused(void) {
+  clear_mods();
+  const char *root = make_mod("hugeapi", "id=hugeapi\nname=HugeApi\napi=999999999999999999999999\ngames=ages,seasons\n", "\n");
+  cap_root = root;
+  cap_seasons = true;
+  char out[4096];
+  capture_stderr(run_cap_mods_init, out, sizeof out);
+  ASSERT(cap_result);
+  ASSERT_EQ(mods_count(), 0);
+  ASSERT(strstr(out, "unparseable or out-of-range") != NULL);
   mods_shutdown();
 }
 
@@ -665,6 +779,7 @@ static void a_folder_without_mod_ini_is_skipped(void) {
   cap_seasons = true;
   char out[4096];
   capture_stderr(run_cap_mods_init, out, sizeof out);
+  ASSERT(cap_result);
   ASSERT_EQ(mods_count(), 0);
   ASSERT(strstr(out, "bare") != NULL);
   ASSERT(strstr(out, "has no mod.ini") != NULL);
@@ -683,6 +798,7 @@ static void a_missing_games_is_refused(void) {
   cap_seasons = true;
   char out[4096];
   capture_stderr(run_cap_mods_init, out, sizeof out);
+  ASSERT(cap_result);
   ASSERT_EQ(mods_count(), 0);
   ASSERT(strstr(out, "nogames") != NULL);
   ASSERT(strstr(out, "no supported game") != NULL);
@@ -712,21 +828,29 @@ static void an_unrecognised_game_token_is_reported_but_the_valid_one_still_loads
   cap_seasons = false;                                   // Ages: the valid token
   char out[4096];
   capture_stderr(run_cap_mods_init, out, sizeof out);
+  ASSERT(cap_result);
   ASSERT_EQ(mods_count(), 1);
   ASSERT(strstr(out, "bogus") != NULL);
 
   cap_root = root;
   cap_seasons = true;                                     // Seasons: not named, so not loaded
   capture_stderr(run_cap_mods_init, out, sizeof out);
+  ASSERT(cap_result);
   ASSERT_EQ(mods_count(), 0);
   mods_shutdown();
 }
 
 // Matches this project's ini conventions (settings_parse): leading whitespace, spaces around
 // '=', and an indented comment are all tolerated; unlike settings_parse's %255s, interior
-// spaces in a value (a mod's display name) survive. The comment itself contains an '=' (as if
-// a key were commented out), so this also exercises that the leading-whitespace-before-'#'
-// check is what's skipping it, not merely "a line with no '=' falls through anyway".
+// spaces in a value (a mod's display name) survive.
+//
+// The comment contains an '=' on purpose, but -- despite an earlier version of this comment
+// claiming otherwise -- that does NOT make this a safety-relevant test of the leading-
+// whitespace-before-'#' check: that check is readability only, not a safety boundary. `key`
+// always starts at the first non-whitespace byte, trim() never strips '#', so a comment's "key"
+// (here, "# api" from "# api=99") can never collide with a real keyword -- deleting that check
+// entirely still passes this test, confirmed by mutation. This test's actual job is just
+// confirming the parser tolerates an indented comment with an '=' in it without side effects.
 static void whitespace_and_comments_are_tolerated(void) {
   clear_mods();
   const char *root = make_mod("spacey",
@@ -795,6 +919,7 @@ static void a_stray_file_is_skipped(void) {
   cap_seasons = true;
   char out[4096];
   capture_stderr(run_cap_mods_init, out, sizeof out);
+  ASSERT(cap_result);
   ASSERT_EQ(mods_count(), 1);
   ASSERT_EQ(strcmp(mods_id(0), "real"), 0);
   ASSERT(strstr(out, "strayfile") != NULL);
@@ -846,9 +971,305 @@ static void loading_stops_at_mods_max(void) {
   cap_seasons = true;
   char out[8192];
   capture_stderr(run_cap_mods_init, out, sizeof out);
+  ASSERT(cap_result);
   ASSERT_EQ(mods_count(), MODS_MAX);
   ASSERT_EQ(strcmp(mods_id(0), "m00"), 0);               // the invalid entries consumed no slot
   ASSERT(strstr(out, "1 mod(s) dropped") != NULL);
+  mods_shutdown();
+}
+
+// Task 5 will index these accessors from Lua with an integer the mod itself chooses, so `i` is
+// hostile input, not a programmer mistake -- these pin the out-of-range contract with no mods
+// loaded at all. mods_id/mods_name must never read mods[i] for i outside [0, count), and
+// mods_enabled must never report a disabled-by-default index as enabled.
+static void accessors_reject_out_of_range_indices_with_no_mods_loaded(void) {
+  clear_mods();
+  ASSERT(mods_init("/this/path/does/not/exist/for/test_mods", true));
+  ASSERT_EQ(mods_count(), 0);
+  ASSERT_EQ(strcmp(mods_id(-1), ""), 0);
+  ASSERT_EQ(strcmp(mods_id(0), ""), 0);
+  ASSERT_EQ(strcmp(mods_name(-1), ""), 0);
+  ASSERT_EQ(strcmp(mods_name(0), ""), 0);
+  ASSERT(!mods_enabled(-1));
+  ASSERT(!mods_enabled(0));
+  mods_shutdown();
+}
+
+// Same contract, but with count > 0: this is the case the reviewer actually broke under ASan
+// (33 valid mods, i <= count mutated in) -- mods_id(mods_count()), one past the last valid
+// index, must come back "" rather than reading mods[count], which is one element past the end
+// of a MODS_MAX-sized array and therefore a real global-buffer-overflow once count == MODS_MAX.
+static void accessors_reject_out_of_range_indices_after_a_successful_load(void) {
+  clear_mods();
+  const char *root = make_mod("onlyone", "id=onlyone\napi=1\ngames=ages,seasons\n", "\n");
+  ASSERT(mods_init(root, true));
+  int n = mods_count();
+  ASSERT(n > 0);
+  ASSERT_EQ(strcmp(mods_id(-1), ""), 0);
+  ASSERT_EQ(strcmp(mods_id(n), ""), 0);
+  ASSERT_EQ(strcmp(mods_name(-1), ""), 0);
+  ASSERT_EQ(strcmp(mods_name(n), ""), 0);
+  ASSERT(!mods_enabled(-1));
+  ASSERT(!mods_enabled(n));
+  mods_shutdown();
+}
+
+// Both existing two-call tests (the_other_games_mod_is_skipped, a_substring_game_token_is_refused)
+// happen to end on a call that assigns mods_count() itself, so neither pins mods_init's
+// reset-on-entry: "drop the mods_shutdown() call" and "make mods_shutdown a no-op" both survive
+// against them. This instead loads a real mod, then calls mods_init with a directory that makes
+// it fail early (NULL), and checks that the *previous* successful load's state didn't survive.
+static void mods_init_resets_state_even_when_it_then_fails(void) {
+  clear_mods();
+  const char *root = make_mod("resetme", "id=resetme\napi=1\ngames=ages,seasons\n", "\n");
+  ASSERT(mods_init(root, true));
+  ASSERT_EQ(mods_count(), 1);
+  ASSERT(!mods_init(NULL, true));
+  ASSERT_EQ(mods_count(), 0);
+  mods_shutdown();
+}
+
+// strchr finds the *first* '=' on the line; strrchr (the classic ini off-by-one) would find the
+// last one instead, giving key "name=a=b" here instead of "name", which would fall through to
+// "no known key" and silently leave the name defaulted to the folder id. This mod.ini's name
+// value is kept whole, '=' signs included.
+static void a_value_containing_equals_signs_is_kept_whole(void) {
+  clear_mods();
+  const char *root = make_mod("eqmod", "id=eqmod\napi=1\ngames=ages,seasons\nname=a=b=c\n", "\n");
+  ASSERT(mods_init(root, true));
+  ASSERT_EQ(mods_count(), 1);
+  ASSERT_EQ(strcmp(mods_name(0), "a=b=c"), 0);
+  mods_shutdown();
+}
+
+// "agesx" is a superset of "ages", not a token that equals it. A weakened per-token match (e.g.
+// strncmp(tok, "ages", 2)) would accept this; exact strcmp must not. Mirrors the ini id/folder
+// cross-check's own prefix tests above -- game tokens deserve the same rigour.
+static void a_games_token_that_is_a_superset_of_ages_is_refused(void) {
+  clear_mods();
+  const char *root = make_mod("agesxmod", "id=agesxmod\napi=1\ngames=agesx\n", "\n");
+  ASSERT(mods_init(root, true));
+  ASSERT_EQ(mods_count(), 0);
+  ASSERT(mods_init(root, false));
+  ASSERT_EQ(mods_count(), 0);
+  mods_shutdown();
+}
+
+// Each "games=" line resets ages/seasons before reparsing its own tokens, so the *last* games=
+// line in the file wins outright rather than the two lines accumulating together.
+static void duplicate_games_lines_let_the_last_one_win(void) {
+  clear_mods();
+  const char *root = make_mod("dupgames", "id=dupgames\napi=1\ngames=ages\ngames=seasons\n", "\n");
+  ASSERT(mods_init(root, false));                        // Ages: overridden by the later line
+  ASSERT_EQ(mods_count(), 0);
+  ASSERT(mods_init(root, true));                         // Seasons: the line that actually wins
+  ASSERT_EQ(mods_count(), 1);
+  mods_shutdown();
+}
+
+// ".hidden" and ".DS_Store" (the latter a near-certainty in any mods folder unzipped on macOS)
+// are skipped before mods_id_valid even runs on them, purely to keep the scan quiet: both would
+// fail the charset check anyway (mods_id_valid rejects '.'), so this buys silence, not
+// correctness. Checked by asserting stderr never names either one, not just that the real mod
+// still loads.
+static void dotfiles_in_the_mods_folder_are_silently_ignored(void) {
+  clear_mods();
+  const char *root = make_mod("real2", "id=real2\napi=1\ngames=ages,seasons\n", "\n");
+  char cmd[800];
+  snprintf(cmd, sizeof cmd, "mkdir -p '%s/.hidden' && touch '%s/.DS_Store'", root, root);
+  ASSERT_EQ(system(cmd), 0);
+  cap_root = root;
+  cap_seasons = true;
+  char out[4096];
+  capture_stderr(run_cap_mods_init, out, sizeof out);
+  ASSERT(cap_result);
+  ASSERT_EQ(mods_count(), 1);
+  ASSERT(strstr(out, ".hidden") == NULL);
+  ASSERT(strstr(out, ".DS_Store") == NULL);
+  mods_shutdown();
+}
+
+// A folder name of exactly MOD_FIELD_LEN (64) bytes must be refused explicitly, with its own
+// message -- not merely as an accidental side effect of the id truncating to 63 bytes and then
+// mismatching mod.ini's own (also truncated, but to a different degree depending on the field)
+// id= value. Today that incidental mismatch would also refuse it, but a later relaxation of
+// "mod.ini must declare id=" (ini_id becoming optional again) would silently remove that
+// incidental protection while leaving two 64+ byte folders sharing a 63-byte prefix free to
+// collide on a single truncated id -- and, from Task 9 on, a single store path.
+static void a_64_char_folder_name_is_refused(void) {
+  clear_mods();
+  char id[65];
+  memset(id, 'a', 64);
+  id[64] = 0;
+  char ini[200];
+  snprintf(ini, sizeof ini, "id=%s\napi=1\ngames=ages,seasons\n", id);
+  const char *root = make_mod(id, ini, "\n");
+  cap_root = root;
+  cap_seasons = true;
+  char out[4096];
+  capture_stderr(run_cap_mods_init, out, sizeof out);
+  ASSERT(cap_result);
+  ASSERT_EQ(mods_count(), 0);
+  ASSERT(strstr(out, "byte id limit") != NULL);
+  mods_shutdown();
+}
+
+// A mod.ini value containing a CR and an ANSI "clear line" escape could otherwise forge a
+// terminal message once printed raw -- e.g. "id=victim\r\x1b[2K\rmods: 'victim' loaded OK (api
+// 1)" overwrites the current line with a fake success report. escape_into() must turn every
+// non-printable byte into a literal \xHH sequence, both in this process's own stderr output and
+// in whatever mods_name()/mods_id() hand back to a future caller (a mod list UI, say).
+static void hostile_bytes_in_a_value_are_escaped(void) {
+  clear_mods();
+  const char *ini = "id=escapetest\napi=1\ngames=ages,seasons\n"
+                     "name=victim\r\x1b[2K\rFAKE SUCCESS\n";
+  const char *root = make_mod("escapetest", ini, "\n");
+  ASSERT(mods_init(root, true));
+  ASSERT_EQ(mods_count(), 1);
+  const char *got = mods_name(0);
+  for (const unsigned char *p = (const unsigned char *)got; *p; p++)
+    ASSERT(*p >= 0x20 && *p < 0x7f);                     // no raw control byte survived
+  ASSERT(strstr(got, "\\x0d") != NULL);                  // the CR became visible text instead
+  ASSERT(strstr(got, "\\x1b") != NULL);                  // and so did the ESC
+  mods_shutdown();
+}
+
+// A mod.ini containing an embedded NUL byte must be refused outright, not filtered.
+//
+// This payload is constructed to actually *work* as smuggling if the fix were removed --
+// checked by mutation below, not just asserted -- rather than merely containing a NUL
+// somewhere incidental. The attack line is exactly 255 bytes of "games=ages" + NUL + padding
+// (255 is mods.c's fgets fill size: 256-byte buffer, minus 1 for the NUL terminator fgets
+// itself appends), with no real newline anywhere in those 255 bytes. Unpatched, this defeats
+// read_logical_line's overlong-line discard: strlen(buf) stops at the embedded NUL and reports
+// a short apparent length, so the "buffer is exactly full with no newline seen" check reads
+// false even though fgets genuinely filled the buffer -- so the discard-the-rest-of-the-line
+// step never runs, and the file position is left sitting at byte 255 of this line rather than
+// drained to the next real line boundary. The very next read then resumes exactly at a second,
+// otherwise invisible "games=seasons\n" line, which overrides the visible "games=ages" the file
+// appears to declare -- so the mod would load for Seasons despite its visible text saying
+// Ages-only. Confirmed with contains_nul() deleted: the payload below does exactly this
+// (mods_count() == 1 for Seasons). With the fix, none of that mechanism gets a chance to run:
+// any NUL anywhere in mod.ini refuses the whole file outright, for every game.
+static void a_nul_byte_in_mod_ini_is_refused(void) {
+  clear_mods();
+  unsigned char ini[512];
+  size_t len = 0;
+  memcpy(ini + len, "id=nulmod\napi=1\n", 16); len += 16;  // each its own short, ordinary line
+  size_t line_start = len;
+  memcpy(ini + len, "games=ages", 10); len += 10;
+  ini[len++] = 0;                                          // the smuggling NUL
+  size_t written_on_this_line = len - line_start;          // "games=ages" + NUL == 11 bytes
+  size_t padding = 255 - written_on_this_line;
+  memset(ini + len, 'x', padding); len += padding;         // pads this physical line to exactly
+                                                             // 255 bytes with no real newline in it
+  memcpy(ini + len, "games=seasons\n", 14); len += 14;      // the hidden, overriding line
+  const char *root = make_mod_bytes("nulmod", ini, len);
+
+  cap_root = root;
+  cap_seasons = true;                                      // Seasons: must NOT load
+  char out[4096];
+  capture_stderr(run_cap_mods_init, out, sizeof out);
+  ASSERT(cap_result);
+  ASSERT_EQ(mods_count(), 0);
+  ASSERT(strstr(out, "NUL") != NULL);
+
+  cap_root = root;
+  cap_seasons = false;                                     // Ages: must NOT load either
+  capture_stderr(run_cap_mods_init, out, sizeof out);
+  ASSERT(cap_result);
+  ASSERT_EQ(mods_count(), 0);
+  mods_shutdown();
+}
+
+// Control: the exact same visible text, with no NUL at all, must load normally -- proving the
+// refusal above is specifically about the embedded NUL, not some other mistake in that payload.
+static void the_same_ini_without_a_nul_byte_loads_fine(void) {
+  clear_mods();
+  const char *root = make_mod("nonulmod", "id=nonulmod\napi=1\ngames=ages,seasons\n", "\n");
+  ASSERT(mods_init(root, true));
+  ASSERT_EQ(mods_count(), 1);
+  mods_shutdown();
+}
+
+static volatile int mods_test_alarm_fired;
+static void mods_test_alarm_handler(int sig) {
+  (void)sig;
+  mods_test_alarm_fired = 1;
+  // Print directly with write(2), not fprintf: inside a signal handler, stdio is not safe to
+  // call (fprintf may be mid-buffer-flush when the signal lands), and _exit (not exit) skips
+  // atexit/stdio teardown for the same reason.
+  const char msg[] = "FAIL: mods_init hung (did not return within the timeout)\n";
+  write(2, msg, sizeof msg - 1);
+  _exit(1);
+}
+
+// A FIFO as mod.ini must not block fopen() forever waiting for a writer that will never come.
+// Wrapped in a real alarm(), not just an assumption that the fix works, so a regression actually
+// fails this test (and kills the whole binary promptly) instead of hanging CI indefinitely.
+static bool a_fifo_mod_ini_does_not_hang(void) {
+  clear_mods();
+  const char *tmp = getenv("TMPDIR");
+  if (!tmp || !*tmp) tmp = "/tmp";
+  char root[600], dir[700], cmd[800];
+  snprintf(root, sizeof root, "%s/test_mods_root", tmp);
+  snprintf(dir, sizeof dir, "%s/fifomod", root);
+  snprintf(cmd, sizeof cmd, "mkdir -p '%s' && mkfifo '%s/mod.ini'", dir, dir);
+  if (system(cmd) != 0) SKIP_TEST("mkfifo not available on this filesystem");
+  signal(SIGALRM, mods_test_alarm_handler);
+  alarm(5);
+  bool ok = mods_init(root, true);
+  alarm(0);
+  ASSERT(ok);
+  ASSERT_EQ(mods_count(), 0);
+  mods_shutdown();
+  return true;
+}
+
+// A symlink to a character device (the canonical "mod.ini -> /dev/zero" payload: an infinite
+// NUL stream) must not loop forever in fgets, which would never see a newline. stat() follows
+// the symlink to the device's real mode (S_ISCHR, not S_ISREG), so the same regular-file check
+// that stops the FIFO case above also stops this one before fopen is ever called.
+static bool a_symlink_to_a_character_device_does_not_hang(void) {
+  clear_mods();
+  const char *tmp = getenv("TMPDIR");
+  if (!tmp || !*tmp) tmp = "/tmp";
+  char root[600], dir[700], cmd[800];
+  snprintf(root, sizeof root, "%s/test_mods_root", tmp);
+  snprintf(dir, sizeof dir, "%s/zeromod", root);
+  snprintf(cmd, sizeof cmd, "mkdir -p '%s' && ln -sf /dev/zero '%s/mod.ini'", dir, dir);
+  if (system(cmd) != 0) SKIP_TEST("/dev/zero not available on this machine");
+  signal(SIGALRM, mods_test_alarm_handler);
+  alarm(5);
+  bool ok = mods_init(root, true);
+  alarm(0);
+  ASSERT(ok);
+  ASSERT_EQ(mods_count(), 0);
+  mods_shutdown();
+  return true;
+}
+
+// A directory literally named "mod.ini" must be refused with the same wording as a missing
+// mod.ini, not read as if it were an empty file -- which is what fopen() on a directory does on
+// macOS (producing a confusing "has no id=" there, while Linux's fopen just fails outright for
+// the same input). The stat()-based S_ISREG check added for the FIFO/symlink hazards above
+// unifies this across platforms as a side effect.
+static void a_directory_named_mod_ini_is_refused(void) {
+  clear_mods();
+  const char *tmp = getenv("TMPDIR");
+  if (!tmp || !*tmp) tmp = "/tmp";
+  char root[600], dir[700], cmd[800];
+  snprintf(root, sizeof root, "%s/test_mods_root", tmp);
+  snprintf(dir, sizeof dir, "%s/dirmod", root);
+  snprintf(cmd, sizeof cmd, "mkdir -p '%s/mod.ini'", dir);
+  ASSERT_EQ(system(cmd), 0);
+  cap_root = root;
+  cap_seasons = true;
+  char out[4096];
+  capture_stderr(run_cap_mods_init, out, sizeof out);
+  ASSERT(cap_result);
+  ASSERT_EQ(mods_count(), 0);
+  ASSERT(strstr(out, "has no mod.ini") != NULL);
   mods_shutdown();
 }
 
@@ -883,6 +1304,8 @@ int main(void) {
   RUN(a_non_numeric_api_is_refused);
   RUN(an_empty_api_value_is_refused);
   RUN(an_api_of_zero_is_refused);
+  RUN(an_api_over_int_max_is_refused);
+  RUN(an_astronomically_large_api_is_refused);
   RUN(a_mod_without_a_name_falls_back_to_its_id);
   RUN(crlf_line_endings_are_tolerated);
   RUN(a_folder_without_mod_ini_is_skipped);
@@ -894,5 +1317,19 @@ int main(void) {
   RUN(a_stray_file_is_skipped);
   RUN(mods_load_in_alphabetical_order);
   RUN(loading_stops_at_mods_max);
+  RUN(accessors_reject_out_of_range_indices_with_no_mods_loaded);
+  RUN(accessors_reject_out_of_range_indices_after_a_successful_load);
+  RUN(mods_init_resets_state_even_when_it_then_fails);
+  RUN(a_value_containing_equals_signs_is_kept_whole);
+  RUN(a_games_token_that_is_a_superset_of_ages_is_refused);
+  RUN(duplicate_games_lines_let_the_last_one_win);
+  RUN(dotfiles_in_the_mods_folder_are_silently_ignored);
+  RUN(a_64_char_folder_name_is_refused);
+  RUN(hostile_bytes_in_a_value_are_escaped);
+  RUN(a_nul_byte_in_mod_ini_is_refused);
+  RUN(the_same_ini_without_a_nul_byte_loads_fine);
+  RUN_SKIPPABLE(a_fifo_mod_ini_does_not_hang);
+  RUN_SKIPPABLE(a_symlink_to_a_character_device_does_not_hang);
+  RUN(a_directory_named_mod_ini_is_refused);
   return skipped ? 77 : 0;
 }

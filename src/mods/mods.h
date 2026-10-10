@@ -20,14 +20,23 @@ bool mods_init(const char *dir, bool seasons);
 void mods_shutdown(void);
 
 int mods_count(void);
+// Returns the mod at `i`'s canonical id (its folder name) or display name. For `i` outside
+// [0, mods_count()), returns "" -- never NULL, and never a read past the end of the loaded-mods
+// array. That range check matters beyond ordinary robustness: Task 5 will index these from Lua
+// with an integer the mod itself chooses, so `i` must be treated as hostile input here, not just
+// a programmer mistake.
 const char *mods_id(int i);
 const char *mods_name(int i);
+// Returns whether the mod at `i` is enabled, or false for `i` outside [0, mods_count()) -- same
+// out-of-range contract, and the same reason it matters, as mods_id/mods_name above.
 bool mods_enabled(int i);
 
 // True iff `id` is non-empty and every byte is a lowercase letter, digit, or hyphen. A mod's id
 // doubles as a filesystem path component (its folder name, and later its store file's name), so
-// this is the one gate standing between an attacker-controlled mod.ini/folder name and a path
-// traversal: no byte this rejects can ever spell ".." or "/" or "\". Shared with the folder-name
-// check in mods_init, and meant to be reused by Task 9's store path and any later zip installer,
-// rather than reinventing a charset check at each new call site.
+// this is the gate against NAME-based path traversal: no byte this rejects can ever spell ".."
+// or "/" or "\". It is not a complete defence against every path hazard a mod folder could pose:
+// a mod folder that is itself a symlink pointing outside the mods directory is a separate
+// concern, left to Task 9's zip installer and the per-mod store writer to close, not something
+// this check already covers. Shared with the folder-name check in mods_init, and meant to be
+// reused by those later call sites rather than reinventing a charset check at each one.
 bool mods_id_valid(const char *id);
