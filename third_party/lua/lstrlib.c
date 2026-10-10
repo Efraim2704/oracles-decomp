@@ -361,6 +361,14 @@ typedef struct MatchState {
   const char *p_end;  /* end ('\0') of pattern */
   lua_State *L;
   int matchdepth;  /* control for recursive depth (to avoid C stack overflow) */
+  /* oracles-decomp: bounds total matcher work for one Lua-level call (string.find/match/gmatch/
+     gsub), not recursion depth -- matchdepth alone lets a shallow-but-catastrophically-
+     backtracking pattern (e.g. ('.-'):rep(10)..'b' against a short subject) run essentially
+     forever without ever recursing deep enough to trip it, consuming no VM instructions the
+     whole time (no debug hook fires inside this C recursion), so nothing outside this file can
+     bound it either. See third_party/lua/README.md for the measurement behind the budget and why
+     this is a deliberate fork, not an upstream bug fix. */
+  long long steps;
   unsigned char level;  /* total number of captures (finished or unfinished) */
   struct {
     const char *init;
@@ -376,6 +384,15 @@ static const char *match (MatchState *ms, const char *s, const char *p);
 /* maximum recursion depth for 'match' */
 #if !defined(MAXCCALLS)
 #define MAXCCALLS	200
+#endif
+
+/* oracles-decomp: total match() calls allowed for one Lua-level string.find/match/gmatch/gsub
+   call -- see MatchState's `steps` field and third_party/lua/README.md for why this exists and
+   how 50,000,000 was chosen (measured, not guessed): generous (8-100x) headroom over real
+   gsub/gmatch workloads up to 10 MB, while a catastrophically-backtracking pattern against a
+   short subject still raises "pattern too complex" in well under a second. */
+#if !defined(MOD_PATTERN_STEP_BUDGET)
+#define MOD_PATTERN_STEP_BUDGET 50000000LL
 #endif
 
 
@@ -570,6 +587,11 @@ static const char *match_capture (MatchState *ms, const char *s, int l) {
 static const char *match (MatchState *ms, const char *s, const char *p) {
   if (l_unlikely(ms->matchdepth-- == 0))
     luaL_error(ms->L, "pattern too complex");
+  /* oracles-decomp: see MOD_PATTERN_STEP_BUDGET above. Same error as matchdepth, deliberately --
+     a mod author sees one idiomatic message either way, not an internal distinction that means
+     nothing to them. */
+  if (l_unlikely(ms->steps-- == 0))
+    luaL_error(ms->L, "pattern too complex");
   init: /* using goto to optimize tail recursion */
   if (p != ms->p_end) {  /* end of pattern? */
     switch (*p) {
@@ -760,6 +782,11 @@ static void prepstate (MatchState *ms, lua_State *L,
   ms->src_init = s;
   ms->src_end = s + ls;
   ms->p_end = p + lp;
+  /* oracles-decomp: initialised here, once per Lua-level call, not in reprepstate below -- that
+     runs once per *starting position* within one call (str_find_aux's and str_gsub's own
+     per-position loops), and resetting a work budget there would let a long subject multiply it
+     by its number of positions, defeating it. See MOD_PATTERN_STEP_BUDGET. */
+  ms->steps = MOD_PATTERN_STEP_BUDGET;
 }
 
 

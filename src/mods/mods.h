@@ -2,15 +2,17 @@
 // The mod host. Mods are folders under the app's mods directory, each with a mod.ini and a
 // main.lua. This file covers discovery (deciding which mod folders exist, are well-formed, and
 // apply to the game being played) and now also runs each accepted mod's main.lua, under its own
-// bounded Lua state: a separate instruction-count budget and memory cap per mod (see mods.c)
-// so that a broken or hostile mod can be skipped, never let to hang or OOM the host. The Lua API
-// surface a mod sees (the `oracles` table) lives in api.h/api.c, not here. What main.lua is
-// permitted to do -- today it gets the full luaL_openlibs, including io/os/require, which the
-// approved sandbox design does not grant -- is still to be narrowed by a later task; nothing in
-// the shipped app links this module yet either way. "Linked into the apps only, never into the
-// engine libraries" is the eventual design constraint this module is built to hold, but today
-// only test_mods links oraclesmods; no app target does yet. Both of those are stated here as
-// intent, not as present fact.
+// bounded Lua state: an instruction-count budget, a wall-clock deadline, and a memory cap per
+// mod (see src/mods/sandbox.c), plus a handful of specific standard-library holes closed or
+// wrapped there (mod_open_libs_hardened) because they would otherwise let a mod hang or crash
+// the host regardless of those budgets -- so that a broken or hostile mod can be skipped, not
+// let to take the host down. The Lua API surface a mod sees (the `oracles` table) lives in api.h/api.c, not
+// here. What main.lua is permitted to do beyond that containment -- today it still gets io, os
+// and require, which the approved sandbox design (string/table/math only) does not grant -- is
+// still to be narrowed by a later task; nothing in the shipped app links this module yet either
+// way. "Linked into the apps only, never into the engine libraries" is the eventual design
+// constraint this module is built to hold, but today only test_mods links oraclesmods; no app
+// target does yet. Both of those are stated here as intent, not as present fact.
 #include <stdbool.h>
 #include <stddef.h>
 

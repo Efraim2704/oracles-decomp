@@ -40,14 +40,17 @@ static double wall_seconds(void) {
 // below is NOT gated by this and must always run -- it is what catches an actual hang, as
 // opposed to a merely slow-but-bounded pass, and it stays generous (15-20s) precisely so it never
 // fires on the latter.
-#ifndef MODS_TEST_TIMING
-#define MODS_TEST_TIMING 1
-#endif
-#if MODS_TEST_TIMING
+//
+// There used to be a MODS_TEST_TIMING escape hatch here, unset by CMake for sanitizer builds,
+// calibrated against the old 2.0s bound that ASan+UBSan together could not reliably meet. With
+// this bound now at 5.0s (and ASan+UBSan needing more like 2.5s), both configurations pass
+// comfortably either way -- confirmed by building both ways -- so the gate was removed rather
+// than kept: it no longer bought any reliability, only a hole in coverage under sanitizers, and
+// its detection of "am I under a sanitizer" was unsound in both directions besides (a
+// no-sanitizer build via -fno-sanitize-recover=all in CMAKE_C_FLAGS would have silently disabled
+// it; a sanitizer configured through CMAKE_C_FLAGS_DEBUG instead of CMAKE_C_FLAGS would have been
+// missed entirely).
 #define ASSERT_PROMPT(t0, t1) ASSERT(((t1) - (t0)) < 5.0)
-#else
-#define ASSERT_PROMPT(t0, t1) ((void)(t0), (void)(t1))
-#endif
 
 // Which of the two mechanisms in mods.c actually catches a given runaway mod now depends on how
 // expensive its instructions are and how busy the host is, not just on the mod's shape: a cheap
@@ -1390,9 +1393,10 @@ static void mods_last_log_is_cleared_by_shutdown(void) {
   mods_shutdown();
 }
 
-// Correction A, instruction half: a `while true do end` main.lua never returns to luaL_dofile on
-// its own -- there is nothing for an ordinary pcall to catch, unlike a Lua-level `error("boom")` --
-// so without mod_set_instruction_budget's LUA_MASKCOUNT hook this would hang mods_init forever.
+// Correction A, instruction half: a `while true do end` main.lua never returns on its own --
+// there is nothing for an ordinary pcall to catch, unlike a Lua-level `error("boom")` -- so
+// without mod_resume_budgeted's LUA_MASKCOUNT hook (mod_instruction_limit_hook) this would hang
+// mods_init forever.
 // Two healthy mods, sorted alphabetically on either side of the hang, make sure a mutant that
 // aborted the *whole scan* on any single failure (rather than just skipping the one bad mod)
 // still fails this test. Timed, not just asserted to terminate: "aborts eventually" is not the
@@ -1435,6 +1439,14 @@ static void a_hanging_mod_is_skipped_and_other_mods_still_load(void) {
 // it hits MOD_MEM_CAP (8 MiB, 1 MiB per iteration) in about 8 iterations, nowhere near
 // MOD_LOAD_INSTRUCTION_BUDGET's 50 million. Same "two healthy mods either side, and it's fast"
 // shape as the instruction-budget test above, for the same reasons.
+//
+// Reviewer correction: despite an earlier version of this comment claiming otherwise, this does
+// NOT exercise mod_lua_alloc's realloc-widening branch -- each string.rep('x', 1000000) call
+// allocates a brand-new string object, always the ptr == NULL path, identical in kind to the
+// single-huge-allocation test below; only `t`'s own array part grows via realloc here, and it
+// never grows past a handful of elements (8 iterations), nowhere near the cap through that path.
+// array_growth_is_refused_via_the_realloc_path, further down, is what actually pins the realloc
+// branch specifically.
 static void an_unbounded_allocation_mod_is_skipped_and_other_mods_still_load(void) {
   clear_mods();
   make_mod("aaa-healthy2", "id=aaa-healthy2\napi=1\ngames=ages,seasons\n", "oracles.log('aaa ok')\n");
@@ -1573,7 +1585,7 @@ static void oracles_log_with_an_embedded_nul_is_escaped_not_truncated(void) {
 // looping forever would otherwise disarm the very protection this task exists to add -- the
 // instruction budget would never fire, so this would hang exactly like a_hanging_mod above but
 // with one extra line of Lua defeating the defence outright. Confirmed empirically before the fix
-// (see mods.c's mod_open_libs_without_debug): unpatched, this exact script ran to completion
+// (see mods.c's mod_open_libs_hardened): unpatched, this exact script ran to completion
 // instead of aborting. Paired with healthy mods either side for the same reason as the other
 // budget tests above, and timed the same way.
 static void a_mod_cannot_disarm_its_own_instruction_budget_via_debug_sethook(void) {
@@ -1603,7 +1615,7 @@ static void a_mod_cannot_disarm_its_own_instruction_budget_via_debug_sethook(voi
 // Hazard, continued: "debug" must be unreachable outright, not merely harmless to call once --
 // otherwise a mod could still read debug.gethook()/debug.getinfo() or any other piece of it.
 // require() checks package.loaded before searching the filesystem, so this also pins that
-// mod_open_libs_without_debug clears package.loaded.debug, not just the global: nil-ing only the
+// mod_open_libs_hardened clears package.loaded.debug, not just the global: nil-ing only the
 // global would leave require('debug') able to resurrect it from package.loaded.
 static void the_debug_library_is_unreachable_by_global_or_require(void) {
   clear_mods();
@@ -2076,7 +2088,393 @@ static void untrusted_lua_never_runs_for_a_mod_that_does_not_apply(void) {
   mods_shutdown();
 }
 
+// ---------------------------------------------------------------------------
+// Fourth spec review: a looping __gc finalizer, and load()'s binary-chunk mode.
+// ---------------------------------------------------------------------------
+
+// CRITICAL, load-path shape: a finalizer is armed only if __gc is present in the metatable at
+// the moment setmetatable() assigns it -- debug.setmetatable (the only other route) is already
+// unreachable. mod_open_libs_hardened's l_setmetatable_no_gc wrapper is the one, complete choke
+// point, so this must be refused right there, promptly, not reach GC or lua_close at all.
+static void a_gc_finalizer_cannot_be_armed_at_load_time(void) {
+  clear_mods();
+  const char *root = make_mod("gcarm", "id=gcarm\napi=1\ngames=ages,seasons\n",
+      "setmetatable({}, {__gc = function() while true do end end})\n");
+  cap_root = root;
+  cap_seasons = true;
+  char out[4096];
+  signal(SIGALRM, mods_test_alarm_handler);
+  alarm(10);
+  capture_stderr(run_cap_mods_init, out, sizeof out);
+  alarm(0);
+  ASSERT(cap_result);
+  ASSERT_EQ(mods_count(), 0);
+  ASSERT(strstr(out, "gcarm") != NULL);
+  ASSERT(strstr(out, "__gc") != NULL);
+  mods_shutdown();
+}
+
+// CRITICAL, refusal-path shape: the coordinator's exact scenario -- a mod that arms a looping
+// finalizer and then deliberately errors. Confirms the __gc rejection fires *before* the
+// deliberate error ever runs (the message names "__gc", not "refuse me"), which is also exactly
+// why this can never reach run_main_lua's own lua_close with a live finalizer attached: nothing
+// ever got attached. Before this fix, this hung in lua_close *after* printing the refusal -- a
+// mod that was rejected still took the process down.
+static void a_gc_finalizer_cannot_be_armed_before_a_refusal(void) {
+  clear_mods();
+  const char *root = make_mod("gcrefuse", "id=gcrefuse\napi=1\ngames=ages,seasons\n",
+      "_G.k = setmetatable({}, {__gc = function() while true do end end})\n"
+      "error('refuse me')\n");
+  cap_root = root;
+  cap_seasons = true;
+  char out[4096];
+  signal(SIGALRM, mods_test_alarm_handler);
+  alarm(10);
+  capture_stderr(run_cap_mods_init, out, sizeof out);
+  alarm(0);
+  ASSERT(cap_result);
+  ASSERT_EQ(mods_count(), 0);
+  ASSERT(strstr(out, "gcrefuse") != NULL);
+  ASSERT(strstr(out, "__gc") != NULL);
+  ASSERT(strstr(out, "refuse me") == NULL);    // never reached: the setmetatable rejection wins
+  mods_shutdown();
+}
+
+// CRITICAL, mid-run-GC shape: unlike the two above, this *catches* the rejection with pcall and
+// keeps running, then forces a collection cycle explicitly -- proving the attempt genuinely never
+// attached a finalizer (a GC pass over the object does not hang), not just that the one call
+// that tried to raised an error. Before this fix, an ordinary mid-run GC step reaching a
+// successfully-armed finalizer could hang here with no error and no shutdown involved at all.
+static void a_gc_finalizer_cannot_be_armed_mid_run(void) {
+  clear_mods();
+  const char *root = make_mod("gcmidrun", "id=gcmidrun\napi=1\ngames=ages,seasons\n",
+      "local ok, err = pcall(setmetatable, {}, {__gc = function() while true do end end})\n"
+      "if ok then error('setmetatable should have refused the __gc metatable') end\n"
+      "collectgarbage()\n"
+      "oracles.log('survived: ' .. tostring(err))\n");
+  cap_root = root;
+  cap_seasons = true;
+  char out[4096];
+  signal(SIGALRM, mods_test_alarm_handler);
+  alarm(10);
+  capture_stderr(run_cap_mods_init, out, sizeof out);
+  alarm(0);
+  ASSERT(cap_result);
+  ASSERT_EQ(mods_count(), 1);
+  ASSERT(mods_last_log());
+  ASSERT(strstr(mods_last_log(), "survived") != NULL);
+  mods_shutdown();
+}
+
+// CRITICAL: load()'s mode argument segfaulted the host on the reviewer's very first fuzz trial
+// of a corrupted binary dump -- worse than any hang this module exists to prevent. The fix
+// (l_load_text_only) forces mode "t" regardless of what's requested; this reproduces the
+// scenario with a deliberately corrupted chunk signature, under alarm() since a regression here
+// would be a crash, not necessarily a clean hang this alarm would catch -- but if a *partial*
+// regression reintroduced a hang instead of a crash, this still catches that too.
+static void load_with_a_binary_chunk_mode_is_refused_safely(void) {
+  clear_mods();
+  const char *root = make_mod("loadbin", "id=loadbin\napi=1\ngames=ages,seasons\n",
+      "local corrupted = string.char(27) .. 'Lua' .. string.rep(string.char(255), 200)\n"
+      "local f, err = load(corrupted, nil, 'b')\n"
+      "if f then error('a binary-mode load should have been refused') end\n"
+      "oracles.log('binary load refused: ' .. tostring(err))\n");
+  cap_root = root;
+  cap_seasons = true;
+  char out[4096];
+  signal(SIGALRM, mods_test_alarm_handler);
+  alarm(10);
+  capture_stderr(run_cap_mods_init, out, sizeof out);
+  alarm(0);
+  ASSERT(cap_result);
+  ASSERT_EQ(mods_count(), 1);
+  ASSERT(mods_last_log());
+  ASSERT(strstr(mods_last_log(), "binary load refused") != NULL);
+  mods_shutdown();
+}
+
+// The same crash is reachable through a main.lua file that is *itself* a binary chunk (crafted,
+// or merely corrupted in transit) -- our own luaL_loadfilex call for main.lua needed the same
+// "t"-forced fix as load() does, not just load() itself.
+static void a_binary_main_lua_is_refused_safely(void) {
+  clear_mods();
+  const char *tmp = getenv("TMPDIR");
+  if (!tmp || !*tmp) tmp = "/tmp";
+  char root[600], dir[700], cmd[900];
+  snprintf(root, sizeof root, "%s/test_mods_root", tmp);
+  snprintf(dir, sizeof dir, "%s/binarymain", root);
+  snprintf(cmd, sizeof cmd,
+      "mkdir -p '%s' && printf 'id=binarymain\\napi=1\\ngames=ages,seasons\\n' > '%s/mod.ini' && "
+      "printf '\\x1bLua\\xff\\xff\\xff\\xff\\xff\\xff\\xff\\xff' > '%s/main.lua'",
+      dir, dir, dir);
+  ASSERT_EQ(system(cmd), 0);
+  cap_root = root;
+  cap_seasons = true;
+  char out[4096];
+  signal(SIGALRM, mods_test_alarm_handler);
+  alarm(10);
+  capture_stderr(run_cap_mods_init, out, sizeof out);
+  alarm(0);
+  ASSERT(cap_result);
+  ASSERT_EQ(mods_count(), 0);
+  ASSERT(strstr(out, "binarymain") != NULL);
+  mods_shutdown();
+}
+
+// Hazard found while fixing load(), not separately reported: dofile() reaches the exact same
+// binary-chunk crash through luaL_loadfile with no mode argument to override, so it is withheld
+// outright rather than wrapped (a mod has no legitimate need to execute an arbitrary file
+// straight off disk, distinct from the already-open io library's ordinary read/write calls).
+static void dofile_is_withheld(void) {
+  clear_mods();
+  const char *root = make_mod("nodofile", "id=nodofile\napi=1\ngames=ages,seasons\n",
+      "if dofile ~= nil then error('dofile is reachable') end\n"
+      "oracles.log('dofile is unreachable')\n");
+  ASSERT(mods_init(root, true));
+  ASSERT_EQ(mods_count(), 1);
+  ASSERT(mods_last_log());
+  ASSERT(strstr(mods_last_log(), "dofile is unreachable") != NULL);
+  mods_shutdown();
+}
+
+// ---------------------------------------------------------------------------
+// Fourth spec review: pin the instruction budget itself, and the two-message split.
+// ---------------------------------------------------------------------------
+
+// Reviewer: multiplying MOD_LOAD_INSTRUCTION_BUDGET by 10,000 -- effectively disabling it --
+// passes every one of the 86 tests that existed before this one; the wall-clock deadline
+// absorbs every refusal either way, since ASSERT_BUDGET_OR_DEADLINE accepts both messages by
+// design. This also pins the opposite bug: hardcoding deadline_exceeded to always true would
+// make every refusal say "cut off" regardless of which bound actually fired. A bare, cheap loop
+// is assumed fast enough on any host this suite runs on to reach the instruction budget well
+// inside the 2-second deadline (measured 0.1-0.5s across every load this session, including
+// under host load averages past 100 on a 10-core machine) -- the same host-speed assumption the
+// instruction budget already rests on, not a new one.
+static void a_cheap_infinite_loop_is_caught_by_the_instruction_budget_specifically(void) {
+  clear_mods();
+  const char *root = make_mod("cheaploop", "id=cheaploop\napi=1\ngames=ages,seasons\n",
+      "while true do end\n");
+  cap_root = root;
+  cap_seasons = true;
+  char out[4096];
+  signal(SIGALRM, mods_test_alarm_handler);
+  alarm(20);
+  double t0 = wall_seconds();
+  capture_stderr(run_cap_mods_init, out, sizeof out);
+  double t1 = wall_seconds();
+  alarm(0);
+  ASSERT(cap_result);
+  ASSERT_PROMPT(t0, t1);
+  ASSERT_EQ(mods_count(), 0);
+  ASSERT(strstr(out, "cheaploop") != NULL);
+  ASSERT(strstr(out, "instruction budget") != NULL);
+  ASSERT(strstr(out, "cut off") == NULL);
+  mods_shutdown();
+}
+
+// ---------------------------------------------------------------------------
+// Fourth spec review: the registry must match what a loaded mod actually sees.
+// ---------------------------------------------------------------------------
+
+static int cmp_cstr(const void *a, const void *b) {
+  return strcmp(*(const char *const *)a, *(const char *const *)b);
+}
+
+// Reviewer: the original registry test built its own Lua state and called mods_api_open
+// directly, so a binding installed anywhere else along the real load path -- the reviewer added
+// five lines right after mods_api_open(L) inside run_main_lua itself, exactly where a future
+// task is most likely to add one -- was completely invisible to it; a real, callable
+// oracles.undocumented() passed the whole suite, including that test. This instead walks the
+// live `oracles` table from *inside* a fully loaded mod's own environment, built however
+// run_main_lua actually builds it. Also pins "every entry is actually callable", not just "every
+// entry's key exists": a future `oracles.overlay = {rect = ...}` would satisfy a names-only check
+// with just "overlay" listed while actually being a table a mod cannot call directly --
+// type(v) == 'function' is true for both Lua and C functions, which is the distinction that
+// actually matters (can a mod call oracles.xxx(...) at all), not which language implemented it.
+static void the_live_oracles_table_in_a_loaded_mod_matches_the_registry_exactly(void) {
+  clear_mods();
+  const char *root = make_mod("registrycheck", "id=registrycheck\napi=1\ngames=ages,seasons\n",
+      "local k = {}\n"
+      "for n, v in pairs(oracles) do\n"
+      "  if type(v) ~= 'function' then error('oracles.' .. tostring(n) .. ' is not callable') end\n"
+      "  k[#k+1] = n\n"
+      "end\n"
+      "table.sort(k)\n"
+      "oracles.log(table.concat(k, ','))\n");
+  ASSERT(mods_init(root, true));
+  ASSERT_EQ(mods_count(), 1);
+  ASSERT(mods_last_log());
+
+  int n = mods_api_count();
+  ASSERT(n > 0);
+  ASSERT(n <= 64);
+  const char *names[64];
+  for (int i = 0; i < n; i++) names[i] = mods_api_name(i);
+  qsort(names, (size_t)n, sizeof names[0], cmp_cstr);
+  char expected[1024] = "";
+  for (int i = 0; i < n; i++) {
+    if (i > 0) strcat(expected, ",");
+    strcat(expected, names[i]);
+  }
+  ASSERT_EQ(strcmp(mods_last_log(), expected), 0);
+  mods_shutdown();
+}
+
+// ---------------------------------------------------------------------------
+// Fourth spec review: pin the hostile-__tostring fix, and the realloc-widening cap branch.
+// ---------------------------------------------------------------------------
+
+// Reviewer: lua_tolstring (not luaL_tolstring) in run_main_lua's error reporting was measured as
+// load-bearing, not stylistic -- 0.000s refused as shipped, a hang past 12s with luaL_tolstring
+// substituted on this exact script. Currently unpinned, so a future "let's get a richer error
+// message" revert to luaL_tolstring would pass every other test and reopen it silently. Same
+// hazard class as the __gc finalizer above: Lua reached from host code outside
+// mod_resume_budgeted's one guarded lua_resume call, where neither the instruction budget nor
+// the deadline is ever consulted -- generalise from this, rather than re-deriving it, the next
+// time this module calls into Lua from anywhere else.
+static void a_hostile_tostring_metamethod_does_not_hang_error_reporting(void) {
+  clear_mods();
+  const char *root = make_mod("hostiletostring", "id=hostiletostring\napi=1\ngames=ages,seasons\n",
+      "error(setmetatable({}, {__tostring = function() while true do end end}))\n");
+  cap_root = root;
+  cap_seasons = true;
+  char out[4096];
+  signal(SIGALRM, mods_test_alarm_handler);
+  alarm(15);
+  capture_stderr(run_cap_mods_init, out, sizeof out);
+  alarm(0);
+  ASSERT(cap_result);
+  ASSERT_EQ(mods_count(), 0);
+  ASSERT(strstr(out, "hostiletostring") != NULL);
+  mods_shutdown();
+}
+
+// Reviewer: deleting mod_lua_alloc's realloc-widening cap check (the one guarding
+// `a->used + (nsize - osize) > a->cap`) passes all 86 tests that existed before this one -- the
+// existing memory-cap test never actually reaches it (see its corrected comment above). Array-
+// part growth is what does: each assignment into a growing integer-keyed table can force Lua to
+// realloc the table's own backing array to a larger size, repeatedly, which is the realloc path
+// specifically, never a fresh ptr == NULL allocation.
+static void array_growth_is_refused_via_the_realloc_path(void) {
+  clear_mods();
+  const char *root = make_mod("arraygrowth", "id=arraygrowth\napi=1\ngames=ages,seasons\n",
+      "local t = {}\n"
+      "for i = 1, 1000000000 do t[i] = i end\n"
+      "oracles.log('should have been refused before reaching here')\n");
+  cap_root = root;
+  cap_seasons = true;
+  char out[4096];
+  signal(SIGALRM, mods_test_alarm_handler);
+  alarm(20);
+  double t0 = wall_seconds();
+  capture_stderr(run_cap_mods_init, out, sizeof out);
+  double t1 = wall_seconds();
+  alarm(0);
+  ASSERT(cap_result);
+  ASSERT_PROMPT(t0, t1);
+  ASSERT_EQ(mods_count(), 0);
+  ASSERT(strstr(out, "arraygrowth") != NULL);
+  ASSERT(strstr(out, "not enough memory") != NULL);
+  mods_shutdown();
+}
+
+// ---------------------------------------------------------------------------
+// Fifth spec review: catastrophic pattern-matching backtracking, patched into
+// third_party/lua/lstrlib.c itself (see its README.md entry) rather than closed from mods.c --
+// no VM instruction ever retires inside the matcher, so neither the instruction budget nor the
+// wall-clock deadline in sandbox.c is reachable from here; this is the one hazard in this module
+// that only a change to the vendored interpreter itself can close.
+// ---------------------------------------------------------------------------
+
+// find: the exact shape the reviewer measured hanging past 20 seconds unpatched. Pins the
+// lstrlib.c MOD_PATTERN_STEP_BUDGET mechanism specifically -- the message ("pattern too
+// complex") is distinct from both the instruction-budget and deadline wording, so this is not
+// just "something stopped it", it is specifically the matcher's own bound doing so.
+static void a_catastrophic_find_pattern_is_refused_by_the_matcher_itself(void) {
+  clear_mods();
+  const char *root = make_mod("patfind", "id=patfind\napi=1\ngames=ages,seasons\n",
+      "local ok, err = pcall(string.find, ('a'):rep(40), ('.-'):rep(10) .. 'b')\n"
+      "if ok then error('should have raised pattern too complex') end\n"
+      "oracles.log('refused: ' .. tostring(err))\n");
+  cap_root = root;
+  cap_seasons = true;
+  char out[4096];
+  signal(SIGALRM, mods_test_alarm_handler);
+  alarm(20);
+  double t0 = wall_seconds();
+  capture_stderr(run_cap_mods_init, out, sizeof out);
+  double t1 = wall_seconds();
+  alarm(0);
+  ASSERT(cap_result);
+  ASSERT_PROMPT(t0, t1);
+  ASSERT_EQ(mods_count(), 1);
+  ASSERT(mods_last_log());
+  ASSERT(strstr(mods_last_log(), "pattern too complex") != NULL);
+  mods_shutdown();
+}
+
+// Same shape through gsub, the other entry point str_gsub drives its own per-position loop
+// through (reprepstate, not prepstate, confirming the budget is shared across the whole call
+// rather than reset per starting position the way matchdepth already was).
+static void a_catastrophic_gsub_pattern_is_refused_by_the_matcher_itself(void) {
+  clear_mods();
+  const char *root = make_mod("patgsub", "id=patgsub\napi=1\ngames=ages,seasons\n",
+      "local ok, err = pcall(string.gsub, ('a'):rep(40), ('.-'):rep(10) .. 'b', 'x')\n"
+      "if ok then error('should have raised pattern too complex') end\n"
+      "oracles.log('refused: ' .. tostring(err))\n");
+  cap_root = root;
+  cap_seasons = true;
+  char out[4096];
+  signal(SIGALRM, mods_test_alarm_handler);
+  alarm(20);
+  double t0 = wall_seconds();
+  capture_stderr(run_cap_mods_init, out, sizeof out);
+  double t1 = wall_seconds();
+  alarm(0);
+  ASSERT(cap_result);
+  ASSERT_PROMPT(t0, t1);
+  ASSERT_EQ(mods_count(), 1);
+  ASSERT(mods_last_log());
+  ASSERT(strstr(mods_last_log(), "pattern too complex") != NULL);
+  mods_shutdown();
+}
+
+// The regression guard that is easy to forget: a legitimate, moderately heavy gsub (the exact
+// shape measured when choosing MOD_PATTERN_STEP_BUDGET -- a ~100 KB subject, an ordinary
+// pattern) must still load successfully. Without this, someone could tighten the budget until
+// real mods break and nothing here would notice.
+static void a_legitimately_heavy_pattern_still_loads(void) {
+  clear_mods();
+  const char *root = make_mod("patgood", "id=patgood\napi=1\ngames=ages,seasons\n",
+      "local s = string.rep('hello world, this is a test sentence. ', 2700)\n"
+      "local n = select(2, s:gsub('%a+', function(w) return w:upper() end))\n"
+      "oracles.log('processed ' .. n .. ' words')\n");
+  cap_root = root;
+  cap_seasons = true;
+  char out[4096];
+  signal(SIGALRM, mods_test_alarm_handler);
+  alarm(20);
+  double t0 = wall_seconds();
+  capture_stderr(run_cap_mods_init, out, sizeof out);
+  double t1 = wall_seconds();
+  alarm(0);
+  ASSERT(cap_result);
+  ASSERT_PROMPT(t0, t1);
+  ASSERT_EQ(mods_count(), 1);
+  ASSERT(mods_last_log());
+  ASSERT(strstr(mods_last_log(), "processed 18900 words") != NULL);
+  mods_shutdown();
+}
+
 int main(void) {
+  // The alarm handler's _exit(1) skips normal stdio teardown (deliberately: calling atexit
+  // handlers or flushing from inside a signal handler is not safe), which means any buffered
+  // "ok <test>" line not yet flushed to the terminal is simply lost on a real hang -- the
+  // operator sees the alarm's own "FAIL: mods_init hung" message but not which test printed
+  // last, right when that information matters most. Line-buffering stdout (RUN already prints a
+  // newline after every test) means each "ok" line reaches the terminal as soon as it's
+  // written, not whenever the C library's own block-buffering heuristic decides to flush.
+  setvbuf(stdout, NULL, _IOLBF, 0);
   RUN(lua_runs);
   RUN(overlay_draws_a_rect);
   RUN(overlay_clips);
@@ -2163,5 +2561,18 @@ int main(void) {
   RUN(oracles_log_reaches_stderr_not_just_mods_last_log);
   RUN(oracles_log_with_a_non_string_argument_is_a_clean_lua_error);
   RUN(untrusted_lua_never_runs_for_a_mod_that_does_not_apply);
+  RUN(a_gc_finalizer_cannot_be_armed_at_load_time);
+  RUN(a_gc_finalizer_cannot_be_armed_before_a_refusal);
+  RUN(a_gc_finalizer_cannot_be_armed_mid_run);
+  RUN(load_with_a_binary_chunk_mode_is_refused_safely);
+  RUN(a_binary_main_lua_is_refused_safely);
+  RUN(dofile_is_withheld);
+  RUN(a_cheap_infinite_loop_is_caught_by_the_instruction_budget_specifically);
+  RUN(the_live_oracles_table_in_a_loaded_mod_matches_the_registry_exactly);
+  RUN(a_hostile_tostring_metamethod_does_not_hang_error_reporting);
+  RUN(array_growth_is_refused_via_the_realloc_path);
+  RUN(a_catastrophic_find_pattern_is_refused_by_the_matcher_itself);
+  RUN(a_catastrophic_gsub_pattern_is_refused_by_the_matcher_itself);
+  RUN(a_legitimately_heavy_pattern_still_loads);
   return skipped ? 77 : 0;
 }

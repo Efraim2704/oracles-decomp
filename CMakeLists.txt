@@ -137,7 +137,7 @@ if(NOT WIN32)
   target_link_libraries(oraclesui PUBLIC m)
 endif()
 
-add_library(oraclesmods STATIC src/mods/overlay.c src/mods/mods.c src/mods/api.c
+add_library(oraclesmods STATIC src/mods/overlay.c src/mods/mods.c src/mods/api.c src/mods/sandbox.c
   third_party/lua/lapi.c third_party/lua/lauxlib.c third_party/lua/lbaselib.c
   third_party/lua/lcode.c third_party/lua/lcorolib.c third_party/lua/lctype.c third_party/lua/ldblib.c
   third_party/lua/ldebug.c third_party/lua/ldo.c third_party/lua/ldump.c third_party/lua/lfunc.c
@@ -175,24 +175,19 @@ add_executable(test_mods tests/test_mods.c)
 target_link_libraries(test_mods oraclesmods)
 target_include_directories(test_mods PRIVATE third_party/lua)
 target_compile_definitions(test_mods PRIVATE GAME_ROM_DIR="${GAME_ROM_DIR}")
-# A couple of test_mods's assertions bound how long the instruction-budget mechanism is allowed
-# to take (2s), which is what gives a regressed (e.g. accidentally 2G instead of 50M) budget
-# teeth -- but that bound is tuned against an uninstrumented build. Under ASan+UBSan together the
-# same mechanism genuinely needs more like 2.5s on real hardware (interpreter overhead, not a
-# logic change), so skip those specific assertions rather than loosen them for everyone -- the
-# alarm()-based hang detection they sit next to is unaffected and stays on unconditionally.
-if(CMAKE_C_FLAGS MATCHES "sanitize")
-  target_compile_definitions(test_mods PRIVATE MODS_TEST_TIMING=0)
-endif()
 add_test(NAME mods COMMAND test_mods)
-# TIMEOUT is a backstop, not the primary defence: several of test_mods's own tests wrap their
-# mods_init call in a 5-second alarm() so a real hang fails fast with a named, diagnostic message
+# TIMEOUT is a backstop, not the primary defence: test_mods's own hang-risk tests each wrap their
+# mods_init call in its own alarm() so a real hang fails fast with a named, diagnostic message
 # rather than ctest's bare "Timeout" (naming no test) after its 1500s default -- but that
-# alarm() only protects the one process calling it. 60s is comfortably above every alarm() firing
-# in sequence (6 hang-risk tests * 5s = 30s) plus the rest of the suite's own (sub-second) running
-# time, while still catching, in well under a minute rather than 25, any hang the alarms
-# themselves somehow failed to catch (e.g. one that blocks before any alarm() call is reached).
-set_tests_properties(mods PROPERTIES SKIP_RETURN_CODE 77 LABELS "rom" TIMEOUT 60)
+# alarm() only protects the one process calling it, not the next test if something upstream of
+# any alarm() call blocks before it's even set. As of this writing there are 21 such alarm()
+# sites, 5-20s each, summing to 305s if every single one somehow fired in sequence (which would
+# mean nearly everything in the file hung at once -- astronomically unlikely, but the number this
+# TIMEOUT must stay above regardless). 400s leaves headroom above that worst case for the rest of
+# the suite's own (sub-second-to-low-single-digit-second) running time and ordinary scheduling
+# overhead between tests, while still catching, in well under ctest's 1500s default, a hang that
+# happens to land before any alarm() call is reached at all.
+set_tests_properties(mods PROPERTIES SKIP_RETURN_CODE 77 LABELS "rom" TIMEOUT 400)
 add_executable(test_sync tests/test_sync.c)
 target_link_libraries(test_sync oraclessync)
 add_test(NAME sync COMMAND test_sync)
