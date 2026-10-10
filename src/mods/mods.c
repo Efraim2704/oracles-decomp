@@ -345,6 +345,11 @@ typedef struct {
 // a reasonable main.lua would do -- while still being far too small for an unbounded-allocation
 // loop to get anywhere: `local t={} while true do t[#t+1]=string.rep('x',1e6) end` allocates a
 // megabyte-sized string per iteration, so it trips after roughly 8 of them.
+//
+// MODS_MAX (32) mods can all be loaded at once, each with its own state capped at this: 32 * 8
+// MiB = 256 MiB of host memory a full mods folder can hold resident simultaneously. Nothing
+// enforces a total across mods today -- this is the number that total could reach, recorded here
+// because nothing else currently records it.
 #define MOD_MEM_CAP ((size_t)8 * 1024 * 1024)
 
 // Lua's custom-allocator contract (see third_party/lua/lmem.c's comment on frealloc): ptr == NULL
@@ -388,33 +393,128 @@ static void *mod_lua_alloc(void *ud, void *ptr, size_t osize, size_t nsize) {
   return p;
 }
 
-// The hook lua_sethook installs below (see mod_set_instruction_budget), called once LUA_MASKCOUNT
-// VM instructions have run since the hook was set. Raising a Lua error here is what makes a
-// runaway `while true do end` abort exactly the way a Lua-level `error("boom")` already does:
-// lua_error longjmps out of whatever VM code is executing, straight into the lua_pcall that
-// luaL_dofile already wraps the whole chunk in, landing in run_main_lua's existing "mod failed"
-// path below with zero special-casing there.
-static void mod_instruction_limit_hook(lua_State *L, lua_Debug *ar) {
-  (void)ar;
-  luaL_error(L, "exceeded its instruction budget (possible infinite loop)");
-}
+// A first implementation of this budget raised a Lua error from the count hook, on the
+// reasoning that lua_error's longjmp would unwind through whatever VM code was running straight
+// into the lua_pcall luaL_dofile already wraps the chunk in. That is bypassable in one line,
+// because a Lua *error* is exactly the kind of thing Lua code can catch and swallow:
+//
+//   while true do pcall(function() while true do end end) end
+//
+// pcall catches the hook's error, the mod carries on, and lua_sethook's countdown simply starts
+// over -- unlimited CPU, one budget at a time. The fix is to make the hook unwind in a way no
+// Lua-level pcall/xpcall/coroutine.resume can intercept: lua_yield. A yield yields the *thread*,
+// not an error value; it unwinds all the way out to the lua_resume call that is driving that
+// thread, which is this module, in C, not any Lua code a mod could wrap around itself. See
+// mod_resume_budgeted below for how that lua_resume call is actually made.
+//
+// A second, subtler bypass survives even the yield fix on its own: a mod can run
+// coroutine.create(spinner) and coroutine.resume it in a loop. coroutine.resume is itself
+// implemented by calling lua_resume on the *new* coroutine's thread; when that thread's hook
+// fires and yields, coroutine.resume treats it exactly like an ordinary, intentional
+// coroutine.yield() -- it returns `true` to the *caller*, on the outer thread, and the outer
+// thread's own lua_resume (the one this module is driving) never sees anything happen. Worse,
+// lua_newthread's lstate.c implementation copies the creating thread's hookmask/basehookcount to
+// the new thread *and resets its countdown fresh* -- so every single coroutine.resume() call on
+// that same coroutine buys it another full, fresh MOD_LOAD_INSTRUCTION_BUDGET-sized slice before
+// its hook fires again. Measured against the naive per-thread-only version of this fix: a bare
+// `while true do coroutine.resume(co) end` around a spinner coroutine took over three minutes to
+// return control to the host on this dev machine, worse as the budget grows, and unbounded in
+// principle since the outer loop's own countdown only measures *its own* instructions, a handful
+// per iteration, never the (arbitrarily slow) work hidden inside each resume.
+//
+// The fix: a budget shared across every thread belonging to one mod run -- the top-level one
+// mod_resume_budgeted drives directly, and any coroutine.create()'d thread spun up underneath it
+// -- rather than relying on Lua's own independent per-thread accounting. mod_instruction_limit_hook
+// decrements the *same* ModBudget on every firing, from whichever thread happens to be running
+// when LUA_MASKCOUNT elapses, regardless of which thread that is. The moment the shared total is
+// used up, that thread is marked "exhausted" and immediately re-armed to fire on its very next
+// instruction (count = 1) before yielding -- so it can never again buy a fresh slice merely by
+// being resumed, from any caller. That makes every further coroutine.resume() on a poisoned
+// coroutine cost close to nothing, so the *outer* loop's own (independent, Lua-native) countdown
+// -- which was ticking down on its own schedule the whole time, just slowly, since each iteration
+// looked cheap to it -- catches up and fires for real within a fraction of a second once
+// exhaustion starts, instead of needing one full fresh slice per iteration. Verified empirically
+// with the exact scenario above: 0.21s to regain control, not three-plus minutes.
+//
+// One more wrinkle this leaves: if the *coroutine* is the thing that actually exhausts the shared
+// budget, and the caller never calls coroutine.resume on it again, the outer chunk can simply run
+// to completion normally (LUA_OK) with the exhaustion fully absorbed and invisible to the status
+// code alone -- mod_resume_budgeted's `exhausted` out-parameter is what callers must check
+// instead of trusting a clean LUA_OK to mean "nothing went wrong".
+typedef struct {
+  long long remaining;
+  bool exhausted;
+} ModBudget;
 
-// How many Lua VM instructions a mod's main.lua may execute before mod_instruction_limit_hook
-// aborts it. Measured empirically on this dev machine: a tight `while true do i=i+1 end` loop
-// runs at roughly 450 million VM instructions per second, so 50 million is about a tenth of a
-// second of real wall-clock time for a runaway script -- generous margin under "a couple of
+// How often (in Lua VM instructions) the hook checks in against the shared budget, on whichever
+// thread happens to be running when the count elapses. Deliberately much smaller than the total
+// budget itself: since lua_newthread resets a new coroutine's own countdown fresh (see the long
+// comment above), a mod spinning up many short-lived coroutines could otherwise run each one for
+// up to a full `count` instructions before its very first check-in, each slice invisible to every
+// other thread's own accounting until it checks in. 1,000,000 bounds that slack to roughly a
+// couple of milliseconds per coroutine, however many a mod creates, while keeping the hook's own
+// call overhead negligible against legitimate work (confirmed: the "healthy" case below still
+// completes instantly).
+#define MOD_INSTRUCTION_CHECKIN 1000000
+
+// The shared total. Measured empirically on this dev machine: a tight `while true do i=i+1 end`
+// loop runs at roughly 450 million VM instructions per second, so 50 million is about a tenth of
+// a second of real wall-clock time for a runaway script -- generous margin under "a couple of
 // seconds" even on CI hardware several times slower than this machine, while still being orders
 // of magnitude more than any realistic main.lua setup script (defining a handful of functions and
 // a modest table) will ever use.
-//
-// Deliberately not folded directly into a single lua_sethook call: mod_set_instruction_budget
-// takes `count` as a parameter precisely so Task 8 can call it again, with a much smaller count,
-// right before each per-frame callback runs -- lua_sethook simply replaces the previous hook and
-// resets its countdown, so nothing about this needs to change to support that reuse.
 #define MOD_LOAD_INSTRUCTION_BUDGET 50000000
 
-static void mod_set_instruction_budget(lua_State *L, int count) {
-  lua_sethook(L, mod_instruction_limit_hook, LUA_MASKCOUNT, count);
+// Valid only while mod_resume_budgeted (immediately below) is driving some thread's lua_resume --
+// mods run strictly one at a time, never concurrently, so a single pointer rather than a
+// per-state registry entry is correct here and avoids registry bookkeeping inside the hook's hot
+// path. Set and cleared by mod_resume_budgeted around each call; NULL the rest of the time.
+static ModBudget *g_mod_budget;
+
+static void mod_instruction_limit_hook(lua_State *L, lua_Debug *ar) {
+  (void)ar;
+  ModBudget *b = g_mod_budget;
+  if (!b) return;                            // defensive: should never fire with no run in flight
+  if (!b->exhausted) {
+    b->remaining -= MOD_INSTRUCTION_CHECKIN;
+    if (b->remaining <= 0) b->exhausted = true;
+  }
+  if (b->exhausted) {
+    // Re-armed at count = 1: once poisoned, this thread must never again be able to buy a full
+    // fresh checkin's worth of CPU just by being resumed again -- directly, or via
+    // coroutine.resume from another thread of the same mod -- so from here on it has to check in
+    // on literally its very next instruction, every single time, for the rest of its life.
+    lua_sethook(L, mod_instruction_limit_hook, LUA_MASKCOUNT, 1);
+    lua_yield(L, 0);
+  }
+}
+
+// Drives `thread` (freshly loaded with a function to call via lua_resume, nargs of them already
+// pushed) to completion or exhaustion, under a budget of `total` VM instructions shared across
+// `thread` and any coroutine it creates while running -- see the long comment above for why that
+// sharing, not just a plain per-thread lua_sethook, is what actually makes the budget
+// unbypassable. Returns the lua_resume status (LUA_OK / LUA_YIELD / an error code); on return,
+// `thread`'s stack holds its results (LUA_OK) or error object (an error status) exactly as
+// lua_resume leaves them. *exhausted is set whenever the shared budget was used up at any point
+// during this call, even if `thread` itself happened to return LUA_OK -- because the exhaustion
+// can be fully absorbed by a nested coroutine.resume rather than ever surfacing as this thread's
+// own yield (see the comment above). Callers must treat *exhausted as a failure in its own
+// right, never assume a clean LUA_OK on its own means nothing went wrong.
+//
+// Built as a function taking `thread`/`nargs`/`total` as parameters, not a single hardcoded
+// lua_resume call inside run_main_lua, specifically so a later per-frame callback runner can call
+// this again -- on a different thread, with a much smaller `total` -- without this function
+// changing at all: the only state it owns (g_mod_budget) is scoped to one call and always cleared
+// before returning, success or failure alike.
+static int mod_resume_budgeted(lua_State *thread, int nargs, long long total, bool *exhausted) {
+  ModBudget budget = { .remaining = total, .exhausted = false };
+  g_mod_budget = &budget;
+  lua_sethook(thread, mod_instruction_limit_hook, LUA_MASKCOUNT, MOD_INSTRUCTION_CHECKIN);
+  int nres;
+  int status = lua_resume(thread, NULL, nargs, &nres);
+  g_mod_budget = NULL;
+  *exhausted = budget.exhausted;
+  return status;
 }
 
 // Hazard found while building the instruction budget above, not in the original plan: Lua's
@@ -492,22 +592,56 @@ static bool run_main_lua(const char *dir, const char *name, Mod *m) {
   mod_open_libs_without_debug(L);
   mods_api_open(L);
 
-  // Set before a single byte of main.lua runs, so `while true do end` can never get started
-  // without a countdown already ticking against it.
-  mod_set_instruction_budget(L, MOD_LOAD_INSTRUCTION_BUDGET);
+  // Run on its own coroutine thread, driven by mod_resume_budgeted rather than luaL_dofile's
+  // plain lua_pcall -- see the long comment above mod_instruction_limit_hook for why that is what
+  // actually makes the instruction budget unbypassable by a mod's own pcall or coroutine.resume.
+  lua_State *runner = lua_newthread(L);
+  char reason[512] = "";
+  bool failed = false;
 
-  if (luaL_dofile(L, lua_path) != LUA_OK) {
-    // The error text is attacker-controlled either way: it's main.lua's own error() argument, or
-    // the literal text of mod_instruction_limit_hook's message, or Lua's fixed "not enough
-    // memory" string when the allocator cap was hit. mods_escape_into is the same escaper mod.ini
-    // values go through, reused here rather than duplicated, for the identical reason: printed
-    // raw, a crafted error string could forge a fake success line on a terminal via an embedded
-    // CR and ANSI escape.
+  if (luaL_loadfile(runner, lua_path) != LUA_OK) {
+    failed = true;
     size_t elen = 0;
-    const char *emsg = lua_tolstring(L, -1, &elen);
-    char esc[512];
-    mods_escape_into(esc, sizeof esc, emsg ? emsg : "", emsg ? elen : 0);
-    fprintf(stderr, "mods: '%s' failed to run main.lua: %s\n", name, esc);
+    const char *emsg = lua_tolstring(runner, -1, &elen);
+    // A non-string error object (a mod calling error({}), or bare error() raising nil) makes
+    // plain lua_tolstring return NULL -- the spec requires detail on stderr either way, so fall
+    // back to a literal rather than printing "...: " with nothing after the colon. Deliberately
+    // not luaL_tolstring here: it would invoke a __tostring metamethod the error object's
+    // metatable might define, which is itself a Lua call that could error in turn, and this is
+    // not a context (just after a load/resume failure, outside any protection of our own) where
+    // it's safe to reason about a second failure landing cleanly.
+    if (!emsg) { emsg = "(non-string error object)"; elen = strlen(emsg); }
+    mods_escape_into(reason, sizeof reason, emsg, elen);
+  } else {
+    bool exhausted = false;
+    int status = mod_resume_budgeted(runner, 0, MOD_LOAD_INSTRUCTION_BUDGET, &exhausted);
+    if (status == LUA_YIELD) {
+      failed = true;
+      snprintf(reason, sizeof reason, "exceeded its instruction budget (possible infinite loop)");
+    } else if (status != LUA_OK) {
+      failed = true;
+      size_t elen = 0;
+      const char *emsg = lua_tolstring(runner, -1, &elen);
+      if (!emsg) { emsg = "(non-string error object)"; elen = strlen(emsg); }
+      mods_escape_into(reason, sizeof reason, emsg, elen);
+    } else if (exhausted) {
+      // The chunk itself returned cleanly (LUA_OK), but a coroutine it created along the way
+      // burned through the whole shared budget and had that absorbed by its own
+      // coroutine.resume call rather than ever yielding *this* thread -- see
+      // mod_resume_budgeted's doc comment. A clean-looking LUA_OK is not the end of the story.
+      failed = true;
+      snprintf(reason, sizeof reason,
+          "exceeded its instruction budget via a nested coroutine (possible infinite loop)");
+    }
+  }
+
+  if (failed) {
+    // reason is attacker-controlled either way: main.lua's own error() argument, the literal
+    // budget-exceeded text above, or Lua's fixed "not enough memory" string when the allocator
+    // cap was hit. mods_escape_into is the same escaper mod.ini values go through, reused here
+    // rather than duplicated, for the identical reason: printed raw, a crafted error string
+    // could forge a fake success line on a terminal via an embedded CR and ANSI escape.
+    fprintf(stderr, "mods: '%s' failed to run main.lua: %s\n", name, reason);
     lua_close(L);
     free(a);
     return false;

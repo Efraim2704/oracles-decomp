@@ -44,6 +44,12 @@ bool mods_enabled(int i);
 // line both read it through mods.h, not api.h, the same way they read mods_name()/mods_id().
 // Cleared by mods_shutdown (and so, transitively, by the mods_init that always calls it first) so
 // a silent mod loaded after a chatty one never inherits its predecessor's stale log line.
+//
+// oracles.log('') is indistinguishable from no call at all: both leave last_log empty and this
+// returns NULL either way. That's an accepted limitation, not a bug -- "logged nothing" and
+// "logged the empty string" are the same thing to a one-line status display, which is the only
+// consumer this exists for today -- but it does mean this function cannot be used to detect
+// *that a mod called oracles.log at all* if the string it passed happened to be empty.
 const char *mods_last_log(void);
 
 // Copies src (exactly src_len bytes, which may contain embedded NULs -- it is not assumed to be a

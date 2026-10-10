@@ -175,8 +175,24 @@ add_executable(test_mods tests/test_mods.c)
 target_link_libraries(test_mods oraclesmods)
 target_include_directories(test_mods PRIVATE third_party/lua)
 target_compile_definitions(test_mods PRIVATE GAME_ROM_DIR="${GAME_ROM_DIR}")
+# A couple of test_mods's assertions bound how long the instruction-budget mechanism is allowed
+# to take (2s), which is what gives a regressed (e.g. accidentally 2G instead of 50M) budget
+# teeth -- but that bound is tuned against an uninstrumented build. Under ASan+UBSan together the
+# same mechanism genuinely needs more like 2.5s on real hardware (interpreter overhead, not a
+# logic change), so skip those specific assertions rather than loosen them for everyone -- the
+# alarm()-based hang detection they sit next to is unaffected and stays on unconditionally.
+if(CMAKE_C_FLAGS MATCHES "sanitize")
+  target_compile_definitions(test_mods PRIVATE MODS_TEST_TIMING=0)
+endif()
 add_test(NAME mods COMMAND test_mods)
-set_tests_properties(mods PROPERTIES SKIP_RETURN_CODE 77 LABELS "rom")
+# TIMEOUT is a backstop, not the primary defence: several of test_mods's own tests wrap their
+# mods_init call in a 5-second alarm() so a real hang fails fast with a named, diagnostic message
+# rather than ctest's bare "Timeout" (naming no test) after its 1500s default -- but that
+# alarm() only protects the one process calling it. 60s is comfortably above every alarm() firing
+# in sequence (6 hang-risk tests * 5s = 30s) plus the rest of the suite's own (sub-second) running
+# time, while still catching, in well under a minute rather than 25, any hang the alarms
+# themselves somehow failed to catch (e.g. one that blocks before any alarm() call is reached).
+set_tests_properties(mods PROPERTIES SKIP_RETURN_CODE 77 LABELS "rom" TIMEOUT 60)
 add_executable(test_sync tests/test_sync.c)
 target_link_libraries(test_sync oraclessync)
 add_test(NAME sync COMMAND test_sync)

@@ -12,6 +12,27 @@
 #include <time.h>
 #include <unistd.h>
 
+// The budget/sandbox timing bounds below exist to catch a regression that makes the budget too
+// generous (e.g. 50M accidentally changed to 2G) -- a 2.0s bound has teeth because it is close to
+// the real ~0.1-0.2s this mechanism takes on ordinary hardware. Under ASan+UBSan together, the
+// same mechanism genuinely needs more like 2.5s on this dev machine (interpreter instrumentation
+// overhead, not a logic change), which would make 2.0s flaky there. Widening the bound to survive
+// that would mean something near a 25x margin -- i.e. tens of seconds -- which no longer pins
+// anything a mutated budget could violate without still passing. So: skip the timing assertion
+// under sanitizers rather than loosen it, via a macro CMakeLists.txt unsets for sanitizer builds
+// (grep CMAKE_C_FLAGS for "sanitize"); default to on so every other build (including this file
+// compiled standalone, outside CMake) still gets the real check. The alarm()-based hang detection
+// around these same tests is NOT gated by this -- that part must always run, sanitizer build or
+// not, since it is what catches an actual hang rather than a merely slow pass.
+#ifndef MODS_TEST_TIMING
+#define MODS_TEST_TIMING 1
+#endif
+#if MODS_TEST_TIMING
+#define ASSERT_PROMPT(t0, t1) ASSERT((double)((t1) - (t0)) / CLOCKS_PER_SEC < 2.0)
+#else
+#define ASSERT_PROMPT(t0, t1) ((void)(t0), (void)(t1))
+#endif
+
 // read_file comes from unit.h (used the same way by test_acid2.c / test_blargg.c): test_mods
 // links oraclesmods + oraclesitem only, not the engine, so it cannot call oracles_read_file --
 // linking the engine into the mod library is exactly what the design forbids.
@@ -373,6 +394,23 @@ static void clear_mods(void) {
 // cleanup below, since ASSERT calls exit()) leaks. run_cap_mods_init below exists to avoid this:
 // it records mods_init's result in a static instead of asserting on it, so every caller asserts
 // on cap_result only after capture_stderr has returned and stderr is restored.
+//
+// g_real_stderr_fd exists for exactly the same reason, for a hazard found while adding the
+// instruction-budget tests below: mods_test_alarm_handler's own "mods_init hung" diagnostic is
+// written with a raw write(2, ...) to make it signal-safe, but a hardcoded fd 2 is *this*
+// function's own redirect target while `body` is running -- a real hang inside a
+// capture_stderr-wrapped mods_init would fire the alarm while fd 2 still points at the temp
+// file, trapping the one diagnostic this whole mechanism exists to produce: the process still
+// exits (via the handler's _exit), but silently, leaking an unlinked temp file with "FAIL:
+// mods_init hung" inside it and showing nothing at all on the terminal or in a CI log --
+// confirmed by deliberately triggering it: the hang-detection alarm then looks indistinguishable
+// from the test binary just vanishing with no explanation. g_real_stderr_fd is set to `saved`
+// (a dup of the *real* stderr, obtained before the redirect) for the duration of `body()`, and
+// the handler writes there instead of the literal fd 2 whenever it is set, so the diagnostic
+// always reaches the real terminal regardless of what fd 2 happens to be redirected to at the
+// moment the alarm fires.
+static volatile int g_real_stderr_fd = -1;
+
 static void capture_stderr(void (*body)(void), char *out, size_t out_size) {
   fflush(stderr);
   const char *tmp = getenv("TMPDIR");
@@ -383,9 +421,11 @@ static void capture_stderr(void (*body)(void), char *out, size_t out_size) {
   ASSERT(fd >= 0);
   int saved = dup(fileno(stderr));
   ASSERT(saved >= 0);
+  g_real_stderr_fd = saved;
   ASSERT(dup2(fd, fileno(stderr)) >= 0);
   body();
   fflush(stderr);
+  g_real_stderr_fd = -1;
   ASSERT(dup2(saved, fileno(stderr)) >= 0);
   close(saved);
   ASSERT(lseek(fd, 0, SEEK_SET) == 0);
@@ -1197,11 +1237,16 @@ static volatile int mods_test_alarm_fired;
 static void mods_test_alarm_handler(int sig) {
   (void)sig;
   mods_test_alarm_fired = 1;
-  // Print directly with write(2), not fprintf: inside a signal handler, stdio is not safe to
+  // Print directly with write(), not fprintf: inside a signal handler, stdio is not safe to
   // call (fprintf may be mid-buffer-flush when the signal lands), and _exit (not exit) skips
-  // atexit/stdio teardown for the same reason.
+  // atexit/stdio teardown for the same reason. Write to g_real_stderr_fd, not the literal fd 2,
+  // whenever capture_stderr has one saved -- see its comment for why: fd 2 may currently be
+  // redirected into capture_stderr's temp file, and writing this diagnostic there instead of
+  // the real terminal would make a genuine hang fail completely silently (confirmed before this
+  // fix: the message ended up trapped in an unlinked temp file, and the process just vanished).
   const char msg[] = "FAIL: mods_init hung (did not return within the timeout)\n";
-  write(2, msg, sizeof msg - 1);
+  int fd = g_real_stderr_fd >= 0 ? g_real_stderr_fd : 2;
+  write(fd, msg, sizeof msg - 1);
   _exit(1);
 }
 
@@ -1336,11 +1381,18 @@ static void a_hanging_mod_is_skipped_and_other_mods_still_load(void) {
   cap_root = root;
   cap_seasons = true;
   char out[4096];
+  // A real alarm, not just an assumption the budget works: a regression here must fail promptly
+  // and loudly (killing the whole binary with a clear message), never wedge CI for the ctest
+  // default 1500s timeout -- unconditional regardless of MODS_TEST_TIMING, since this is what
+  // actually catches a hang rather than merely a slow pass.
+  signal(SIGALRM, mods_test_alarm_handler);
+  alarm(5);
   clock_t t0 = clock();
   capture_stderr(run_cap_mods_init, out, sizeof out);
   clock_t t1 = clock();
+  alarm(0);
   ASSERT(cap_result);
-  ASSERT((double)(t1 - t0) / CLOCKS_PER_SEC < 2.0);
+  ASSERT_PROMPT(t0, t1);
   ASSERT_EQ(mods_count(), 2);
   ASSERT_EQ(strcmp(mods_id(0), "aaa-healthy"), 0);
   ASSERT_EQ(strcmp(mods_id(1), "zzz-healthy"), 0);
@@ -1364,11 +1416,14 @@ static void an_unbounded_allocation_mod_is_skipped_and_other_mods_still_load(voi
   cap_root = root;
   cap_seasons = true;
   char out[4096];
+  signal(SIGALRM, mods_test_alarm_handler);
+  alarm(5);
   clock_t t0 = clock();
   capture_stderr(run_cap_mods_init, out, sizeof out);
   clock_t t1 = clock();
+  alarm(0);
   ASSERT(cap_result);
-  ASSERT((double)(t1 - t0) / CLOCKS_PER_SEC < 2.0);
+  ASSERT_PROMPT(t0, t1);
   ASSERT_EQ(mods_count(), 2);
   ASSERT_EQ(strcmp(mods_id(0), "aaa-healthy2"), 0);
   ASSERT_EQ(strcmp(mods_id(1), "zzz-healthy2"), 0);
@@ -1502,11 +1557,14 @@ static void a_mod_cannot_disarm_its_own_instruction_budget_via_debug_sethook(voi
   cap_root = root;
   cap_seasons = true;
   char out[4096];
+  signal(SIGALRM, mods_test_alarm_handler);
+  alarm(5);
   clock_t t0 = clock();
   capture_stderr(run_cap_mods_init, out, sizeof out);
   clock_t t1 = clock();
+  alarm(0);
   ASSERT(cap_result);
-  ASSERT((double)(t1 - t0) / CLOCKS_PER_SEC < 2.0);
+  ASSERT_PROMPT(t0, t1);
   ASSERT_EQ(mods_count(), 2);
   ASSERT_EQ(strcmp(mods_id(0), "aaa-healthy3"), 0);
   ASSERT_EQ(strcmp(mods_id(1), "zzz-healthy3"), 0);
@@ -1531,6 +1589,287 @@ static void the_debug_library_is_unreachable_by_global_or_require(void) {
   ASSERT_EQ(mods_count(), 1);
   ASSERT(mods_last_log());
   ASSERT(strstr(mods_last_log(), "debug is unreachable") != NULL);
+  mods_shutdown();
+}
+
+// CRITICAL fix (spec review): a plain luaL_error-raising count hook is catchable by the mod's own
+// pcall, which is core Lua and squarely inside Task 7's planned sandbox (string/table/math), so
+// it can never be withheld the way "debug" was above. lua_sethook's countdown simply restarts
+// every time the error is swallowed -- unlimited CPU, one budget at a time -- unless the hook
+// unwinds via lua_yield instead, which no pcall/xpcall can intercept (it yields the *thread*, not
+// an error value, straight out to the lua_resume boundary in mod_resume_budgeted, in the host).
+// Same "two healthy mods either side, and it's fast" shape as the other budget tests, for the
+// same reasons; same alarm() safety net, since getting this wrong hangs the whole process.
+static void a_pcall_wrapped_spinner_is_refused_promptly(void) {
+  clear_mods();
+  make_mod("aaa-healthy4", "id=aaa-healthy4\napi=1\ngames=ages,seasons\n", "oracles.log('aaa ok')\n");
+  make_mod("mid-pcall-spin", "id=mid-pcall-spin\napi=1\ngames=ages,seasons\n",
+      "while true do pcall(function() while true do end end) end\n");
+  const char *root = make_mod("zzz-healthy4", "id=zzz-healthy4\napi=1\ngames=ages,seasons\n", "oracles.log('zzz ok')\n");
+  cap_root = root;
+  cap_seasons = true;
+  char out[4096];
+  signal(SIGALRM, mods_test_alarm_handler);
+  alarm(5);
+  clock_t t0 = clock();
+  capture_stderr(run_cap_mods_init, out, sizeof out);
+  clock_t t1 = clock();
+  alarm(0);
+  ASSERT(cap_result);
+  ASSERT_PROMPT(t0, t1);
+  ASSERT_EQ(mods_count(), 2);
+  ASSERT_EQ(strcmp(mods_id(0), "aaa-healthy4"), 0);
+  ASSERT_EQ(strcmp(mods_id(1), "zzz-healthy4"), 0);
+  ASSERT(strstr(out, "mid-pcall-spin") != NULL);
+  ASSERT(strstr(out, "instruction budget") != NULL);
+  mods_shutdown();
+}
+
+// CRITICAL fix, second route: coroutine.resume is itself implemented by calling lua_resume on
+// the nested coroutine's own thread; a yield there is indistinguishable, to coroutine.resume's
+// caller, from an ordinary, intentional coroutine.yield() -- it just returns `true`, and the
+// outer thread's own lua_resume (the one mod_resume_budgeted drives) never sees anything happen.
+// Resuming the *same* coroutine again would, without the shared-budget fix in mods.c, buy it a
+// full fresh instruction budget every time (lua_newthread resets a *new* thread's countdown, but
+// this is the same thread merely being resumed again) -- unbounded in principle, since the outer
+// loop's own countdown only measures its own handful of instructions per iteration, never the
+// arbitrarily slow work hidden inside each resume. Measured against the naive per-thread-only
+// version of this fix while designing it: over three minutes to regain control; fixed, 0.21s.
+// Same shape and safety net as the pcall test above.
+static void a_coroutine_resume_wrapped_spinner_is_refused_promptly(void) {
+  clear_mods();
+  make_mod("aaa-healthy5", "id=aaa-healthy5\napi=1\ngames=ages,seasons\n", "oracles.log('aaa ok')\n");
+  make_mod("mid-coro-spin", "id=mid-coro-spin\napi=1\ngames=ages,seasons\n",
+      "local co = coroutine.create(function() while true do end end)\n"
+      "while true do coroutine.resume(co) end\n");
+  const char *root = make_mod("zzz-healthy5", "id=zzz-healthy5\napi=1\ngames=ages,seasons\n", "oracles.log('zzz ok')\n");
+  cap_root = root;
+  cap_seasons = true;
+  char out[4096];
+  signal(SIGALRM, mods_test_alarm_handler);
+  alarm(5);
+  clock_t t0 = clock();
+  capture_stderr(run_cap_mods_init, out, sizeof out);
+  clock_t t1 = clock();
+  alarm(0);
+  ASSERT(cap_result);
+  ASSERT_PROMPT(t0, t1);
+  ASSERT_EQ(mods_count(), 2);
+  ASSERT_EQ(strcmp(mods_id(0), "aaa-healthy5"), 0);
+  ASSERT_EQ(strcmp(mods_id(1), "zzz-healthy5"), 0);
+  ASSERT(strstr(out, "mid-coro-spin") != NULL);
+  ASSERT(strstr(out, "instruction budget") != NULL);
+  mods_shutdown();
+}
+
+// A third shape of the same route: the top-level chunk finishes normally (LUA_OK) once its single
+// coroutine.resume call returns, with the spinner's own exhaustion fully absorbed and invisible
+// to the status code -- mod_resume_budgeted's `exhausted` out-parameter, not the status, is what
+// catches this. Without checking it, a mod could burn exactly one shared budget's worth of real
+// CPU time during load and still be accepted as "successfully loaded".
+static void a_coroutine_resumed_only_once_still_counts_as_exhausted(void) {
+  clear_mods();
+  const char *root = make_mod("resumeonce", "id=resumeonce\napi=1\ngames=ages,seasons\n",
+      "local co = coroutine.create(function() while true do end end)\n"
+      "coroutine.resume(co)\n");
+  cap_root = root;
+  cap_seasons = true;
+  char out[4096];
+  signal(SIGALRM, mods_test_alarm_handler);
+  alarm(5);
+  clock_t t0 = clock();
+  capture_stderr(run_cap_mods_init, out, sizeof out);
+  clock_t t1 = clock();
+  alarm(0);
+  ASSERT(cap_result);
+  ASSERT_PROMPT(t0, t1);
+  ASSERT_EQ(mods_count(), 0);
+  ASSERT(strstr(out, "resumeonce") != NULL);
+  ASSERT(strstr(out, "nested coroutine") != NULL);
+  mods_shutdown();
+}
+
+// Reviewer: the registry (mods_api_count/mods_api_name) is what a later docs-drift check
+// compares MODDING.md against -- it never looks at the live `oracles` table. A binding installed
+// via lua_pushcfunction/lua_setfield right next to some other code (the likeliest real path once
+// a later task adds a binding next to, say, the overlay code, rather than editing api.c's array)
+// would be invisible to both the registry and that doc check, while still being fully callable
+// from main.lua -- exactly the failure mode the registry exists to prevent. Confirmed by the
+// reviewer: a real oracles.undocumented() added this way passed the whole suite. This walks the
+// *live* table with lua_next and checks its key set is exactly {mods_api_name(0..count-1)}: same
+// cardinality, every key present, every name found -- closing both directions at once.
+static void the_oracles_table_matches_the_registry_exactly(void) {
+  lua_State *L = luaL_newstate();
+  ASSERT(L);
+  mods_api_open(L);
+  lua_getglobal(L, "oracles");
+  ASSERT(lua_istable(L, -1));
+
+  int n = mods_api_count();
+  ASSERT(n > 0);
+  ASSERT(n <= 64);               // generous fixed bound for the `found` array below
+  bool found[64] = {0};
+  int live_count = 0;
+
+  lua_pushnil(L);
+  while (lua_next(L, -2) != 0) {
+    ASSERT_EQ(lua_type(L, -2), LUA_TSTRING);     // every key in `oracles` names a function slot
+    const char *key = lua_tostring(L, -2);
+    bool matched = false;
+    for (int i = 0; i < n; i++) {
+      if (!strcmp(mods_api_name(i), key)) { found[i] = true; matched = true; break; }
+    }
+    ASSERT(matched);           // every live key must be a name the registry actually lists
+    live_count++;
+    lua_pop(L, 1);             // pop value; leave key on top for lua_next's next call
+  }
+  ASSERT_EQ(live_count, n);    // same cardinality: nothing live is missing from the registry
+  for (int i = 0; i < n; i++) ASSERT(found[i]);   // ...and nothing registered is missing live
+  lua_close(L);
+}
+
+// Reviewer: deleting the fresh-allocation branch of mod_lua_alloc (`if (a->used + nsize > a->cap)
+// return NULL` for ptr == NULL) survives the rest of the suite, since the existing memory-cap
+// test only exercises the realloc path (table growth via many small string.rep calls). A single
+// huge allocation request is always ptr == NULL, never a realloc of an existing block, so this
+// pins that branch specifically: refused instantly, at negligible real memory cost (the cap check
+// runs before malloc is ever called), rather than asking libc for ~300 MB first and hoping it
+// fails -- which, on a machine with that much spare RAM, it might not, defeating the cap outright.
+static void a_single_huge_allocation_is_refused_without_growing_first(void) {
+  clear_mods();
+  const char *root = make_mod("hugealloc", "id=hugealloc\napi=1\ngames=ages,seasons\n",
+      "local ok, err = pcall(string.rep, 'x', 300000000)\n"
+      "if ok then error('a single 300 MB allocation should have been refused') end\n"
+      "oracles.log('huge allocation refused: ' .. tostring(err))\n");
+  ASSERT(mods_init(root, true));
+  ASSERT_EQ(mods_count(), 1);
+  ASSERT(mods_last_log());
+  ASSERT(strstr(mods_last_log(), "huge allocation refused") != NULL);
+  mods_shutdown();
+}
+
+// Reviewer: deleting `a->used -= osize` on free in mod_lua_alloc survives the rest of the suite
+// -- harmless today only because a mod's main.lua runs once and is then discarded, so a leaked
+// `used` count never gets the chance to matter within a single run; once a later task reuses the
+// same state every frame it would ratchet up monotonically under ordinary GC churn and produce
+// spurious out-of-memory failures. This pins it directly: churn far more total bytes (20 MB, in
+// 100 KB pieces) through alloc-then-drop-then-collect than the 8 MiB cap could ever hold at once,
+// and require the mod to still load -- only possible if freed memory is actually credited back
+// rather than `used` only ever growing.
+static void repeated_allocate_and_free_does_not_ratchet_toward_the_cap(void) {
+  clear_mods();
+  const char *root = make_mod("churn", "id=churn\napi=1\ngames=ages,seasons\n",
+      "for i = 1, 200 do\n"
+      "  local junk = string.rep('x', 100000)\n"
+      "  junk = nil\n"
+      "  if i % 20 == 0 then collectgarbage() end\n"
+      "end\n"
+      "oracles.log('churned 20MB through an 8MB cap without hitting it')\n");
+  ASSERT(mods_init(root, true));
+  ASSERT_EQ(mods_count(), 1);
+  ASSERT(mods_last_log());
+  ASSERT(strstr(mods_last_log(), "churned 20MB") != NULL);
+  mods_shutdown();
+}
+
+// Reviewer: error({}) and bare error() must still write detail to stderr -- plain lua_tolstring
+// returns NULL for a non-string error object, which would otherwise print "...: " with nothing
+// after the colon. Checked for both a table (the common "structured error" pattern) and a bare
+// error() call (which raises nil as the error object, per lbaselib.c's luaB_error).
+static void a_table_error_object_still_produces_detail_on_stderr(void) {
+  clear_mods();
+  const char *root = make_mod("tableerr", "id=tableerr\napi=1\ngames=ages,seasons\n", "error({code = 42})\n");
+  cap_root = root;
+  cap_seasons = true;
+  char out[4096];
+  capture_stderr(run_cap_mods_init, out, sizeof out);
+  ASSERT(cap_result);
+  ASSERT_EQ(mods_count(), 0);
+  const char *tag = "failed to run main.lua: ";
+  const char *p = strstr(out, tag);
+  ASSERT(p != NULL);
+  ASSERT(p[strlen(tag)] != '\n' && p[strlen(tag)] != 0);    // something follows the colon
+  mods_shutdown();
+}
+
+static void a_bare_error_call_still_produces_detail_on_stderr(void) {
+  clear_mods();
+  const char *root = make_mod("bareerr", "id=bareerr\napi=1\ngames=ages,seasons\n", "error()\n");
+  cap_root = root;
+  cap_seasons = true;
+  char out[4096];
+  capture_stderr(run_cap_mods_init, out, sizeof out);
+  ASSERT(cap_result);
+  ASSERT_EQ(mods_count(), 0);
+  const char *tag = "failed to run main.lua: ";
+  const char *p = strstr(out, tag);
+  ASSERT(p != NULL);
+  ASSERT(p[strlen(tag)] != '\n' && p[strlen(tag)] != 0);
+  mods_shutdown();
+}
+
+// Reviewer: mods_api_name's bounds check can be deleted unnoticed by the rest of the suite.
+static void mods_api_name_rejects_out_of_range_indices(void) {
+  ASSERT_EQ(strcmp(mods_api_name(-1), ""), 0);
+  ASSERT_EQ(strcmp(mods_api_name(mods_api_count()), ""), 0);
+}
+
+// Reviewer: l_log's fprintf to stderr can be deleted unnoticed -- mods_last_log() alone can't
+// tell "the mod's message reached the status line" apart from "it also reached the terminal
+// where a player might be watching the app's own stderr".
+static void oracles_log_reaches_stderr_not_just_mods_last_log(void) {
+  clear_mods();
+  const char *root = make_mod("stderrlog", "id=stderrlog\napi=1\ngames=ages,seasons\n",
+      "oracles.log('visible on stderr')\n");
+  cap_root = root;
+  cap_seasons = true;
+  char out[4096];
+  capture_stderr(run_cap_mods_init, out, sizeof out);
+  ASSERT(cap_result);
+  ASSERT_EQ(mods_count(), 1);
+  ASSERT(strstr(out, "visible on stderr") != NULL);
+  mods_shutdown();
+}
+
+// Reviewer: luaL_checklstring -> lua_tolstring survives and is genuinely unsafe (len is read
+// uninitialised when the argument is nil, and mods_escape_into would then walk a NULL `s` for
+// `len` bytes). oracles.log(nil) and oracles.log({}) must each produce a clean Lua argument-type
+// error -- caught the same way any other main.lua error is -- never a crash.
+static void oracles_log_with_a_non_string_argument_is_a_clean_lua_error(void) {
+  clear_mods();
+  const char *root = make_mod("lognil", "id=lognil\napi=1\ngames=ages,seasons\n", "oracles.log(nil)\n");
+  cap_root = root;
+  cap_seasons = true;
+  char out[4096];
+  capture_stderr(run_cap_mods_init, out, sizeof out);
+  ASSERT(cap_result);
+  ASSERT_EQ(mods_count(), 0);
+  ASSERT(strstr(out, "lognil") != NULL);
+  mods_shutdown();
+
+  clear_mods();
+  const char *root2 = make_mod("logtable", "id=logtable\napi=1\ngames=ages,seasons\n", "oracles.log({})\n");
+  cap_root = root2;
+  cap_seasons = true;
+  capture_stderr(run_cap_mods_init, out, sizeof out);
+  ASSERT(cap_result);
+  ASSERT_EQ(mods_count(), 0);
+  ASSERT(strstr(out, "logtable") != NULL);
+  mods_shutdown();
+}
+
+// Reviewer: moving run_main_lua above the game filter survives -- untrusted Lua must provably
+// never run at all for a mod that doesn't apply to the current game, not merely "not end up
+// counted as loaded". mods_last_log() staying NULL is the only observable proof main.lua's own
+// oracles.log() call was never reached, since mods_count() alone can't distinguish "ran and was
+// then discarded" from "never ran".
+static void untrusted_lua_never_runs_for_a_mod_that_does_not_apply(void) {
+  clear_mods();
+  const char *root = make_mod("agesonlylog", "id=agesonlylog\napi=1\ngames=ages\n",
+      "oracles.log('should not run under seasons')\n");
+  ASSERT(mods_init(root, true));              // Seasons: agesonlylog does not apply
+  ASSERT_EQ(mods_count(), 0);
+  ASSERT(mods_last_log() == NULL);
   mods_shutdown();
 }
 
@@ -1604,5 +1943,17 @@ int main(void) {
   RUN(oracles_log_with_an_embedded_nul_is_escaped_not_truncated);
   RUN(a_mod_cannot_disarm_its_own_instruction_budget_via_debug_sethook);
   RUN(the_debug_library_is_unreachable_by_global_or_require);
+  RUN(a_pcall_wrapped_spinner_is_refused_promptly);
+  RUN(a_coroutine_resume_wrapped_spinner_is_refused_promptly);
+  RUN(a_coroutine_resumed_only_once_still_counts_as_exhausted);
+  RUN(the_oracles_table_matches_the_registry_exactly);
+  RUN(a_single_huge_allocation_is_refused_without_growing_first);
+  RUN(repeated_allocate_and_free_does_not_ratchet_toward_the_cap);
+  RUN(a_table_error_object_still_produces_detail_on_stderr);
+  RUN(a_bare_error_call_still_produces_detail_on_stderr);
+  RUN(mods_api_name_rejects_out_of_range_indices);
+  RUN(oracles_log_reaches_stderr_not_just_mods_last_log);
+  RUN(oracles_log_with_a_non_string_argument_is_a_clean_lua_error);
+  RUN(untrusted_lua_never_runs_for_a_mod_that_does_not_apply);
   return skipped ? 77 : 0;
 }
