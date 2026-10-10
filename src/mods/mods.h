@@ -5,8 +5,11 @@
 // bounded Lua state: an instruction-count budget, a wall-clock deadline, and a memory cap per
 // mod (see src/mods/sandbox.c), plus a handful of specific standard-library holes closed or
 // wrapped there (mod_open_libs_hardened) because they would otherwise let a mod hang or crash
-// the host regardless of those budgets -- so that a broken or hostile mod can be skipped, not
-// let to take the host down. The Lua API surface a mod sees (the `oracles` table) lives in api.h/api.c, not
+// the host regardless of those budgets -- so that a broken or hostile mod can be contained, not
+// let to take the host down. A mod whose main.lua fails is disabled, not removed: see mods_init's
+// own comment below for exactly where the line between "not a mod for this game" (skipped,
+// occupies no slot) and "a real mod whose payload failed" (listed, mods_enabled() false) sits.
+// The Lua API surface a mod sees (the `oracles` table) lives in api.h/api.c, not
 // here. What main.lua is permitted to do beyond that containment -- today it still gets io, os
 // and require, which the approved sandbox design (string/table/math only) does not grant -- is
 // still to be narrowed by a later task; nothing in the shipped app links this module yet either
@@ -17,28 +20,64 @@
 #include <stddef.h>
 
 #define MODS_API_VERSION 1
+// The hard cap on how many mods occupy a slot in mods[] at once -- counting a disabled mod
+// exactly the same as an enabled one, since a disabled mod still has an id, a name and a reason
+// to show on a status line; only a mod never accepted for this game at all (wrong game, bad
+// mod.ini, bad folder name) consumes no slot and so cannot be what pushes a later mod over this
+// cap. See loading_stops_at_mods_max in tests/test_mods.c for the 33rd-mod boundary this guards.
 #define MODS_MAX 32
 
-// Scans `dir` for mod folders and decides which are enabled for `seasons` (true) or ages (false).
-// Runs no mod code. Returns true once discovery has completed, including when it found zero mods:
-// a `dir` that does not exist yet is zero mods (none installed), not a failure. Returns false if
-// `dir` is NULL or empty, or if `dir` exists but could not be scanned for some other reason (e.g.
-// permissions) -- silently reporting "no mods" in that case would hide a real problem from the
-// caller instead of surfacing it.
+// Scans `dir` for mod folders and decides which apply to `seasons` (true) or ages (false), then
+// runs each applicable one's main.lua under sandbox.c's containment. Returns true once discovery
+// (and, for every mod found applicable, its load attempt) has completed, including when it found
+// zero mods: a `dir` that does not exist yet is zero mods (none installed), not a failure.
+// Returns false if `dir` is NULL or empty, or if `dir` exists but could not be scanned for some
+// other reason (e.g. permissions) -- silently reporting "no mods" in that case would hide a real
+// problem from the caller instead of surfacing it.
+//
+// A mod whose own main.lua fails -- a Lua error, an exhausted instruction budget or wall-clock
+// deadline, an out-of-memory allocation, a rejected __gc metatable or binary chunk, a missing or
+// unreadable main.lua, or a declared `api=` this build is too old to support -- is *not* a
+// mods_init failure and does not make the mod disappear: it is kept in the list (mods_count()
+// counts it, mods_id()/mods_name() still describe it), with mods_enabled() false and mods_error()
+// giving the reason, so a status line can tell the player their mod is there but broken rather
+// than making it look like the install silently failed. The distinction mods_init itself draws is
+// "is this folder a mod for this game at all" (a missing/unparseable mod.ini, a folder name
+// outside the accepted charset, a stray non-directory entry, a mod.ini that names a different
+// game) -- those are not mods for this game and are skipped outright, occupying no slot and
+// reported only on stderr -- versus "this is a real, accepted mod for this game whose own payload
+// did not run", which is what mods_enabled()/mods_error() exist to describe.
 bool mods_init(const char *dir, bool seasons);
 void mods_shutdown(void);
 
+// The number of mods accepted for the current game, counting both the ones running normally and
+// the ones listed disabled by mods_enabled()/mods_error() below -- a mod is dropped from this
+// count only when it was never accepted as a mod for this game at all (wrong game, malformed
+// mod.ini, bad folder name, MODS_MAX overflow), never because its own main.lua failed.
 int mods_count(void);
 // Returns the mod at `i`'s canonical id (its folder name) or display name. For `i` outside
 // [0, mods_count()), returns "" -- never NULL, and never a read past the end of the loaded-mods
 // array. That range check matters beyond ordinary robustness: a later task will index these from
 // Lua with an integer the mod itself chooses, so `i` must be treated as hostile input here, not
-// just a programmer mistake.
+// just a programmer mistake. Both are populated identically whether the mod ends up enabled or
+// disabled -- id/name describe the package, not whether it runs.
 const char *mods_id(int i);
 const char *mods_name(int i);
-// Returns whether the mod at `i` is enabled, or false for `i` outside [0, mods_count()) -- same
-// out-of-range contract, and the same reason it matters, as mods_id/mods_name above.
+// Returns whether the mod at `i` loaded and ran successfully, or false for `i` outside
+// [0, mods_count()) -- same out-of-range contract, and the same reason it matters, as
+// mods_id/mods_name above. False for an in-range `i` means the mod is accepted and listed but
+// disabled for this session (see mods_error() for why): it has no live Lua state, consumes none
+// of its 8 MiB allocator budget, and a per-frame caller (Task 8) must skip it.
 bool mods_enabled(int i);
+// Returns why the mod at `i` is disabled, or "" if it is enabled, or `i` is outside
+// [0, mods_count()) -- never NULL, matching mods_id/mods_name's convention of never returning
+// NULL for a valid-looking call. Attacker-controlled (a Lua error message is the mod author's own
+// text) and so already passed through mods_escape_into before being stored: no raw control byte
+// or invalid-UTF-8 sequence can reach whatever prints this, directly or on a future status line.
+// Deliberately short (see MOD_ERROR_LEN in mods.c) -- this is for a one-line display, not a full
+// diagnostic; the unabridged detail always also goes to stderr at the moment the mod is disabled,
+// which is where a developer debugging a specific mod should look.
+const char *mods_error(int i);
 
 // The most recent oracles.log() message, or NULL if no mod has logged anything since the last
 // mods_init/mods_shutdown. Implemented in api.c (that's where the Lua binding and its storage

@@ -469,6 +469,10 @@ static bool cap_seasons;
 static bool cap_result;
 static void run_cap_mods_init(void) { cap_result = mods_init(cap_root, cap_seasons); }
 
+// Forward declaration: defined further down (next to g_real_stderr_fd, which it uses), but a few
+// Task 6 tests just above that point already need to arm a hang-detection alarm.
+static void mods_test_alarm_handler(int sig);
+
 // mods_id_valid is the one gate standing between an attacker-controlled id and a path traversal
 // (correction A), so it gets its own direct, table-driven test rather than relying only on
 // mods_init's end-to-end behaviour to exercise it. Covers the accepted charset, the two
@@ -595,15 +599,135 @@ static void a_mod_is_found_and_described(void) {
   ASSERT_EQ(mods_count(), 1);
   ASSERT_EQ(strcmp(mods_name(0), "Hello"), 0);
   ASSERT(mods_enabled(0));
+  ASSERT_EQ(strcmp(mods_error(0), ""), 0);             // nothing to report for a healthy mod
   mods_shutdown();
 }
 
-// A mod written against a newer API is refused rather than half-running.
+// ---------------------------------------------------------------------------
+// Task 6: a Lua error disables that mod for the session -- it does not remove it.
+//
+// The plan's own draft of this test ("a_broken_mod_is_skipped", asserting mods_count() == 1 with
+// only the healthy mod counted) encoded the behaviour Task 5 happened to have, not what the
+// approved spec actually asks for: "a Lua error disables that mod for the session, shows the
+// failure in the status line, and writes detail to stderr -- the same treatment the archive
+// errors already get." A player whose mod has a syntax error should see it listed as broken, not
+// watch it vanish and wonder whether the install failed. So the real test here is the opposite of
+// the plan's literal text: both mods must be counted, the broken one disabled with a reason, the
+// healthy one unaffected.
+// ---------------------------------------------------------------------------
+
+// The direct case: one mod throws, one does not. Both stay in the list; only the broken one's
+// mods_enabled() is false, and mods_error() names why. Critically, this also pins the *other*
+// direction that a "disable everything on any error" implementation would still pass if left
+// unchecked: the healthy mod's mods_enabled() must stay true.
+static void a_broken_mod_is_disabled_not_removed(void) {
+  clear_mods();
+  const char *root = make_mod("ok", "id=ok\nname=Fine\napi=1\ngames=ages,seasons\n", "oracles.log('fine')\n");
+  make_mod("bad", "id=bad\nname=Broken\napi=1\ngames=ages,seasons\n", "error('boom')\n");
+  cap_root = root;
+  cap_seasons = true;
+  char out[4096];
+  capture_stderr(run_cap_mods_init, out, sizeof out);
+  ASSERT(cap_result);
+  ASSERT_EQ(mods_count(), 2);                          // both: nothing vanished
+  ASSERT_EQ(strcmp(mods_id(0), "bad"), 0);              // alphabetical: "bad" sorts before "ok"
+  ASSERT(!mods_enabled(0));
+  ASSERT(strstr(mods_error(0), "boom") != NULL);
+  ASSERT_EQ(strcmp(mods_id(1), "ok"), 0);
+  ASSERT_EQ(strcmp(mods_name(1), "Fine"), 0);
+  ASSERT(mods_enabled(1));                              // the other direction: not disabled too
+  ASSERT_EQ(strcmp(mods_error(1), ""), 0);
+  ASSERT(mods_last_log() && strstr(mods_last_log(), "fine") != NULL);  // the healthy mod really ran
+  mods_shutdown();
+}
+
+// Breadth: the "listed, disabled" treatment must be uniform across different *kinds* of failure,
+// not special-cased for a plain Lua error. Three mods: healthy, one that hangs (the instruction/
+// deadline budget), and one that allocates without bound (the memory cap) -- both failure mods
+// disabled with a plausible reason, the healthy one unaffected by either.
+static void disabled_treatment_is_uniform_across_failure_kinds(void) {
+  clear_mods();
+  make_mod("aaa-ok", "id=aaa-ok\napi=1\ngames=ages,seasons\n", "oracles.log('aaa ok')\n");
+  make_mod("mid-spin", "id=mid-spin\napi=1\ngames=ages,seasons\n", "while true do end\n");
+  const char *root = make_mod("zzz-oom", "id=zzz-oom\napi=1\ngames=ages,seasons\n",
+      "local t = {} while true do t[#t+1] = string.rep('x', 1000000) end\n");
+  cap_root = root;
+  cap_seasons = true;
+  char out[4096];
+  signal(SIGALRM, mods_test_alarm_handler);
+  alarm(20);
+  double t0 = wall_seconds();
+  capture_stderr(run_cap_mods_init, out, sizeof out);
+  double t1 = wall_seconds();
+  alarm(0);
+  ASSERT(cap_result);
+  ASSERT_PROMPT(t0, t1);
+  ASSERT_EQ(mods_count(), 3);
+  ASSERT_EQ(strcmp(mods_id(0), "aaa-ok"), 0);
+  ASSERT(mods_enabled(0));
+  ASSERT_EQ(strcmp(mods_error(0), ""), 0);
+  ASSERT_EQ(strcmp(mods_id(1), "mid-spin"), 0);
+  ASSERT(!mods_enabled(1));
+  ASSERT(mods_error(1)[0] != 0);
+  ASSERT_BUDGET_OR_DEADLINE(mods_error(1));
+  ASSERT_EQ(strcmp(mods_id(2), "zzz-oom"), 0);
+  ASSERT(!mods_enabled(2));
+  ASSERT(strstr(mods_error(2), "memory") != NULL);
+  mods_shutdown();
+}
+
+// Ordering: a disabled mod that sorts *before* a healthy one must not shift or hide the healthy
+// mod's index -- the off-by-one an implementation storing only enabled mods (or compacting the
+// array after a failure) would introduce. "aaa-broken" is first alphabetically; if it were ever
+// skipped the way a non-mod folder is, "zzz-healthy" would land at index 0 instead of 1, and this
+// is exactly the case that would catch it.
+static void a_disabled_mod_before_a_healthy_one_does_not_shift_indices(void) {
+  clear_mods();
+  make_mod("aaa-broken", "id=aaa-broken\napi=1\ngames=ages,seasons\n", "error('broken first')\n");
+  const char *root = make_mod("zzz-healthy9", "id=zzz-healthy9\napi=1\ngames=ages,seasons\n",
+      "oracles.log('zzz ok')\n");
+  ASSERT(mods_init(root, true));
+  ASSERT_EQ(mods_count(), 2);
+  ASSERT_EQ(strcmp(mods_id(0), "aaa-broken"), 0);
+  ASSERT(!mods_enabled(0));
+  ASSERT(strstr(mods_error(0), "broken first") != NULL);
+  ASSERT_EQ(strcmp(mods_id(1), "zzz-healthy9"), 0);
+  ASSERT(mods_enabled(1));
+  ASSERT_EQ(strcmp(mods_error(1), ""), 0);
+  ASSERT(mods_last_log() && strstr(mods_last_log(), "zzz ok") != NULL);
+  mods_shutdown();
+}
+
+// mods_error's out-of-range contract mirrors mods_id/mods_name/mods_enabled: never NULL, "" for
+// an index outside [0, mods_count()) regardless of what's actually loaded.
+static void mods_error_rejects_out_of_range_indices(void) {
+  clear_mods();
+  const char *root = make_mod("erridx", "id=erridx\napi=1\ngames=ages,seasons\n", "error('x')\n");
+  ASSERT(mods_init(root, true));
+  int n = mods_count();
+  ASSERT_EQ(n, 1);
+  ASSERT_EQ(strcmp(mods_error(-1), ""), 0);
+  ASSERT_EQ(strcmp(mods_error(n), ""), 0);
+  mods_shutdown();
+}
+
+// A mod written against a newer API than this build supports is a real, validly-packaged mod --
+// the player actually installed something, and will reasonably expect to see it listed, not
+// wonder whether the install failed. Task 6: unlike a malformed mod.ini, this is listed disabled
+// rather than dropped, with a reason naming the api it wants.
 static void a_newer_api_is_refused(void) {
   clear_mods();
   const char *root = make_mod("future", "id=future\nname=Future\napi=99\ngames=ages,seasons\n", "\n");
-  ASSERT(mods_init(root, true));
-  ASSERT_EQ(mods_count(), 0);
+  cap_root = root;
+  cap_seasons = true;
+  char out[4096];
+  capture_stderr(run_cap_mods_init, out, sizeof out);
+  ASSERT(cap_result);
+  ASSERT_EQ(mods_count(), 1);
+  ASSERT_EQ(strcmp(mods_name(0), "Future"), 0);
+  ASSERT(!mods_enabled(0));
+  ASSERT(strstr(mods_error(0), "99") != NULL);
+  ASSERT(strstr(out, "future") != NULL);
   mods_shutdown();
 }
 
@@ -1398,11 +1522,16 @@ static void mods_last_log_is_cleared_by_shutdown(void) {
 // without mod_resume_budgeted's LUA_MASKCOUNT hook (mod_instruction_limit_hook) this would hang
 // mods_init forever.
 // Two healthy mods, sorted alphabetically on either side of the hang, make sure a mutant that
-// aborted the *whole scan* on any single failure (rather than just skipping the one bad mod)
+// aborted the *whole scan* on any single failure (rather than just disabling the one bad mod)
 // still fails this test. Timed, not just asserted to terminate: "aborts eventually" is not the
 // bar -- the budget must be small enough to abort within about a tenth of a second on this
 // machine, so even a CI box several times slower stays well under the 2s bound here.
-static void a_hanging_mod_is_skipped_and_other_mods_still_load(void) {
+//
+// Task 6: the hung mod is now listed disabled (mid-hang occupies index 1, mods_enabled(1) false)
+// rather than vanishing from the count -- it is a real mod for this game, just one whose own
+// payload never returned. The two healthy mods either side keep their own slots and stay enabled,
+// pinning that a disabled mod in the middle doesn't shift or hide its neighbours' indices.
+static void a_hanging_mod_is_disabled_and_other_mods_still_load(void) {
   clear_mods();
   make_mod("aaa-healthy", "id=aaa-healthy\napi=1\ngames=ages,seasons\n", "oracles.log('aaa ok')\n");
   make_mod("mid-hang", "id=mid-hang\napi=1\ngames=ages,seasons\n", "while true do end\n");
@@ -1422,14 +1551,19 @@ static void a_hanging_mod_is_skipped_and_other_mods_still_load(void) {
   alarm(0);
   ASSERT(cap_result);
   ASSERT_PROMPT(t0, t1);
-  ASSERT_EQ(mods_count(), 2);
+  ASSERT_EQ(mods_count(), 3);
   ASSERT_EQ(strcmp(mods_id(0), "aaa-healthy"), 0);
-  ASSERT_EQ(strcmp(mods_id(1), "zzz-healthy"), 0);
+  ASSERT(mods_enabled(0));
+  ASSERT_EQ(strcmp(mods_id(1), "mid-hang"), 0);
+  ASSERT(!mods_enabled(1));
+  ASSERT_EQ(strcmp(mods_id(2), "zzz-healthy"), 0);
+  ASSERT(mods_enabled(2));
   ASSERT(strstr(out, "mid-hang") != NULL);
   // Not a fixed "instruction budget" check any more: on a sufficiently busy host even this cheap
   // loop can take long enough in wall-clock terms to be cut off by the deadline instead -- see
   // ASSERT_BUDGET_OR_DEADLINE's own comment.
   ASSERT_BUDGET_OR_DEADLINE(out);
+  ASSERT_BUDGET_OR_DEADLINE(mods_error(1));                // the stored reason, not just stderr
   mods_shutdown();
 }
 
@@ -1447,7 +1581,12 @@ static void a_hanging_mod_is_skipped_and_other_mods_still_load(void) {
 // never grows past a handful of elements (8 iterations), nowhere near the cap through that path.
 // array_growth_is_refused_via_the_realloc_path, further down, is what actually pins the realloc
 // branch specifically.
-static void an_unbounded_allocation_mod_is_skipped_and_other_mods_still_load(void) {
+//
+// Task 6: as with the hanging mod above, mid-oom is now listed disabled (index 1) rather than
+// dropped -- a resource-exhaustion failure gets the same list-and-disable treatment as an
+// instruction-budget one, which is the point of pairing this test with the hanging-mod test above
+// rather than relying on just one failure shape to prove the new contract is uniform.
+static void an_unbounded_allocation_mod_is_disabled_and_other_mods_still_load(void) {
   clear_mods();
   make_mod("aaa-healthy2", "id=aaa-healthy2\napi=1\ngames=ages,seasons\n", "oracles.log('aaa ok')\n");
   make_mod("mid-oom", "id=mid-oom\napi=1\ngames=ages,seasons\n",
@@ -1464,16 +1603,24 @@ static void an_unbounded_allocation_mod_is_skipped_and_other_mods_still_load(voi
   alarm(0);
   ASSERT(cap_result);
   ASSERT_PROMPT(t0, t1);
-  ASSERT_EQ(mods_count(), 2);
+  ASSERT_EQ(mods_count(), 3);
   ASSERT_EQ(strcmp(mods_id(0), "aaa-healthy2"), 0);
-  ASSERT_EQ(strcmp(mods_id(1), "zzz-healthy2"), 0);
+  ASSERT(mods_enabled(0));
+  ASSERT_EQ(strcmp(mods_id(1), "mid-oom"), 0);
+  ASSERT(!mods_enabled(1));
+  ASSERT_EQ(strcmp(mods_id(2), "zzz-healthy2"), 0);
+  ASSERT(mods_enabled(2));
   ASSERT(strstr(out, "mid-oom") != NULL);
   ASSERT(strstr(out, "not enough memory") != NULL);
+  ASSERT(strstr(mods_error(1), "not enough memory") != NULL);
   mods_shutdown();
 }
 
 // Correction F: a mod whose zip forgot main.lua gets a specific, actionable message -- not
-// whatever generic complaint lauxlib's own file-open failure happens to produce.
+// whatever generic complaint lauxlib's own file-open failure happens to produce. Task 6: this is
+// now a mod that is listed, disabled, rather than dropped -- it declared a real, valid id/api/
+// games and the player installed something real; "forgot to ship main.lua" is a defect in that
+// mod's own payload, the same category as a Lua error, not a reason to make it vanish.
 static void a_mod_with_no_main_lua_is_refused_clearly(void) {
   clear_mods();
   const char *tmp = getenv("TMPDIR");
@@ -1489,9 +1636,12 @@ static void a_mod_with_no_main_lua_is_refused_clearly(void) {
   char out[4096];
   capture_stderr(run_cap_mods_init, out, sizeof out);
   ASSERT(cap_result);
-  ASSERT_EQ(mods_count(), 0);
+  ASSERT_EQ(mods_count(), 1);
+  ASSERT_EQ(strcmp(mods_id(0), "nomain"), 0);
+  ASSERT(!mods_enabled(0));
   ASSERT(strstr(out, "nomain") != NULL);
   ASSERT(strstr(out, "has no main.lua") != NULL);
+  ASSERT(strstr(mods_error(0), "main.lua") != NULL);
   mods_shutdown();
 }
 
@@ -1516,7 +1666,11 @@ static bool a_fifo_main_lua_does_not_hang(void) {
   bool ok = mods_init(root, true);
   alarm(0);
   ASSERT(ok);
-  ASSERT_EQ(mods_count(), 0);
+  // Task 6: a real, validly-declared mod whose main.lua just happens to be a FIFO is listed
+  // disabled, not dropped -- the hang-prevention this test exists for is unaffected either way,
+  // since the stat() check runs before fopen is ever attempted regardless of the outcome.
+  ASSERT_EQ(mods_count(), 1);
+  ASSERT(!mods_enabled(0));
   mods_shutdown();
   return true;
 }
@@ -1539,7 +1693,8 @@ static bool a_symlink_main_lua_to_a_character_device_does_not_hang(void) {
   bool ok = mods_init(root, true);
   alarm(0);
   ASSERT(ok);
-  ASSERT_EQ(mods_count(), 0);
+  ASSERT_EQ(mods_count(), 1);
+  ASSERT(!mods_enabled(0));
   mods_shutdown();
   return true;
 }
@@ -1557,12 +1712,21 @@ static void a_hostile_lua_error_is_escaped_before_printing(void) {
   char out[4096];
   capture_stderr(run_cap_mods_init, out, sizeof out);
   ASSERT(cap_result);
-  ASSERT_EQ(mods_count(), 0);
+  // Task 6: 'badlua' is listed, disabled, rather than dropped -- and mods_error(0) must be
+  // escaped exactly the same way the stderr line already is, since it is the same attacker-
+  // controlled text, now also handed to a status line rather than only ever printed once.
+  ASSERT_EQ(mods_count(), 1);
+  ASSERT(!mods_enabled(0));
   ASSERT(strstr(out, "badlua") != NULL);
   for (const char *p = out; *p; p++)
     ASSERT(!((unsigned char)*p < 0x20 && *p != '\n'));    // no raw control byte survived
   ASSERT(strstr(out, "\\x0d") != NULL);                    // the CR became visible text instead
   ASSERT(strstr(out, "\\x1b") != NULL);                    // and so did the ESC
+  const char *err = mods_error(0);
+  for (const unsigned char *p = (const unsigned char *)err; *p; p++)
+    ASSERT(*p >= 0x20 && *p < 0x7f);                        // no raw control byte in the stored reason
+  ASSERT(strstr(err, "\\x0d") != NULL);
+  ASSERT(strstr(err, "\\x1b") != NULL);
   mods_shutdown();
 }
 
@@ -1605,9 +1769,13 @@ static void a_mod_cannot_disarm_its_own_instruction_budget_via_debug_sethook(voi
   alarm(0);
   ASSERT(cap_result);
   ASSERT_PROMPT(t0, t1);
-  ASSERT_EQ(mods_count(), 2);
+  ASSERT_EQ(mods_count(), 3);
   ASSERT_EQ(strcmp(mods_id(0), "aaa-healthy3"), 0);
-  ASSERT_EQ(strcmp(mods_id(1), "zzz-healthy3"), 0);
+  ASSERT(mods_enabled(0));
+  ASSERT_EQ(strcmp(mods_id(1), "mid-disarm"), 0);
+  ASSERT(!mods_enabled(1));
+  ASSERT_EQ(strcmp(mods_id(2), "zzz-healthy3"), 0);
+  ASSERT(mods_enabled(2));
   ASSERT(strstr(out, "mid-disarm") != NULL);
   mods_shutdown();
 }
@@ -1657,9 +1825,13 @@ static void a_pcall_wrapped_spinner_is_refused_promptly(void) {
   alarm(0);
   ASSERT(cap_result);
   ASSERT_PROMPT(t0, t1);
-  ASSERT_EQ(mods_count(), 2);
+  ASSERT_EQ(mods_count(), 3);
   ASSERT_EQ(strcmp(mods_id(0), "aaa-healthy4"), 0);
-  ASSERT_EQ(strcmp(mods_id(1), "zzz-healthy4"), 0);
+  ASSERT(mods_enabled(0));
+  ASSERT_EQ(strcmp(mods_id(1), "mid-pcall-spin"), 0);
+  ASSERT(!mods_enabled(1));
+  ASSERT_EQ(strcmp(mods_id(2), "zzz-healthy4"), 0);
+  ASSERT(mods_enabled(2));
   ASSERT(strstr(out, "mid-pcall-spin") != NULL);
   ASSERT_BUDGET_OR_DEADLINE(out);
   mods_shutdown();
@@ -1701,9 +1873,13 @@ static void a_coroutine_resume_wrapped_spinner_is_refused_promptly(void) {
   alarm(0);
   ASSERT(cap_result);
   ASSERT_PROMPT(t0, t1);
-  ASSERT_EQ(mods_count(), 2);
+  ASSERT_EQ(mods_count(), 3);
   ASSERT_EQ(strcmp(mods_id(0), "aaa-healthy5"), 0);
-  ASSERT_EQ(strcmp(mods_id(1), "zzz-healthy5"), 0);
+  ASSERT(mods_enabled(0));
+  ASSERT_EQ(strcmp(mods_id(1), "mid-coro-spin"), 0);
+  ASSERT(!mods_enabled(1));
+  ASSERT_EQ(strcmp(mods_id(2), "zzz-healthy5"), 0);
+  ASSERT(mods_enabled(2));
   ASSERT(strstr(out, "mid-coro-spin") != NULL);
   ASSERT(strstr(out, "coroutine") != NULL);     // today: "nil value (global 'coroutine')"
   mods_shutdown();
@@ -1730,7 +1906,8 @@ static void a_coroutine_resumed_only_once_still_counts_as_exhausted(void) {
   alarm(0);
   ASSERT(cap_result);
   ASSERT_PROMPT(t0, t1);
-  ASSERT_EQ(mods_count(), 0);
+  ASSERT_EQ(mods_count(), 1);
+  ASSERT(!mods_enabled(0));
   ASSERT(strstr(out, "resumeonce") != NULL);
   ASSERT(strstr(out, "coroutine") != NULL);     // today: "nil value (global 'coroutine')"
   mods_shutdown();
@@ -1767,9 +1944,13 @@ static void a_fresh_coroutine_per_iteration_is_refused_promptly(void) {
   alarm(0);
   ASSERT(cap_result);
   ASSERT_PROMPT(t0, t1);
-  ASSERT_EQ(mods_count(), 2);
+  ASSERT_EQ(mods_count(), 3);
   ASSERT_EQ(strcmp(mods_id(0), "aaa-healthy6"), 0);
-  ASSERT_EQ(strcmp(mods_id(1), "zzz-healthy6"), 0);
+  ASSERT(mods_enabled(0));
+  ASSERT_EQ(strcmp(mods_id(1), "mid-coro-mint"), 0);
+  ASSERT(!mods_enabled(1));
+  ASSERT_EQ(strcmp(mods_id(2), "zzz-healthy6"), 0);
+  ASSERT(mods_enabled(2));
   ASSERT(strstr(out, "mid-coro-mint") != NULL);
   ASSERT(strstr(out, "coroutine") != NULL);     // today: "nil value (global 'coroutine')"
   mods_shutdown();
@@ -1802,9 +1983,13 @@ static void many_fresh_coroutines_per_iteration_are_refused_promptly(void) {
   alarm(0);
   ASSERT(cap_result);
   ASSERT_PROMPT(t0, t1);
-  ASSERT_EQ(mods_count(), 2);
+  ASSERT_EQ(mods_count(), 3);
   ASSERT_EQ(strcmp(mods_id(0), "aaa-healthy7"), 0);
-  ASSERT_EQ(strcmp(mods_id(1), "zzz-healthy7"), 0);
+  ASSERT(mods_enabled(0));
+  ASSERT_EQ(strcmp(mods_id(1), "mid-coro-deep"), 0);
+  ASSERT(!mods_enabled(1));
+  ASSERT_EQ(strcmp(mods_id(2), "zzz-healthy7"), 0);
+  ASSERT(mods_enabled(2));
   ASSERT(strstr(out, "mid-coro-deep") != NULL);
   ASSERT(strstr(out, "coroutine") != NULL);     // today: "nil value (global 'coroutine')"
   mods_shutdown();
@@ -1847,9 +2032,13 @@ static void a_pcall_wrapped_coroutine_wrap_spinner_is_refused_promptly(void) {
   alarm(0);
   ASSERT(cap_result);
   ASSERT_PROMPT(t0, t1);
-  ASSERT_EQ(mods_count(), 2);
+  ASSERT_EQ(mods_count(), 3);
   ASSERT_EQ(strcmp(mods_id(0), "aaa-healthy8"), 0);
-  ASSERT_EQ(strcmp(mods_id(1), "zzz-healthy8"), 0);
+  ASSERT(mods_enabled(0));
+  ASSERT_EQ(strcmp(mods_id(1), "mid-nested-pcall"), 0);
+  ASSERT(!mods_enabled(1));
+  ASSERT_EQ(strcmp(mods_id(2), "zzz-healthy8"), 0);
+  ASSERT(mods_enabled(2));
   ASSERT(strstr(out, "mid-nested-pcall") != NULL);
   // Unlike the other two fresh-thread fixtures above, this one's own coroutine.create access is
   // wrapped in pcall, so the "nil value (global 'coroutine')" error never escapes the inner
@@ -1999,11 +2188,13 @@ static void a_table_error_object_still_produces_detail_on_stderr(void) {
   char out[4096];
   capture_stderr(run_cap_mods_init, out, sizeof out);
   ASSERT(cap_result);
-  ASSERT_EQ(mods_count(), 0);
+  ASSERT_EQ(mods_count(), 1);                 // Task 6: listed, disabled, not dropped
+  ASSERT(!mods_enabled(0));
   const char *tag = "failed to run main.lua: ";
   const char *p = strstr(out, tag);
   ASSERT(p != NULL);
   ASSERT(p[strlen(tag)] != '\n' && p[strlen(tag)] != 0);    // something follows the colon
+  ASSERT(mods_error(0)[0] != 0);                            // the stored reason is non-empty too
   mods_shutdown();
 }
 
@@ -2015,11 +2206,13 @@ static void a_bare_error_call_still_produces_detail_on_stderr(void) {
   char out[4096];
   capture_stderr(run_cap_mods_init, out, sizeof out);
   ASSERT(cap_result);
-  ASSERT_EQ(mods_count(), 0);
+  ASSERT_EQ(mods_count(), 1);
+  ASSERT(!mods_enabled(0));
   const char *tag = "failed to run main.lua: ";
   const char *p = strstr(out, tag);
   ASSERT(p != NULL);
   ASSERT(p[strlen(tag)] != '\n' && p[strlen(tag)] != 0);
+  ASSERT(mods_error(0)[0] != 0);
   mods_shutdown();
 }
 
@@ -2058,7 +2251,8 @@ static void oracles_log_with_a_non_string_argument_is_a_clean_lua_error(void) {
   char out[4096];
   capture_stderr(run_cap_mods_init, out, sizeof out);
   ASSERT(cap_result);
-  ASSERT_EQ(mods_count(), 0);
+  ASSERT_EQ(mods_count(), 1);                  // Task 6: listed, disabled, not dropped
+  ASSERT(!mods_enabled(0));
   ASSERT(strstr(out, "lognil") != NULL);
   mods_shutdown();
 
@@ -2068,7 +2262,8 @@ static void oracles_log_with_a_non_string_argument_is_a_clean_lua_error(void) {
   cap_seasons = true;
   capture_stderr(run_cap_mods_init, out, sizeof out);
   ASSERT(cap_result);
-  ASSERT_EQ(mods_count(), 0);
+  ASSERT_EQ(mods_count(), 1);
+  ASSERT(!mods_enabled(0));
   ASSERT(strstr(out, "logtable") != NULL);
   mods_shutdown();
 }
@@ -2108,7 +2303,8 @@ static void a_gc_finalizer_cannot_be_armed_at_load_time(void) {
   capture_stderr(run_cap_mods_init, out, sizeof out);
   alarm(0);
   ASSERT(cap_result);
-  ASSERT_EQ(mods_count(), 0);
+  ASSERT_EQ(mods_count(), 1);                  // Task 6: listed, disabled, not dropped
+  ASSERT(!mods_enabled(0));
   ASSERT(strstr(out, "gcarm") != NULL);
   ASSERT(strstr(out, "__gc") != NULL);
   mods_shutdown();
@@ -2133,7 +2329,8 @@ static void a_gc_finalizer_cannot_be_armed_before_a_refusal(void) {
   capture_stderr(run_cap_mods_init, out, sizeof out);
   alarm(0);
   ASSERT(cap_result);
-  ASSERT_EQ(mods_count(), 0);
+  ASSERT_EQ(mods_count(), 1);                  // Task 6: listed, disabled, not dropped
+  ASSERT(!mods_enabled(0));
   ASSERT(strstr(out, "gcrefuse") != NULL);
   ASSERT(strstr(out, "__gc") != NULL);
   ASSERT(strstr(out, "refuse me") == NULL);    // never reached: the setmetatable rejection wins
@@ -2216,7 +2413,8 @@ static void a_binary_main_lua_is_refused_safely(void) {
   capture_stderr(run_cap_mods_init, out, sizeof out);
   alarm(0);
   ASSERT(cap_result);
-  ASSERT_EQ(mods_count(), 0);
+  ASSERT_EQ(mods_count(), 1);                  // Task 6: listed, disabled, not dropped
+  ASSERT(!mods_enabled(0));
   ASSERT(strstr(out, "binarymain") != NULL);
   mods_shutdown();
 }
@@ -2265,10 +2463,12 @@ static void a_cheap_infinite_loop_is_caught_by_the_instruction_budget_specifical
   alarm(0);
   ASSERT(cap_result);
   ASSERT_PROMPT(t0, t1);
-  ASSERT_EQ(mods_count(), 0);
+  ASSERT_EQ(mods_count(), 1);                  // Task 6: listed, disabled, not dropped
+  ASSERT(!mods_enabled(0));
   ASSERT(strstr(out, "cheaploop") != NULL);
   ASSERT(strstr(out, "instruction budget") != NULL);
   ASSERT(strstr(out, "cut off") == NULL);
+  ASSERT(strstr(mods_error(0), "instruction budget") != NULL);
   mods_shutdown();
 }
 
@@ -2344,7 +2544,8 @@ static void a_hostile_tostring_metamethod_does_not_hang_error_reporting(void) {
   capture_stderr(run_cap_mods_init, out, sizeof out);
   alarm(0);
   ASSERT(cap_result);
-  ASSERT_EQ(mods_count(), 0);
+  ASSERT_EQ(mods_count(), 1);                  // Task 6: listed, disabled, not dropped
+  ASSERT(!mods_enabled(0));
   ASSERT(strstr(out, "hostiletostring") != NULL);
   mods_shutdown();
 }
@@ -2372,7 +2573,8 @@ static void array_growth_is_refused_via_the_realloc_path(void) {
   alarm(0);
   ASSERT(cap_result);
   ASSERT_PROMPT(t0, t1);
-  ASSERT_EQ(mods_count(), 0);
+  ASSERT_EQ(mods_count(), 1);                  // Task 6: listed, disabled, not dropped
+  ASSERT(!mods_enabled(0));
   ASSERT(strstr(out, "arraygrowth") != NULL);
   ASSERT(strstr(out, "not enough memory") != NULL);
   mods_shutdown();
@@ -2493,6 +2695,10 @@ int main(void) {
   RUN(mods_init_rejects_an_empty_directory_string);
   RUN_SKIPPABLE(an_unreadable_mods_directory_is_a_failure);
   RUN(a_mod_is_found_and_described);
+  RUN(a_broken_mod_is_disabled_not_removed);
+  RUN(disabled_treatment_is_uniform_across_failure_kinds);
+  RUN(a_disabled_mod_before_a_healthy_one_does_not_shift_indices);
+  RUN(mods_error_rejects_out_of_range_indices);
   RUN(a_newer_api_is_refused);
   RUN(the_other_games_mod_is_skipped);
   RUN(a_traversing_ini_id_is_refused);
@@ -2535,8 +2741,8 @@ int main(void) {
   RUN(main_lua_runs);
   RUN(the_api_registry_lists_itself);
   RUN(mods_last_log_is_cleared_by_shutdown);
-  RUN(a_hanging_mod_is_skipped_and_other_mods_still_load);
-  RUN(an_unbounded_allocation_mod_is_skipped_and_other_mods_still_load);
+  RUN(a_hanging_mod_is_disabled_and_other_mods_still_load);
+  RUN(an_unbounded_allocation_mod_is_disabled_and_other_mods_still_load);
   RUN(a_mod_with_no_main_lua_is_refused_clearly);
   RUN_SKIPPABLE(a_fifo_main_lua_does_not_hang);
   RUN_SKIPPABLE(a_symlink_main_lua_to_a_character_device_does_not_hang);

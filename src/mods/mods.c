@@ -28,24 +28,46 @@ bool mods_id_valid(const char *id) {
 
 #define MOD_FIELD_LEN 64
 
+// How much of a failure reason mods_error() keeps. Deliberately short: this is for a one-line
+// status display, not a full diagnostic -- the unabridged text (up to 512 bytes, see `reason` in
+// run_main_lua) always also reaches stderr at the moment a mod is disabled, which is where a
+// developer debugging a specific mod should look. Sized with headroom above the longest fixed
+// message this file produces today (the "...via a nested coroutine..." budget/deadline wording,
+// ~80 bytes) so none of those truncate, while still being far short of the 512-byte buffer a
+// hostile main.lua's own error() text is escaped into before being cut down to this length --
+// mods_escape_into's \xHH escaping already makes that truncation byte-safe (every escape sequence
+// is plain ASCII, so cutting it short mid-sequence yields a shorter but still printable string,
+// never a broken one).
+#define MOD_ERROR_LEN 128
+
 typedef struct {
   char id[MOD_FIELD_LEN];     // canonical: the validated folder name, never the mod.ini field directly
   char name[MOD_FIELD_LEN];
   char ini_id[MOD_FIELD_LEN]; // raw "id=" value from mod.ini (escaped; see mods_escape_into), kept
                               // only to cross-check against id
   bool ini_id_present;
-  bool enabled;         // always true today; Task 6 adds mods.ini-based enable/disable and will be
-                        // the first thing that ever clears this -- not a bug that nothing does yet.
+  bool enabled;         // Set true only once run_main_lua (or the api-too-new check in mods_init)
+                        // actually succeeds for this mod. A mod that is accepted as applying to
+                        // this game but whose own payload fails is still stored in mods[] with
+                        // this false -- see mods_init's own comment for exactly where that line
+                        // sits -- never silently dropped the way a mod that isn't ours at all is.
+  char error[MOD_ERROR_LEN]; // "" while enabled is true; the escaped, truncated reason otherwise.
+                             // Populated at the same place enabled is set to false, never earlier.
   bool ages, seasons;
   bool api_present;     // true iff an "api=" line appeared at all
   bool api_parsed;      // true iff that value parsed as a well-defined int (meaningless unless
                         // api_present)
   int api;              // the parsed value iff api_parsed; otherwise unspecified. Whether it's an
-                        // *acceptable* value (>= 1, <= MODS_API_VERSION) is mods_init/load_one's
-                        // call, not read_ini's -- see the api= branch below for why that split
-                        // matters.
-  lua_State *L;         // NULL until run_main_lua succeeds; only mods actually stored in mods[]
-                        // (post game/cap filtering) ever get one.
+                        // *acceptable* value is split across two different callers, not read_ini's
+                        // call: load_one checks >= 1 (a malformed value, refused outright); the
+                        // mods_init loop checks <= MODS_API_VERSION (a well-formed value this
+                        // build is simply too old for, listed disabled rather than refused) --
+                        // see the api= branch below for why that split exists.
+  lua_State *L;         // Non-NULL exactly when `enabled` is true. A mod stored in mods[] with
+                        // enabled false (api too new, or run_main_lua failed) always has L ==
+                        // NULL: run_main_lua either never created one, or already closed and
+                        // freed it itself before returning false -- see mods_shutdown's own
+                        // comment for why that invariant is what keeps it from double-closing.
 } Mod;
 
 static Mod mods[MODS_MAX];
@@ -162,7 +184,10 @@ static bool read_ini(const char *path, const char *label, Mod *m) {
       // "api=0" (a well-formed number) report as "missing or non-numeric" (a syntax complaint),
       // which is simply false, and it hid the >= 1 policy bound behind the same sentinel as every
       // syntax error, destroying mutation signal on the most security-relevant bound in the file.
-      // mods_init/load_one owns the >= 1 / <= MODS_API_VERSION policy check instead.
+      // load_one owns the >= 1 policy check instead (api < 1 is a malformed declaration, refused
+      // outright); mods_init owns the separate > MODS_API_VERSION case (a well-formed declaration
+      // this build is simply too old for, which is listed disabled rather than refused -- see
+      // load_one's own comment on its api= branch for why those two get different treatment).
       //
       // The errno ERANGE check matters beyond the obvious "huge decimal string" case: on an
       // LLP64 target (MinGW/Windows), `long` is only 32 bits, the same width as `int`, so strtol
@@ -201,14 +226,18 @@ static bool read_ini(const char *path, const char *label, Mod *m) {
 // Validates and fully populates *m for the mod folder `name` directly under `dir`: charset and
 // length of the id, that it's actually a directory, that its mod.ini is a regular file (not a
 // FIFO, a symlink to a character device, or anything else that could block or loop forever in
-// fopen/fgets), free of embedded NUL bytes, parses, declares a matching id, has a usable api= and
-// games=, and that main.lua exists and is also a regular file (the exact same FIFO/device-symlink
-// hazard that mod.ini faces applies equally to main.lua -- lauxlib's own file loader is just an
-// fopen/fread loop underneath, with no protection of its own). Prints its own stderr diagnostic on
-// every refusal path. Does not decide whether the mod applies to the game being played, apply the
-// MODS_MAX cap, or actually run main.lua -- those depend on state (which game, how many mods are
-// already loaded) that spans the whole scan, or are too expensive/risky to do for a mod that
-// might not even end up kept, so they stay in mods_init's loop (see run_main_lua below).
+// fopen/fgets), free of embedded NUL bytes, parses, declares a matching id, has a usable api=
+// (present, parseable, and >= 1 -- but NOT necessarily <= MODS_API_VERSION: see the api= branch
+// below for why that upper bound is deliberately not checked here), and a usable games=. Prints
+// its own stderr diagnostic on every refusal path, where "refusal" means the whole mod is dropped
+// outright -- it is not a mod for this game at all, so it never occupies a slot in mods[] and
+// mods_count() never counts it. Does NOT check that main.lua exists, is runnable, or applies to
+// the game being played, and does not apply the MODS_MAX cap: those either depend on state that
+// spans the whole scan (which game, how many mods are already loaded), or -- for main.lua --
+// belong to a different category of failure entirely. A mod this function accepts (returns true
+// for) is a real, identified mod for some game; what happens to it next (listed enabled, or
+// listed disabled because its own payload failed) is mods_init's call, together with
+// run_main_lua below.
 static bool load_one(const char *dir, const char *name, Mod *m) {
   if (!mods_id_valid(name)) {
     fprintf(stderr, "mods: '%s' is not a valid mod id (lowercase letters, digits, hyphen only), skipping\n", name);
@@ -289,42 +318,22 @@ static bool load_one(const char *dir, const char *name, Mod *m) {
     fprintf(stderr, "mods: '%s' has api=%d, which is below the minimum of 1, refusing\n", name, m->api);
     return false;
   }
-  if (m->api > MODS_API_VERSION) {
-    fprintf(stderr, "mods: '%s' wants api %d, this build only supports %d, refusing\n",
-            name, m->api, MODS_API_VERSION);
-    return false;
-  }
+  // Deliberately NOT refused here if m->api > MODS_API_VERSION: unlike every check above, this
+  // mod has a well-formed, validly-declared identity -- a real package the player installed, not
+  // a malformed or absent one. mods_init treats "needs a newer build than this one" as a mod that
+  // is accepted but disabled (mods_enabled() false, mods_error() names the required version),
+  // the same way a failing main.lua is, rather than making it vanish the way the checks above do.
   if (!m->ages && !m->seasons) {
     fprintf(stderr, "mods: '%s' declares no supported game, refusing\n", name);
     return false;
   }
 
-  // Checked last, only once mod.ini itself is fully valid: a mod with a broken mod.ini should be
-  // told about *that* first (e.g. the embedded-NUL or missing-id= checks above), rather than
-  // "has no main.lua" masking the real problem for a mod that, as it happens, also forgot
-  // main.lua. Task 4 deliberately left main.lua unchecked (running it wasn't this module's job
-  // yet); now that it is, a mod that forgot to ship one deserves this specific message, not
-  // whatever generic complaint lauxlib's own file loader happens to produce about a missing file
-  // -- and, just as importantly, the same FIFO-blocks-forever / symlink-to-device-streams-forever
-  // hazard that mod.ini's S_ISREG check above guards against applies identically here, since
-  // lauxlib's loader is just another fopen/fread loop with no defence of its own. stat() before
-  // ever touching the file closes that off the same way.
-  char lua_path[1056];
-  int n3 = snprintf(lua_path, sizeof lua_path, "%s/main.lua", entry_path);
-  if (n3 < 0 || (size_t)n3 >= sizeof lua_path) {
-    fprintf(stderr, "mods: '%s' path too long, skipping\n", name);
-    return false;
-  }
-  struct stat lua_st;
-  if (stat(lua_path, &lua_st) != 0) {
-    fprintf(stderr, "mods: '%s' has no main.lua, skipping\n", name);
-    return false;
-  }
-  if (!S_ISREG(lua_st.st_mode)) {
-    fprintf(stderr, "mods: '%s' has a main.lua that is not a regular file, skipping\n", name);
-    return false;
-  }
-
+  // Whether main.lua exists, is a regular file, or runs successfully is no longer this function's
+  // job: by this point mod.ini alone has fully qualified `name` as a real mod for some game, and
+  // every failure past here (missing/non-regular main.lua, a Lua error, an exhausted budget, ...)
+  // is "a real mod whose own payload didn't work", which mods_init lists as disabled rather than
+  // dropping -- see run_main_lua, which now makes that same stat() check before ever touching the
+  // file, for exactly the same FIFO/symlink-to-device reasons this used to guard against here.
   snprintf(m->id, sizeof m->id, "%s", name);
   if (!m->name[0]) snprintf(m->name, sizeof m->name, "%s", name);
   return true;
@@ -340,14 +349,19 @@ static bool load_one(const char *dir, const char *name, Mod *m) {
 // which is why it happens here, in mods_init's loop, rather than inside load_one: by the time this
 // is called, the mod has already cleared every load_one check *and* been confirmed to apply to the
 // game being played *and* still fit under MODS_MAX, so Lua only ever runs for a mod that is
-// actually going to be kept. load_one has already proven main.lua exists and is a regular file.
+// actually going to be kept (at least one slot in mods[], enabled or disabled). Also checks that
+// main.lua exists and is a regular file -- load_one used to do this, but a mod whose zip forgot
+// main.lua is exactly the same category of failure as one whose main.lua errors out, so this
+// function owns both now: whatever it refuses, the mod stays listed, disabled, with the reason in
+// *m's `error` field (see MOD_ERROR_LEN) -- it is mods_init's caller, not this function, that
+// decides a mod is dropped outright, and only for reasons load_one already covers.
 //
 // What "a broken mod must never take the app down" actually covers today, stated plainly rather
 // than claimed in the abstract -- this comment has twice before asserted a guarantee that didn't
 // hold, so each line here is something a test actually pins, not something assumed true because
 // the design says it should be:
 //
-// Caught cleanly, mod refused, host unaffected: a Lua-level infinite loop, however it's shaped
+// Caught cleanly, mod disabled, host unaffected: a Lua-level infinite loop, however it's shaped
 // (bare, pcall-wrapped, or -- before "coroutine" was withheld -- via a freshly-minted thread); a
 // looping __gc finalizer (never allowed to arm at all, see l_setmetatable_no_gc); an unbounded
 // allocation, in either of Lua's own allocator call shapes; a corrupted or malicious binary
@@ -373,13 +387,32 @@ static bool run_main_lua(const char *dir, const char *name, Mod *m) {
   char lua_path[1056];
   int n = snprintf(lua_path, sizeof lua_path, "%s/%s/main.lua", dir, name);
   if (n < 0 || (size_t)n >= sizeof lua_path) {
-    fprintf(stderr, "mods: '%s' path too long, skipping\n", name);
+    fprintf(stderr, "mods: '%s' path too long; disabling it for this session\n", name);
+    snprintf(m->error, sizeof m->error, "path too long");
+    return false;
+  }
+
+  // Require a regular file before ever calling luaL_loadfilex on it, for exactly the same reason
+  // load_one's own mod.ini check does: a FIFO blocks fopen/fread indefinitely waiting for a writer
+  // that will never come, and a symlink to a character device (main.lua -> /dev/zero) streams
+  // forever with no newline for lauxlib's loader to stop on. stat() follows symlinks, so this
+  // catches that case too.
+  struct stat lua_st;
+  if (stat(lua_path, &lua_st) != 0) {
+    fprintf(stderr, "mods: '%s' has no main.lua; disabling it for this session\n", name);
+    snprintf(m->error, sizeof m->error, "has no main.lua");
+    return false;
+  }
+  if (!S_ISREG(lua_st.st_mode)) {
+    fprintf(stderr, "mods: '%s' has a main.lua that is not a regular file; disabling it for this session\n", name);
+    snprintf(m->error, sizeof m->error, "main.lua is not a regular file");
     return false;
   }
 
   ModAlloc *a = malloc(sizeof *a);
   if (!a) {
-    fprintf(stderr, "mods: '%s' out of memory allocating its Lua accounting, skipping\n", name);
+    fprintf(stderr, "mods: '%s' out of memory allocating its Lua accounting; disabling it for this session\n", name);
+    snprintf(m->error, sizeof m->error, "out of memory");
     return false;
   }
   a->used = 0;
@@ -394,7 +427,8 @@ static bool run_main_lua(const char *dir, const char *name, Mod *m) {
     // Not silent: a NULL here means even the initial handful of KB the interpreter needs to boot
     // itself failed to allocate, which the caller deserves to know about rather than just losing
     // the mod with no explanation.
-    fprintf(stderr, "mods: '%s' could not create a Lua state, skipping\n", name);
+    fprintf(stderr, "mods: '%s' could not create a Lua state; disabling it for this session\n", name);
+    snprintf(m->error, sizeof m->error, "could not create a Lua state");
     free(a);
     return false;
   }
@@ -485,8 +519,15 @@ static bool run_main_lua(const char *dir, const char *name, Mod *m) {
     // budget-exceeded text above, or Lua's fixed "not enough memory" string when the allocator
     // cap was hit. mods_escape_into is the same escaper mod.ini values go through, reused here
     // rather than duplicated, for the identical reason: printed raw, a crafted error string
-    // could forge a fake success line on a terminal via an embedded CR and ANSI escape.
+    // could forge a fake success line on a terminal via an embedded CR and ANSI escape. Already
+    // escaped by the time it's copied into m->error below, so simply truncating it to
+    // MOD_ERROR_LEN there (via snprintf, not another escape pass) stays byte-safe -- it can only
+    // ever shorten a run of plain, printable \xHH/ASCII text, never reintroduce a raw control
+    // byte. stderr keeps the untruncated version (`reason`, up to 512 bytes); the stored,
+    // short copy is for mods_error()'s status-line use, a different audience with a different
+    // length budget.
     fprintf(stderr, "mods: '%s' failed to run main.lua: %s\n", name, reason);
+    snprintf(m->error, sizeof m->error, "%s", reason);
     lua_close(L);
     free(a);
     return false;
@@ -547,18 +588,35 @@ bool mods_init(const char *dir, bool seasons) {
   int loaded = 0, dropped_for_cap = 0;
   for (size_t i = 0; i < n; i++) {
     const char *name = names[i];
-    Mod m = {.enabled = true};
-    if (!load_one(dir, name, &m)) continue;
-    if (!(seasons ? m.seasons : m.ages)) continue;        // valid mod, just not for this game
+    Mod m = {0};                                          // enabled starts false; set true below
+                                                            // only once this mod actually succeeds
+    if (!load_one(dir, name, &m)) continue;                // not a mod for us at all: no slot used
+    if (!(seasons ? m.seasons : m.ages)) continue;         // valid mod, just not for this game
 
     if (loaded >= MODS_MAX) {
       dropped_for_cap++;
       continue;
     }
-    // Only now -- known to apply to this game, and known to still have a slot -- is it worth the
-    // cost and risk of actually running this mod's Lua. run_main_lua already printed why on
-    // failure.
-    if (!run_main_lua(dir, name, &m)) continue;
+
+    // From here on this is a real, identified mod for this game, and it occupies slot `loaded`
+    // regardless of what happens next: a failure past this point disables the mod rather than
+    // dropping it, so a player can see it listed with a reason instead of concluding their
+    // install silently failed. See mods.h's mods_init comment for the full rationale.
+    if (m.api > MODS_API_VERSION) {
+      // A well-formed, validly-declared api= this build is simply too old for -- unlike every
+      // refusal inside load_one, this is not a malformed package, so it is listed disabled
+      // rather than dropped (see load_one's comment on its api= branch).
+      fprintf(stderr, "mods: '%s' wants api %d, this build only supports %d; disabling it for this session\n",
+              name, m.api, MODS_API_VERSION);
+      snprintf(m.error, sizeof m.error, "needs mod api %d (this build supports up to %d)",
+               m.api, MODS_API_VERSION);
+      m.enabled = false;
+    } else {
+      // Only now -- known to apply to this game, known to still have a slot, and declaring an api
+      // this build actually supports -- is it worth the cost and risk of actually running this
+      // mod's Lua. run_main_lua already printed why, and filled m.error, on failure.
+      m.enabled = run_main_lua(dir, name, &m);
+    }
     mods[loaded++] = m;
   }
   count = loaded;
@@ -572,10 +630,13 @@ bool mods_init(const char *dir, bool seasons) {
 
 void mods_shutdown(void) {
   // Close every mod's Lua state (and free the per-mod allocator accounting that went with it)
-  // before resetting count -- not after, since mods[] is about to become meaningless, and not
-  // skipped for mods whose L is NULL (none in mods[] today ever are, since only a mod that
-  // run_main_lua fully succeeded on is ever stored there, but the check costs nothing and keeps
-  // this safe against that invariant ever loosening).
+  // before resetting count -- not after, since mods[] is about to become meaningless. The
+  // `!mods[i].L` skip is no longer a defensive no-op kept "just in case": since Task 6, a
+  // disabled mod (mods_enabled(i) false) is routinely stored in mods[] with L == NULL -- run_main_lua
+  // either never created one (main.lua missing, an allocation failure before lua_newstate) or
+  // already closed and freed it itself on the failure path before ever returning -- so this is
+  // the thing that keeps mods_shutdown from calling lua_close(NULL) on every disabled mod in the
+  // list.
   for (int i = 0; i < count; i++) {
     if (!mods[i].L) continue;
     void *ud = NULL;
@@ -595,3 +656,4 @@ int mods_count(void) { return count; }
 const char *mods_id(int i) { return i >= 0 && i < count ? mods[i].id : ""; }
 const char *mods_name(int i) { return i >= 0 && i < count ? mods[i].name : ""; }
 bool mods_enabled(int i) { return i >= 0 && i < count && mods[i].enabled; }
+const char *mods_error(int i) { return i >= 0 && i < count ? mods[i].error : ""; }
