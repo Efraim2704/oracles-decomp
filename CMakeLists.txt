@@ -115,6 +115,8 @@ add_library(oraclesui STATIC src/ui/ui.c src/ui/font_builtin.c src/ui/savefile.c
 target_include_directories(oraclesui PUBLIC src PRIVATE third_party/xbrz third_party/hqx)
 # oraclesui carries C++ objects, so anything linking it links with the C++ driver.
 set_target_properties(oraclesui PROPERTIES LINKER_LANGUAGE CXX)
+# item.c on its own: oraclesmods needs the icon decoder but must not link the engine, and wide.c
+# pulls in framebuffer_to_rgb (and so the engine). Do not merge this back into oracleswide.
 add_library(oraclesitem STATIC src/wide/item.c)
 target_include_directories(oraclesitem PUBLIC src)
 add_library(oracleswide STATIC src/wide/wide.c src/wide/room.c)

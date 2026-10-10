@@ -188,10 +188,67 @@ static void overlay_survives_a_huge_string(void) {
     for (int x = 0; x < 160; x++) offscreen += overlay_cover_at(&o, x, y) ? 1 : 0;
   ASSERT_EQ(offscreen, 0);                               // not one glyph could land
 
+  // clock() is process CPU time on the platforms CI actually runs this on (ubuntu/macos); on
+  // MSVC/MinGW it is wall-clock instead, which would make this bound load-sensitive. Nothing to
+  // change today -- the MinGW job only builds, it doesn't run ctest -- but worth knowing before
+  // this is ever run there.
   double secs = (double)((t1 - t0) + (t3 - t2)) / CLOCKS_PER_SEC;
   ASSERT(secs < 0.3);   // only the loop-skipping guards keep this fast; see the comment above
 
   free(s);
+}
+
+// Partially off the left edge: unlike the huge-string test's x = -100000000 above (skipped
+// wholesale by the `continue` guard, which only fires once a whole glyph cell is off-screen),
+// x = -4 straddles the left edge of a single glyph, so put() must clip its columns 0-3
+// individually rather than ever being allowed to wrap onto another row. This is the failure
+// overlay_clips' comment already claims to cover for overlay_rect; nothing exercised it for
+// overlay_text until now. Drawn in a 256-wide (widescreen) overlay, not 160: a wraparound bug --
+// the off-screen columns landing on the previous row's right edge instead of being clipped --
+// writes into physical columns 252-255 regardless of the logical width, and overlay_cover_at
+// refuses to report anything at or past that logical width. At width 160 those columns are
+// unreachable through the public API and the bug would be invisible to this test; at 256 they
+// are in range, so a real clipping failure actually shows up.
+static void overlay_draws_a_partially_clipped_glyph(void) {
+  static ModOverlay o;
+  static UiFont font;
+  ui_font_builtin(&font);
+  overlay_begin(&o, 256);
+  overlay_text(&o, &font, -4, 4, "A", 0x7fff);
+
+  for (int y = 0; y < MOD_OVERLAY_H; y++)
+    for (int x = 0; x < 256; x++) {
+      int rel_x = x + 4, rel_y = y - 4;          // generalizes the same formula to negative x
+      int expected = 0;
+      if (rel_x >= 0 && rel_x < UI_GLYPH_W && rel_y >= 0 && rel_y < UI_GLYPH_H)
+        expected = !(font.glyph[(uint8_t)'A'][rel_y] & (0x80 >> rel_x)) ? 255 : 0;
+      ASSERT_EQ(overlay_cover_at(&o, x, y), expected);
+    }
+}
+
+// Shared by overlay_draws_an_item_icon for both items it checks: asserts the whole overlay
+// matches a decoded icon drawn at (ox, oy), pixel by pixel, including that nothing is covered
+// outside its rectangle. (overlay_icon's `i < ic->halves * 8` loop bound is defensive only --
+// wide_item_icon zero-fills ci beyond the real width and the index-0 check already suppresses an
+// unused second half, so i < 16 is an equivalent mutant and no pixel-level test can pin that
+// bound specifically.)
+static void assert_icon_drawn_exactly(const ModOverlay *o, const WideItemIcon *ic, int ox, int oy) {
+  static const int shade[4] = {0, 0x4210, 0x6318, 0x7fff};   // mirrors overlay.c's static shade[]
+  for (int y = 0; y < MOD_OVERLAY_H; y++)
+    for (int x = 0; x < 160; x++) {
+      int rel_x = x - ox, rel_y = y - oy;
+      bool in_icon = rel_x >= 0 && rel_x < ic->halves * 8 && rel_y >= 0 && rel_y < 16;
+      int ci = in_icon ? ic->ci[rel_y][rel_x] : 0;
+      ASSERT_EQ(overlay_cover_at(o, x, y), ci ? 255 : 0);
+      if (ci) {
+        int colour = shade[ci];
+        int r = colour & 31, g = (colour >> 5) & 31, b = (colour >> 10) & 31;
+        const uint8_t *p = overlay_rgb_at(o, x, y);
+        ASSERT_EQ(p[0], (uint8_t)((r << 3) | (r >> 2)));
+        ASSERT_EQ(p[1], (uint8_t)((g << 3) | (g >> 2)));
+        ASSERT_EQ(p[2], (uint8_t)((b << 3) | (b >> 2)));
+      }
+    }
 }
 
 // draw_icon reuses the ROM item-icon decoder, so mods get real item sprites. Decoding directly
@@ -199,41 +256,48 @@ static void overlay_survives_a_huge_string(void) {
 // overlay_icon's job is compositing an already-decoded WideItemIcon onto the overlay, and the
 // decode itself is independently verified against the game's own WRAM by the wide tests. Checked
 // exactly, pixel by pixel, against that decode: this subsumes index-0-stays-clear, the (x, y)
-// placement, the grey ramp and the halves bound all at once, and fails on a stray write anywhere
-// outside the icon's rectangle too.
+// placement and the grey ramp all at once, and fails on a stray write anywhere outside the icon's
+// rectangle too.
 static bool overlay_draws_an_item_icon(void) {
   size_t n;
   uint8_t *rom = read_file(GAME_ROM_DIR "/Legend of Zelda, The - Oracle of Seasons (USA, Australia).gbc", &n);
   if (!rom) SKIP_TEST("ROM not present");
   static uint8_t c600[256];
+  // The entries name a byte in $c600 -- a level, or which seeds are selected -- that picks the
+  // variant to show; every byte being 1 makes each item decode its level-1 (or first-seed)
+  // variant, whatever that item has.
   memset(c600, 1, sizeof c600);
-
-  WideItemIcon ic;
-  ASSERT(wide_item_icon(rom, n, true, 0x03, c600, &ic));        // bombs, decoded directly
-
   static ModOverlay o;
+
+  // Bombs (0x03): halves == 1, the 8-wide path.
+  WideItemIcon bombs;
+  ASSERT(wide_item_icon(rom, n, true, 0x03, c600, &bombs));
+  int ink = 0;
+  for (int j = 0; j < 16; j++)
+    for (int i = 0; i < bombs.halves * 8; i++) ink += bombs.ci[j][i] ? 1 : 0;
+  ASSERT(ink > 0);          // a blank decode would make the pixel sweep below vacuously pass
   overlay_begin(&o, 160);
   ASSERT(overlay_icon(&o, rom, n, true, 0x03, c600, 20, 20));
+  assert_icon_drawn_exactly(&o, &bombs, 20, 20);
 
-  // Mirrors overlay.c's static shade[] ramp: colour index 0 is left clear, 1-3 map to greys.
-  static const int shade[4] = {0, 0x4210, 0x6318, 0x7fff};
+  // Item 0x0e: halves == 2, the 16-wide path nothing else here exercises.
+  WideItemIcon wide_item;
+  ASSERT(wide_item_icon(rom, n, true, 0x0e, c600, &wide_item));
+  ink = 0;
+  for (int j = 0; j < 16; j++)
+    for (int i = 0; i < wide_item.halves * 8; i++) ink += wide_item.ci[j][i] ? 1 : 0;
+  ASSERT(ink > 0);
+  overlay_begin(&o, 160);
+  ASSERT(overlay_icon(&o, rom, n, true, 0x0e, c600, 20, 20));
+  assert_icon_drawn_exactly(&o, &wide_item, 20, 20);
+
+  // No item: false, and nothing drawn -- checked for real with a fresh, otherwise-untouched
+  // overlay, not just the return value.
+  overlay_begin(&o, 160);
+  ASSERT(!overlay_icon(&o, rom, n, true, 0, c600, 0, 0));
   for (int y = 0; y < MOD_OVERLAY_H; y++)
-    for (int x = 0; x < 160; x++) {
-      int rel_x = x - 20, rel_y = y - 20;
-      bool in_icon = rel_x >= 0 && rel_x < ic.halves * 8 && rel_y >= 0 && rel_y < 16;
-      int ci = in_icon ? ic.ci[rel_y][rel_x] : 0;
-      ASSERT_EQ(overlay_cover_at(&o, x, y), ci ? 255 : 0);
-      if (ci) {
-        int colour = shade[ci];
-        int r = colour & 31, g = (colour >> 5) & 31, b = (colour >> 10) & 31;
-        const uint8_t *p = overlay_rgb_at(&o, x, y);
-        ASSERT_EQ(p[0], (uint8_t)((r << 3) | (r >> 2)));
-        ASSERT_EQ(p[1], (uint8_t)((g << 3) | (g >> 2)));
-        ASSERT_EQ(p[2], (uint8_t)((b << 3) | (b >> 2)));
-      }
-    }
+    for (int x = 0; x < 160; x++) ASSERT_EQ(overlay_cover_at(&o, x, y), 0);
 
-  ASSERT(!overlay_icon(&o, rom, n, true, 0, c600, 0, 0));       // no item, nothing drawn
   free(rom);
   return true;
 }
@@ -248,6 +312,7 @@ int main(void) {
   RUN(overlay_text_skips_high_bytes);
   RUN(overlay_text_with_unloaded_font_draws_nothing);
   RUN(overlay_survives_a_huge_string);
+  RUN(overlay_draws_a_partially_clipped_glyph);
   RUN_SKIPPABLE(overlay_draws_an_item_icon);
   return skipped ? 77 : 0;
 }

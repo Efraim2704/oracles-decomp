@@ -27,7 +27,9 @@ void overlay_rect(ModOverlay *o, int x, int y, int w, int h, int colour);
 // Draws with the UI font's glyphs: ink is a clear bit, so only the ink is covered.
 void overlay_text(ModOverlay *o, const UiFont *font, int x, int y, const char *s, int colour);
 // An item's own icon from the ROM, via wide_item_icon. Colour index 0 is left clear, as the status
-// bar draws these as sprites. Returns false when the item has no icon.
+// bar draws these as sprites. Returns false when the item has no icon. c600 must be non-NULL and
+// at least 256 readable bytes: wide_item_icon indexes it with an arbitrary ROM-derived byte and
+// only null-checks rom, not c600.
 bool overlay_icon(ModOverlay *o, const uint8_t *rom, size_t rom_size, bool seasons, uint8_t item,
                   const uint8_t *c600, int x, int y);
 // Reads, for tests and for compositing. Out-of-range coordinates are reported as uncovered/black
