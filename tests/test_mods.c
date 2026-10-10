@@ -15,11 +15,16 @@
 // file has exactly one ROM-dependent test, so that's harmless there. This file mixes ROM-free
 // tests with ROM-dependent ones, and will keep growing more of each as later tasks add tests, so
 // exiting mid-run would silently stop running every test registered after the one that skips --
-// and ctest would still report "Skipped", not a failure. NOSKIP defers the skip to the end of
+// and ctest would still report "Skipped", not a failure. SKIP_TEST defers the skip to the end of
 // main() instead: it prints the same line SKIP does and records that something was skipped, but
 // returns from the test so the rest of main() keeps running. Do not "simplify" this back to SKIP.
+//
+// A skippable test returns false rather than void, because unit.h's RUN prints "ok" unconditionally
+// once the body returns -- a skipped test would be reported as both skipped and passing, which
+// reads as a pass in a CI log. RUN_SKIPPABLE prints one line or the other, never both.
 static int skipped;
-#define NOSKIP(msg) do { printf("skip: %s\n", msg); skipped = 1; return; } while (0)
+#define SKIP_TEST(msg) do { printf("skip: %s\n", msg); return false; } while (0)
+#define RUN_SKIPPABLE(fn) do { if (fn()) printf("ok %s\n", #fn); else skipped = 1; } while (0)
 
 // The vendored interpreter builds and runs: the floor everything else stands on.
 static void lua_runs(void) {
@@ -146,10 +151,10 @@ static void overlay_survives_a_huge_string(void) {
 }
 
 // draw_icon reuses the ROM item-icon decoder, so mods get real item sprites.
-static void overlay_draws_an_item_icon(void) {
+static bool overlay_draws_an_item_icon(void) {
   size_t n;
   uint8_t *rom = read_file(GAME_ROM_DIR "/Legend of Zelda, The - Oracle of Seasons (USA, Australia).gbc", &n);
-  if (!rom) NOSKIP("ROM not present");
+  if (!rom) SKIP_TEST("ROM not present");
   static uint8_t c600[256];
   memset(c600, 1, sizeof c600);
   static ModOverlay o;
@@ -162,6 +167,7 @@ static void overlay_draws_an_item_icon(void) {
   ASSERT_EQ(overlay_cover_at(&o, 19, 20), 0);          // nothing drawn left of it
   ASSERT(!overlay_icon(&o, rom, n, true, 0, c600, 0, 0));       // no item, nothing drawn
   free(rom);
+  return true;
 }
 
 int main(void) {
@@ -172,6 +178,6 @@ int main(void) {
   RUN(overlay_begin_clears_the_last_frame);
   RUN(overlay_draws_text);
   RUN(overlay_survives_a_huge_string);
-  RUN(overlay_draws_an_item_icon);
+  RUN_SKIPPABLE(overlay_draws_an_item_icon);
   return skipped ? 77 : 0;
 }
