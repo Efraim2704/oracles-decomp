@@ -12,39 +12,51 @@
 #include <time.h>
 #include <unistd.h>
 
-// The budget/sandbox timing bounds below exist to catch a regression that makes the budget too
-// generous (e.g. 50M accidentally changed to 2G) -- a 2.0s bound has teeth because it is close to
-// the real ~0.1-0.2s this mechanism takes on ordinary hardware. Under ASan+UBSan together, the
-// same mechanism genuinely needs more like 2.5s on this dev machine (interpreter instrumentation
-// overhead, not a logic change), which would make 2.0s flaky there. Widening the bound to survive
-// that would mean something near a 25x margin -- i.e. tens of seconds -- which no longer pins
-// anything a mutated budget could violate without still passing. So: skip the timing assertion
-// under sanitizers rather than loosen it, via a macro CMakeLists.txt unsets for sanitizer builds
-// (grep CMAKE_C_FLAGS for "sanitize"); default to on so every other build (including this file
-// compiled standalone, outside CMake) still gets the real check. The alarm()-based hang detection
-// around these same tests is NOT gated by this -- that part must always run, sanitizer build or
-// not, since it is what catches an actual hang rather than a merely slow pass.
+// Wall-clock, not clock(): clock() measures *CPU* time consumed by this process, which is
+// exactly the wrong thing to assert against here. Under the external host contention that
+// motivated the wall-clock deadline in mods.c in the first place, a starved process can show
+// very little CPU time consumed while the *user* -- and ctest, and anyone watching the app start
+// -- experienced several real seconds of wait. A clock()-based assertion would silently pass
+// through exactly the degradation this is supposed to catch. CLOCK_MONOTONIC mirrors what
+// mods.c's own deadline check uses, for the same reason.
+static double wall_seconds(void) {
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  return (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
+}
+
+// mods.c now backs its instruction budget with a MOD_LOAD_WALLCLOCK_DEADLINE_SECONDS (2.0s)
+// wall-clock cutoff precisely because instruction count alone could not bound real time: a mod
+// that repeatedly raises and catches a genuine Lua error costs 50-150x more wall-clock time per
+// VM instruction than a bare loop, which an earlier version of this suite pinned with a
+// deliberately wider, one-off timing bound on the single test that showed it. With the deadline
+// in place, every budget-triggered refusal -- cheap loop or expensive one alike -- is now
+// bounded at the same ~2 second ceiling (plus a small, bounded margin for how long it takes to
+// get scheduled again after the deadline nominally passes), so there is no longer a reason for
+// one test to need a different bound than the rest: 5.0s gives real margin above that ~2s
+// ceiling for ordinary scheduling jitter, while still catching a mutation that weakens or removes
+// the deadline outright (which would put a cheap-per-instruction loop back at risk of the
+// multi-second-to-unbounded blowup this was built to close). The alarm()-based hang detection
+// below is NOT gated by this and must always run -- it is what catches an actual hang, as
+// opposed to a merely slow-but-bounded pass, and it stays generous (15-20s) precisely so it never
+// fires on the latter.
 #ifndef MODS_TEST_TIMING
 #define MODS_TEST_TIMING 1
 #endif
 #if MODS_TEST_TIMING
-#define ASSERT_PROMPT(t0, t1) ASSERT((double)((t1) - (t0)) / CLOCKS_PER_SEC < 2.0)
-// For the one fixture (a_pcall_wrapped_coroutine_wrap_spinner_is_refused_promptly) where 2.0s
-// isn't the right bound: catching a *real* Lua runtime error (nested pcall swallowing "attempt
-// to index a nil value") every loop iteration costs vastly more wall-clock time per VM
-// instruction than a bare `i=i+1` loop -- string formatting for the error message, a longjmp,
-// stack unwinding, a fresh closure allocated each iteration for the pcall'd functions -- while
-// each of those same iterations still counts as only a handful of instructions against the
-// 50,000,000-instruction budget's own ledger. Measured at ~5.4s for that specific adversarial
-// shape, comfortably bounded (never literally hangs) but nowhere near 2.0s. 7.5s still leaves
-// real teeth against a grossly regressed budget while being specific to this one test, not a
-// general loosening -- see ASSERT_PROMPT's own comment for why loosening the general bound
-// instead would stop pinning anything.
-#define ASSERT_PROMPT_WITHIN(bound, t0, t1) ASSERT((double)((t1) - (t0)) / CLOCKS_PER_SEC < (bound))
+#define ASSERT_PROMPT(t0, t1) ASSERT(((t1) - (t0)) < 5.0)
 #else
 #define ASSERT_PROMPT(t0, t1) ((void)(t0), (void)(t1))
-#define ASSERT_PROMPT_WITHIN(bound, t0, t1) ((void)(bound), (void)(t0), (void)(t1))
 #endif
+
+// Which of the two mechanisms in mods.c actually catches a given runaway mod now depends on how
+// expensive its instructions are and how busy the host is, not just on the mod's shape: a cheap
+// loop on an idle host trips the instruction budget well before the wall-clock deadline; the
+// same loop on a sufficiently busy host, or an expensive-per-instruction loop on any host, trips
+// the deadline instead. Both are the budget mechanism doing its job, so tests that don't care
+// which one fired assert this instead of a single fixed message.
+#define ASSERT_BUDGET_OR_DEADLINE(out) \
+  ASSERT(strstr((out), "instruction budget") != NULL || strstr((out), "cut off") != NULL)
 
 // read_file comes from unit.h (used the same way by test_acid2.c / test_blargg.c): test_mods
 // links oraclesmods + oraclesitem only, not the engine, so it cannot call oracles_read_file --
@@ -1399,10 +1411,10 @@ static void a_hanging_mod_is_skipped_and_other_mods_still_load(void) {
   // default 1500s timeout -- unconditional regardless of MODS_TEST_TIMING, since this is what
   // actually catches a hang rather than merely a slow pass.
   signal(SIGALRM, mods_test_alarm_handler);
-  alarm(5);
-  clock_t t0 = clock();
+  alarm(20);
+  double t0 = wall_seconds();
   capture_stderr(run_cap_mods_init, out, sizeof out);
-  clock_t t1 = clock();
+  double t1 = wall_seconds();
   alarm(0);
   ASSERT(cap_result);
   ASSERT_PROMPT(t0, t1);
@@ -1410,7 +1422,10 @@ static void a_hanging_mod_is_skipped_and_other_mods_still_load(void) {
   ASSERT_EQ(strcmp(mods_id(0), "aaa-healthy"), 0);
   ASSERT_EQ(strcmp(mods_id(1), "zzz-healthy"), 0);
   ASSERT(strstr(out, "mid-hang") != NULL);
-  ASSERT(strstr(out, "instruction budget") != NULL);
+  // Not a fixed "instruction budget" check any more: on a sufficiently busy host even this cheap
+  // loop can take long enough in wall-clock terms to be cut off by the deadline instead -- see
+  // ASSERT_BUDGET_OR_DEADLINE's own comment.
+  ASSERT_BUDGET_OR_DEADLINE(out);
   mods_shutdown();
 }
 
@@ -1430,10 +1445,10 @@ static void an_unbounded_allocation_mod_is_skipped_and_other_mods_still_load(voi
   cap_seasons = true;
   char out[4096];
   signal(SIGALRM, mods_test_alarm_handler);
-  alarm(5);
-  clock_t t0 = clock();
+  alarm(20);
+  double t0 = wall_seconds();
   capture_stderr(run_cap_mods_init, out, sizeof out);
-  clock_t t1 = clock();
+  double t1 = wall_seconds();
   alarm(0);
   ASSERT(cap_result);
   ASSERT_PROMPT(t0, t1);
@@ -1571,10 +1586,10 @@ static void a_mod_cannot_disarm_its_own_instruction_budget_via_debug_sethook(voi
   cap_seasons = true;
   char out[4096];
   signal(SIGALRM, mods_test_alarm_handler);
-  alarm(5);
-  clock_t t0 = clock();
+  alarm(20);
+  double t0 = wall_seconds();
   capture_stderr(run_cap_mods_init, out, sizeof out);
-  clock_t t1 = clock();
+  double t1 = wall_seconds();
   alarm(0);
   ASSERT(cap_result);
   ASSERT_PROMPT(t0, t1);
@@ -1623,10 +1638,10 @@ static void a_pcall_wrapped_spinner_is_refused_promptly(void) {
   cap_seasons = true;
   char out[4096];
   signal(SIGALRM, mods_test_alarm_handler);
-  alarm(5);
-  clock_t t0 = clock();
+  alarm(20);
+  double t0 = wall_seconds();
   capture_stderr(run_cap_mods_init, out, sizeof out);
-  clock_t t1 = clock();
+  double t1 = wall_seconds();
   alarm(0);
   ASSERT(cap_result);
   ASSERT_PROMPT(t0, t1);
@@ -1634,7 +1649,7 @@ static void a_pcall_wrapped_spinner_is_refused_promptly(void) {
   ASSERT_EQ(strcmp(mods_id(0), "aaa-healthy4"), 0);
   ASSERT_EQ(strcmp(mods_id(1), "zzz-healthy4"), 0);
   ASSERT(strstr(out, "mid-pcall-spin") != NULL);
-  ASSERT(strstr(out, "instruction budget") != NULL);
+  ASSERT_BUDGET_OR_DEADLINE(out);
   mods_shutdown();
 }
 
@@ -1667,10 +1682,10 @@ static void a_coroutine_resume_wrapped_spinner_is_refused_promptly(void) {
   cap_seasons = true;
   char out[4096];
   signal(SIGALRM, mods_test_alarm_handler);
-  alarm(5);
-  clock_t t0 = clock();
+  alarm(20);
+  double t0 = wall_seconds();
   capture_stderr(run_cap_mods_init, out, sizeof out);
-  clock_t t1 = clock();
+  double t1 = wall_seconds();
   alarm(0);
   ASSERT(cap_result);
   ASSERT_PROMPT(t0, t1);
@@ -1696,10 +1711,10 @@ static void a_coroutine_resumed_only_once_still_counts_as_exhausted(void) {
   cap_seasons = true;
   char out[4096];
   signal(SIGALRM, mods_test_alarm_handler);
-  alarm(5);
-  clock_t t0 = clock();
+  alarm(20);
+  double t0 = wall_seconds();
   capture_stderr(run_cap_mods_init, out, sizeof out);
-  clock_t t1 = clock();
+  double t1 = wall_seconds();
   alarm(0);
   ASSERT(cap_result);
   ASSERT_PROMPT(t0, t1);
@@ -1733,10 +1748,10 @@ static void a_fresh_coroutine_per_iteration_is_refused_promptly(void) {
   cap_seasons = true;
   char out[4096];
   signal(SIGALRM, mods_test_alarm_handler);
-  alarm(8);
-  clock_t t0 = clock();
+  alarm(20);
+  double t0 = wall_seconds();
   capture_stderr(run_cap_mods_init, out, sizeof out);
-  clock_t t1 = clock();
+  double t1 = wall_seconds();
   alarm(0);
   ASSERT(cap_result);
   ASSERT_PROMPT(t0, t1);
@@ -1768,10 +1783,10 @@ static void many_fresh_coroutines_per_iteration_are_refused_promptly(void) {
   cap_seasons = true;
   char out[4096];
   signal(SIGALRM, mods_test_alarm_handler);
-  alarm(8);
-  clock_t t0 = clock();
+  alarm(20);
+  double t0 = wall_seconds();
   capture_stderr(run_cap_mods_init, out, sizeof out);
-  clock_t t1 = clock();
+  double t1 = wall_seconds();
   alarm(0);
   ASSERT(cap_result);
   ASSERT_PROMPT(t0, t1);
@@ -1785,13 +1800,18 @@ static void many_fresh_coroutines_per_iteration_are_refused_promptly(void) {
 
 // The third hazard shape: fresh threads minted from inside *nested* pcalls, via coroutine.wrap
 // (coroutine.create plus an auto-resuming call wrapper) rather than coroutine.create/resume
-// spelled out -- confirmed to hang past an 8-second hard alarm before the fix (minting a fresh
-// thread every iteration, same underlying mechanism as the other two fixtures). With
-// `coroutine` withheld, coroutine.wrap itself never runs -- but because this specific script
-// wraps the access in pcall, the resulting "nil value" error is swallowed rather than ever
-// escaping, so the outer infinite loop keeps spinning on pure Lua overhead until the
-// instruction budget (not the sandboxing fix) stops it -- see the comment on its own timing
-// bound below for why that takes meaningfully longer than the other budget tests.
+// spelled out -- confirmed to hang past an 8-second hard alarm before the coroutine-withholding
+// fix (minting a fresh thread every iteration, same underlying mechanism as the other two
+// fixtures). With `coroutine` withheld, coroutine.wrap itself never runs -- but because this
+// specific script wraps the access in pcall, the resulting "nil value" error is swallowed rather
+// than ever escaping, so the outer infinite loop keeps spinning on pure Lua overhead regardless.
+// This is exactly the shape that originally needed its own, wider timing bound: repeatedly
+// raising and catching that error is 50-150x more wall-clock-expensive per VM instruction than a
+// bare loop (measured 5-16s, worse under host load), which is precisely what
+// MOD_LOAD_WALLCLOCK_DEADLINE_SECONDS now exists to bound regardless of how expensive a mod's
+// instructions turn out to be -- so this test needs no special treatment any more; it is
+// expected to land at the same ~2-second deadline as every other budget test, via whichever of
+// the two messages the deadline or instruction count happens to produce.
 static void a_pcall_wrapped_coroutine_wrap_spinner_is_refused_promptly(void) {
   clear_mods();
   make_mod("aaa-healthy8", "id=aaa-healthy8\napi=1\ngames=ages,seasons\n", "oracles.log('aaa ok')\n");
@@ -1808,29 +1828,31 @@ static void a_pcall_wrapped_coroutine_wrap_spinner_is_refused_promptly(void) {
   cap_seasons = true;
   char out[4096];
   signal(SIGALRM, mods_test_alarm_handler);
-  alarm(15);
-  clock_t t0 = clock();
+  alarm(20);
+  double t0 = wall_seconds();
   capture_stderr(run_cap_mods_init, out, sizeof out);
-  clock_t t1 = clock();
+  double t1 = wall_seconds();
   alarm(0);
   ASSERT(cap_result);
-  // ASSERT_PROMPT_WITHIN, not ASSERT_PROMPT: this specific shape's own timing bound is wider --
-  // see the comment on ASSERT_PROMPT_WITHIN's definition for why (catching a real Lua error in
-  // a tight loop is inherently far more wall-clock-expensive per VM instruction than a bare
-  // loop; measured ~5.4s here, not ~0.1-0.2s).
-  ASSERT_PROMPT_WITHIN(7.5, t0, t1);
+  ASSERT_PROMPT(t0, t1);
   ASSERT_EQ(mods_count(), 2);
   ASSERT_EQ(strcmp(mods_id(0), "aaa-healthy8"), 0);
   ASSERT_EQ(strcmp(mods_id(1), "zzz-healthy8"), 0);
   ASSERT(strstr(out, "mid-nested-pcall") != NULL);
   // Unlike the other two fresh-thread fixtures above, this one's own coroutine.create access is
   // wrapped in pcall, so the "nil value (global 'coroutine')" error never escapes the inner
-  // pcall at all -- it's the instruction budget itself, not the sandboxing fix, that stops the
-  // outer `while true do pcall(...) end` from spinning forever once nothing inside it can ever
-  // succeed. Both mechanisms are doing real work here: withholding `coroutine` is what makes
-  // every iteration cheap (a nil-index error, not a real fresh thread), and the budget is what
-  // still has to catch the loop itself.
-  ASSERT(strstr(out, "instruction budget") != NULL);
+  // pcall at all -- withholding `coroutine` is what makes every iteration cheap-*ish* (a
+  // nil-index error and two unwinds, not a real fresh thread), but still far more
+  // wall-clock-expensive per VM instruction than a bare loop. That is exactly this fixture's
+  // reason to exist: unlike every other test in this file, it must be caught by the *deadline*
+  // specifically, not merely "the budget mechanism, whichever one" -- so this asserts the
+  // message text directly rather than leaning on ASSERT_PROMPT's elapsed-time bound, which a
+  // mutation disabling the deadline check does not reliably fail: on this machine, disabling it
+  // still finishes (via the instruction count alone) in ~2.7s -- nowhere near the 5-16s this
+  // shape measured under heavier host load, but still comfortably under any elapsed-time bound
+  // loose enough to tolerate ordinary jitter. The message, not the clock, is what actually
+  // changes the moment the deadline stops being what catches this.
+  ASSERT(strstr(out, "cut off") != NULL);
   mods_shutdown();
 }
 
