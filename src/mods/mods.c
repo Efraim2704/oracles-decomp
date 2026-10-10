@@ -446,6 +446,27 @@ typedef struct {
   bool exhausted;
 } ModBudget;
 
+// A constraint that outlives this task, found by a later spec review and worth recording here
+// so the next person touching this doesn't rediscover it with a hang: everything above closes
+// every bypass that *resumes an existing thread*, repeatedly or otherwise, but it cannot close
+// one that mints a *fresh* thread, because lua_newthread resets a brand-new thread's own
+// instruction countdown to a full basehookcount regardless of how exhausted the shared budget
+// already is -- confirmed by probing the vendored interpreter directly (hook function and mask
+// are inherited from the creating thread; the count is not, it comes back full). Our hook only
+// gets a chance to check the shared ModBudget once Lua's own per-thread countdown decides to
+// invoke it, and a fresh thread's countdown always starts from the full MOD_INSTRUCTION_CHECKIN,
+// no matter what. mods.c handles this today by withholding the "coroutine" library entirely (see
+// mod_open_libs_sandboxed_partially) -- a mod with no way to call lua_newthread at all has no way
+// to exploit this, so per-thread accounting never needs to be bulletproof against it. That is a
+// restriction on the *library*, not a fix to *this* mechanism: if coroutines are ever granted
+// back to mods (the rest of Task 7's sandbox deciding they belong, a later per-frame API,
+// anything else in this host that spins up a new thread to run mod code), the exact same hang
+// reopens unless something *also* re-arms new threads against the shared budget at creation time
+// -- which Lua's public API has no hook for; the vendored lua_newthread (third_party/lua/lstate.c)
+// would need to carry the parent's *remaining* count into the child instead of a fresh
+// basehookcount, a deliberate fork of Lua's own semantics that was discussed and declined for now
+// rather than done as a side effect of closing this specific hole.
+
 // How often (in Lua VM instructions) the hook checks in against the shared budget, on whichever
 // thread happens to be running when the count elapses. Deliberately much smaller than the total
 // budget itself: since lua_newthread resets a new coroutine's own countdown fresh (see the long
@@ -517,30 +538,54 @@ static int mod_resume_budgeted(lua_State *thread, int nargs, long long total, bo
   return status;
 }
 
-// Hazard found while building the instruction budget above, not in the original plan: Lua's
-// "debug" library -- part of plain luaL_openlibs, and still deliberately open today since the
-// sandbox that would otherwise close it is a later task's job -- includes debug.sethook(), which
-// lets ordinary Lua code replace or remove *any* hook set from C, including
-// mod_instruction_limit_hook. A single `debug.sethook()` call (or `debug.sethook(nil)`,
-// equivalent) at the top of main.lua would silently disarm the anti-hang protection before the
-// mod's own infinite loop ever ran -- confirmed empirically: unpatched, `debug.sethook() while
-// true do end` inside a 1,000,000-instruction budget ran a 2,000,000-iteration loop to completion
-// instead of aborting. That defeats the one thing this task is specifically required to build, so
-// it's closed here rather than left for Task 7's broader sandbox: every other standard library
-// luaL_openlibs would open is opened exactly as before (io/os/package/require stay available,
-// unlike the eventual sandbox -- see the comment at this function's call site), only "debug" is
-// withheld. Removed from both the globals table and package.loaded (require() checks
-// package.loaded first, so nil-ing only the global would leave `require('debug')` able to
-// resurrect it) -- nothing else the standard library opens re-registers "debug" under either key,
-// so this makes it unreachable by any ordinary means.
-static void mod_open_libs_without_debug(lua_State *L) {
+// Withholds two standard libraries that plain luaL_openlibs would otherwise grant, each for its
+// own reason, neither of them a start on Task 7's full sandbox (string/table/math only) -- both
+// are specific, load-bearing holes in *this* task's own deliverable (a budget that actually
+// bounds a mod's CPU use), discovered while building mod_resume_budgeted/
+// mod_instruction_limit_hook above, and closed here because leaving them open would make that
+// mechanism not do its job today, not because they happen to overlap with where the eventual
+// sandbox line falls:
+//
+// - "debug": debug.sethook() lets ordinary Lua code replace or remove *any* hook set from C,
+//   including mod_instruction_limit_hook. A single `debug.sethook()` call at the top of main.lua
+//   would silently disarm the anti-hang protection before the mod's own infinite loop ever ran --
+//   confirmed empirically: unpatched, `debug.sethook() while true do end` inside a
+//   1,000,000-instruction checkin ran a 2,000,000-iteration loop to completion instead of
+//   aborting.
+//
+// - "coroutine": a later spec review found that the shared-budget design above closes every
+//   bypass that *resumes the same thread repeatedly*, but not one that mints a *fresh* thread
+//   every time. lua_newthread inherits the creating thread's hook function and mask, but resets
+//   the new thread's own countdown to a full basehookcount (confirmed by probing the vendored
+//   interpreter directly: hook and mask matched between parent and child, but count was back at
+//   the full value) -- regardless of how exhausted the shared ModBudget already is, since that
+//   exhaustion is only ever checked *inside* the hook, and Lua's own per-thread countdown is what
+//   decides when the hook gets invoked at all. A mod minting a fresh coroutine every loop
+//   iteration (`while true do coroutine.resume(coroutine.create(spinner)) end`, or the same
+//   shape through coroutine.wrap, or nested inside pcall) buys each one a full, free
+//   MOD_INSTRUCTION_CHECKIN-sized ride before its hook is ever invoked even once, independent of
+//   the shared total -- confirmed to hang past an 8-second hard alarm. No amount of per-thread
+//   accounting closes this; only not letting a mod create new threads at all does, for now. See
+//   the long comment above ModBudget for what to do if a later task needs this library back.
+//
+// Everything else luaL_openlibs would open is opened exactly as before -- io, os and
+// package/require stay fully available, unlike the eventual sandbox (see this function's call
+// site) -- only "debug" and "coroutine" are withheld. Each is removed from both the globals
+// table and package.loaded (require() checks package.loaded first, so nil-ing only the global
+// would leave e.g. `require('coroutine')` able to resurrect it) -- nothing else the standard
+// library opens re-registers either name under either key, so this makes both unreachable by any
+// ordinary means.
+static void mod_open_libs_sandboxed_partially(lua_State *L) {
   luaL_openlibs(L);
-  lua_pushnil(L);
-  lua_setglobal(L, "debug");
   lua_getglobal(L, "package");
   lua_getfield(L, -1, "loaded");
-  lua_pushnil(L);
-  lua_setfield(L, -2, "debug");
+  static const char *const withheld[] = {"debug", "coroutine"};
+  for (size_t i = 0; i < sizeof withheld / sizeof withheld[0]; i++) {
+    lua_pushnil(L);
+    lua_setglobal(L, withheld[i]);
+    lua_pushnil(L);
+    lua_setfield(L, -2, withheld[i]);      // package.loaded[withheld[i]] = nil
+  }
   lua_pop(L, 2);           // package.loaded, package
 }
 
@@ -583,13 +628,13 @@ static bool run_main_lua(const char *dir, const char *name, Mod *m) {
     return false;
   }
 
-  // Deliberately unrestricted for now, except for one specific hole closed below: io, os and
-  // package/require stay wide open, none of which the approved sandbox design grants a mod
-  // (string, table and math only). Closing that gap generally is a later task's job specifically,
-  // not an oversight here -- and nothing in the shipped app links this module yet either way, so
-  // no build anyone runs today is affected by a mod being able to read/write files or spawn
-  // processes through main.lua.
-  mod_open_libs_without_debug(L);
+  // Deliberately unrestricted for now, except for the two specific holes
+  // mod_open_libs_sandboxed_partially closes below: io, os and package/require stay wide open,
+  // none of which the approved sandbox design grants a mod (string, table and math only).
+  // Closing that gap generally is a later task's job specifically, not an oversight here -- and
+  // nothing in the shipped app links this module yet either way, so no build anyone runs today
+  // is affected by a mod being able to read/write files or spawn processes through main.lua.
+  mod_open_libs_sandboxed_partially(L);
   mods_api_open(L);
 
   // Run on its own coroutine thread, driven by mod_resume_budgeted rather than luaL_dofile's
@@ -607,9 +652,12 @@ static bool run_main_lua(const char *dir, const char *name, Mod *m) {
     // plain lua_tolstring return NULL -- the spec requires detail on stderr either way, so fall
     // back to a literal rather than printing "...: " with nothing after the colon. Deliberately
     // not luaL_tolstring here: it would invoke a __tostring metamethod the error object's
-    // metatable might define, which is itself a Lua call that could error in turn, and this is
-    // not a context (just after a load/resume failure, outside any protection of our own) where
-    // it's safe to reason about a second failure landing cleanly.
+    // metatable might define, which is itself a Lua call -- and this is not a context (just
+    // after a load/resume failure, outside any protection of our own) where it's safe to reason
+    // about a second failure landing cleanly. A hostile mod could define __tostring to loop
+    // forever or to error again itself; handing it that extra entry point is not worth the
+    // richer message it would sometimes produce, so this always takes the plain, inert literal
+    // instead.
     if (!emsg) { emsg = "(non-string error object)"; elen = strlen(emsg); }
     mods_escape_into(reason, sizeof reason, emsg, elen);
   } else {

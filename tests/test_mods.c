@@ -29,8 +29,21 @@
 #endif
 #if MODS_TEST_TIMING
 #define ASSERT_PROMPT(t0, t1) ASSERT((double)((t1) - (t0)) / CLOCKS_PER_SEC < 2.0)
+// For the one fixture (a_pcall_wrapped_coroutine_wrap_spinner_is_refused_promptly) where 2.0s
+// isn't the right bound: catching a *real* Lua runtime error (nested pcall swallowing "attempt
+// to index a nil value") every loop iteration costs vastly more wall-clock time per VM
+// instruction than a bare `i=i+1` loop -- string formatting for the error message, a longjmp,
+// stack unwinding, a fresh closure allocated each iteration for the pcall'd functions -- while
+// each of those same iterations still counts as only a handful of instructions against the
+// 50,000,000-instruction budget's own ledger. Measured at ~5.4s for that specific adversarial
+// shape, comfortably bounded (never literally hangs) but nowhere near 2.0s. 7.5s still leaves
+// real teeth against a grossly regressed budget while being specific to this one test, not a
+// general loosening -- see ASSERT_PROMPT's own comment for why loosening the general bound
+// instead would stop pinning anything.
+#define ASSERT_PROMPT_WITHIN(bound, t0, t1) ASSERT((double)((t1) - (t0)) / CLOCKS_PER_SEC < (bound))
 #else
 #define ASSERT_PROMPT(t0, t1) ((void)(t0), (void)(t1))
+#define ASSERT_PROMPT_WITHIN(bound, t0, t1) ((void)(bound), (void)(t0), (void)(t1))
 #endif
 
 // read_file comes from unit.h (used the same way by test_acid2.c / test_blargg.c): test_mods
@@ -1625,17 +1638,24 @@ static void a_pcall_wrapped_spinner_is_refused_promptly(void) {
   mods_shutdown();
 }
 
-// CRITICAL fix, second route: coroutine.resume is itself implemented by calling lua_resume on
-// the nested coroutine's own thread; a yield there is indistinguishable, to coroutine.resume's
-// caller, from an ordinary, intentional coroutine.yield() -- it just returns `true`, and the
-// outer thread's own lua_resume (the one mod_resume_budgeted drives) never sees anything happen.
-// Resuming the *same* coroutine again would, without the shared-budget fix in mods.c, buy it a
-// full fresh instruction budget every time (lua_newthread resets a *new* thread's countdown, but
-// this is the same thread merely being resumed again) -- unbounded in principle, since the outer
-// loop's own countdown only measures its own handful of instructions per iteration, never the
-// arbitrarily slow work hidden inside each resume. Measured against the naive per-thread-only
-// version of this fix while designing it: over three minutes to regain control; fixed, 0.21s.
-// Same shape and safety net as the pcall test above.
+// CRITICAL fix, second route (as first designed): coroutine.resume is itself implemented by
+// calling lua_resume on the nested coroutine's own thread; a yield there is indistinguishable, to
+// coroutine.resume's caller, from an ordinary, intentional coroutine.yield() -- it just returns
+// `true`, and the outer thread's own lua_resume (the one mod_resume_budgeted drives) never sees
+// anything happen. Resuming the *same* coroutine again would, without the shared-budget fix in
+// mods.c, buy it a full fresh instruction budget every time -- unbounded in principle, since the
+// outer loop's own countdown only measures its own handful of instructions per iteration, never
+// the arbitrarily slow work hidden inside each resume. Measured against the naive
+// per-thread-only version of this fix while designing it: over three minutes to regain control.
+//
+// A later spec review found a second, worse bypass of this exact shape -- minting a *fresh*
+// coroutine every iteration, rather than resuming the same one, defeats the shared budget too
+// (see mod_open_libs_sandboxed_partially's comment on "coroutine" for why) -- which is why
+// `coroutine` is now withheld from mods entirely rather than left reachable with the
+// shared-budget fix alone. That makes this exact script fail on its very first line instead of
+// ever reaching the loop; this test is kept anyway as a tripwire, same alarm() and all, so that
+// if `coroutine` is ever reopened to mods without also closing the fresh-thread hole, this goes
+// back to actually exercising it rather than silently testing something else.
 static void a_coroutine_resume_wrapped_spinner_is_refused_promptly(void) {
   clear_mods();
   make_mod("aaa-healthy5", "id=aaa-healthy5\napi=1\ngames=ages,seasons\n", "oracles.log('aaa ok')\n");
@@ -1658,15 +1678,15 @@ static void a_coroutine_resume_wrapped_spinner_is_refused_promptly(void) {
   ASSERT_EQ(strcmp(mods_id(0), "aaa-healthy5"), 0);
   ASSERT_EQ(strcmp(mods_id(1), "zzz-healthy5"), 0);
   ASSERT(strstr(out, "mid-coro-spin") != NULL);
-  ASSERT(strstr(out, "instruction budget") != NULL);
+  ASSERT(strstr(out, "coroutine") != NULL);     // today: "nil value (global 'coroutine')"
   mods_shutdown();
 }
 
-// A third shape of the same route: the top-level chunk finishes normally (LUA_OK) once its single
-// coroutine.resume call returns, with the spinner's own exhaustion fully absorbed and invisible
-// to the status code -- mod_resume_budgeted's `exhausted` out-parameter, not the status, is what
-// catches this. Without checking it, a mod could burn exactly one shared budget's worth of real
-// CPU time during load and still be accepted as "successfully loaded".
+// A third shape of the same route: the top-level chunk would finish normally (LUA_OK) once its
+// single coroutine.resume call returns, with the spinner's own exhaustion fully absorbed and
+// invisible to the status code alone, if `coroutine` were reachable at all -- mod_resume_budgeted's
+// `exhausted` out-parameter, not the status, would be what catches that. With `coroutine`
+// withheld (see above), this fails on its first line instead; kept as the same kind of tripwire.
 static void a_coroutine_resumed_only_once_still_counts_as_exhausted(void) {
   clear_mods();
   const char *root = make_mod("resumeonce", "id=resumeonce\napi=1\ngames=ages,seasons\n",
@@ -1685,7 +1705,168 @@ static void a_coroutine_resumed_only_once_still_counts_as_exhausted(void) {
   ASSERT_PROMPT(t0, t1);
   ASSERT_EQ(mods_count(), 0);
   ASSERT(strstr(out, "resumeonce") != NULL);
-  ASSERT(strstr(out, "nested coroutine") != NULL);
+  ASSERT(strstr(out, "coroutine") != NULL);     // today: "nil value (global 'coroutine')"
+  mods_shutdown();
+}
+
+// Second spec review, CRITICAL: the shared ModBudget closes every bypass that *resumes an
+// existing thread*, but not one that mints a *fresh* thread every iteration -- lua_newthread
+// resets the new thread's own countdown to a full MOD_INSTRUCTION_CHECKIN regardless of how
+// exhausted the shared total already is, and that exhaustion is only ever checked *inside* the
+// hook, which Lua's own per-thread countdown (not us) decides when to invoke at all. Confirmed to
+// hang past an 8-second hard alarm, isolated, before the fix: minting a fresh coroutine every
+// outer-loop iteration lets each one buy its own free ride. The fix is mod_open_libs_sandboxed_
+// partially withholding "coroutine" entirely (see its own comment for the full mechanism) --
+// with no way to call coroutine.create at all, a mod has no way to mint a fresh thread, so this
+// now fails on its very first iteration rather than ever looping. Wrapped in alarm() regardless,
+// exactly like the other budget tests, so a regression here fails fast with a diagnostic.
+static void a_fresh_coroutine_per_iteration_is_refused_promptly(void) {
+  clear_mods();
+  make_mod("aaa-healthy6", "id=aaa-healthy6\napi=1\ngames=ages,seasons\n", "oracles.log('aaa ok')\n");
+  make_mod("mid-coro-mint", "id=mid-coro-mint\napi=1\ngames=ages,seasons\n",
+      "while true do\n"
+      "  local co = coroutine.create(function() while true do end end)\n"
+      "  coroutine.resume(co)\n"
+      "end\n");
+  const char *root = make_mod("zzz-healthy6", "id=zzz-healthy6\napi=1\ngames=ages,seasons\n", "oracles.log('zzz ok')\n");
+  cap_root = root;
+  cap_seasons = true;
+  char out[4096];
+  signal(SIGALRM, mods_test_alarm_handler);
+  alarm(8);
+  clock_t t0 = clock();
+  capture_stderr(run_cap_mods_init, out, sizeof out);
+  clock_t t1 = clock();
+  alarm(0);
+  ASSERT(cap_result);
+  ASSERT_PROMPT(t0, t1);
+  ASSERT_EQ(mods_count(), 2);
+  ASSERT_EQ(strcmp(mods_id(0), "aaa-healthy6"), 0);
+  ASSERT_EQ(strcmp(mods_id(1), "zzz-healthy6"), 0);
+  ASSERT(strstr(out, "mid-coro-mint") != NULL);
+  ASSERT(strstr(out, "coroutine") != NULL);     // today: "nil value (global 'coroutine')"
+  mods_shutdown();
+}
+
+// Same hazard, the "many small threads" shape rather than "one big loop of threads": 50 fresh
+// coroutines minted and immediately resumed per outer iteration, each one a separate free ride
+// under the unfixed mechanism (more of them, not deeper nesting, despite the name) -- confirmed
+// to hang past an 8-second hard alarm before the fix, same as above.
+static void many_fresh_coroutines_per_iteration_are_refused_promptly(void) {
+  clear_mods();
+  make_mod("aaa-healthy7", "id=aaa-healthy7\napi=1\ngames=ages,seasons\n", "oracles.log('aaa ok')\n");
+  make_mod("mid-coro-deep", "id=mid-coro-deep\napi=1\ngames=ages,seasons\n",
+      "local function spin() while true do end end\n"
+      "while true do\n"
+      "  for i = 1, 50 do\n"
+      "    local c = coroutine.create(spin)\n"
+      "    coroutine.resume(c)\n"
+      "  end\n"
+      "end\n");
+  const char *root = make_mod("zzz-healthy7", "id=zzz-healthy7\napi=1\ngames=ages,seasons\n", "oracles.log('zzz ok')\n");
+  cap_root = root;
+  cap_seasons = true;
+  char out[4096];
+  signal(SIGALRM, mods_test_alarm_handler);
+  alarm(8);
+  clock_t t0 = clock();
+  capture_stderr(run_cap_mods_init, out, sizeof out);
+  clock_t t1 = clock();
+  alarm(0);
+  ASSERT(cap_result);
+  ASSERT_PROMPT(t0, t1);
+  ASSERT_EQ(mods_count(), 2);
+  ASSERT_EQ(strcmp(mods_id(0), "aaa-healthy7"), 0);
+  ASSERT_EQ(strcmp(mods_id(1), "zzz-healthy7"), 0);
+  ASSERT(strstr(out, "mid-coro-deep") != NULL);
+  ASSERT(strstr(out, "coroutine") != NULL);     // today: "nil value (global 'coroutine')"
+  mods_shutdown();
+}
+
+// The third hazard shape: fresh threads minted from inside *nested* pcalls, via coroutine.wrap
+// (coroutine.create plus an auto-resuming call wrapper) rather than coroutine.create/resume
+// spelled out -- confirmed to hang past an 8-second hard alarm before the fix (minting a fresh
+// thread every iteration, same underlying mechanism as the other two fixtures). With
+// `coroutine` withheld, coroutine.wrap itself never runs -- but because this specific script
+// wraps the access in pcall, the resulting "nil value" error is swallowed rather than ever
+// escaping, so the outer infinite loop keeps spinning on pure Lua overhead until the
+// instruction budget (not the sandboxing fix) stops it -- see the comment on its own timing
+// bound below for why that takes meaningfully longer than the other budget tests.
+static void a_pcall_wrapped_coroutine_wrap_spinner_is_refused_promptly(void) {
+  clear_mods();
+  make_mod("aaa-healthy8", "id=aaa-healthy8\napi=1\ngames=ages,seasons\n", "oracles.log('aaa ok')\n");
+  make_mod("mid-nested-pcall", "id=mid-nested-pcall\napi=1\ngames=ages,seasons\n",
+      "while true do\n"
+      "  pcall(function()\n"
+      "    pcall(function()\n"
+      "      coroutine.wrap(function() while true do end end)()\n"
+      "    end)\n"
+      "  end)\n"
+      "end\n");
+  const char *root = make_mod("zzz-healthy8", "id=zzz-healthy8\napi=1\ngames=ages,seasons\n", "oracles.log('zzz ok')\n");
+  cap_root = root;
+  cap_seasons = true;
+  char out[4096];
+  signal(SIGALRM, mods_test_alarm_handler);
+  alarm(15);
+  clock_t t0 = clock();
+  capture_stderr(run_cap_mods_init, out, sizeof out);
+  clock_t t1 = clock();
+  alarm(0);
+  ASSERT(cap_result);
+  // ASSERT_PROMPT_WITHIN, not ASSERT_PROMPT: this specific shape's own timing bound is wider --
+  // see the comment on ASSERT_PROMPT_WITHIN's definition for why (catching a real Lua error in
+  // a tight loop is inherently far more wall-clock-expensive per VM instruction than a bare
+  // loop; measured ~5.4s here, not ~0.1-0.2s).
+  ASSERT_PROMPT_WITHIN(7.5, t0, t1);
+  ASSERT_EQ(mods_count(), 2);
+  ASSERT_EQ(strcmp(mods_id(0), "aaa-healthy8"), 0);
+  ASSERT_EQ(strcmp(mods_id(1), "zzz-healthy8"), 0);
+  ASSERT(strstr(out, "mid-nested-pcall") != NULL);
+  // Unlike the other two fresh-thread fixtures above, this one's own coroutine.create access is
+  // wrapped in pcall, so the "nil value (global 'coroutine')" error never escapes the inner
+  // pcall at all -- it's the instruction budget itself, not the sandboxing fix, that stops the
+  // outer `while true do pcall(...) end` from spinning forever once nothing inside it can ever
+  // succeed. Both mechanisms are doing real work here: withholding `coroutine` is what makes
+  // every iteration cheap (a nil-index error, not a real fresh thread), and the budget is what
+  // still has to catch the loop itself.
+  ASSERT(strstr(out, "instruction budget") != NULL);
+  mods_shutdown();
+}
+
+// The explicit assertion the review asked for: if a later task re-introduces `coroutine` to a
+// mod's environment without separately re-closing the fresh-thread hole above, this is the one
+// test whose entire job is noticing that reintroduction immediately, rather than relying on the
+// three hang-shaped tests above (which would, at that point, actually start hanging -- useful as
+// a worst-case tripwire, but a much slower and less specific signal than this).
+static void coroutine_is_nil_in_a_loaded_mod_environment(void) {
+  clear_mods();
+  const char *root = make_mod("nocoroutine", "id=nocoroutine\napi=1\ngames=ages,seasons\n",
+      "if coroutine ~= nil then error('coroutine global is reachable') end\n"
+      "oracles.log('coroutine is unreachable')\n");
+  ASSERT(mods_init(root, true));
+  ASSERT_EQ(mods_count(), 1);
+  ASSERT(mods_last_log());
+  ASSERT(strstr(mods_last_log(), "coroutine is unreachable") != NULL);
+  mods_shutdown();
+}
+
+// Mirrors the_debug_library_is_unreachable_by_global_or_require: require() checks
+// package.loaded before searching the filesystem, so nil-ing only the global would leave
+// require('coroutine') able to resurrect it -- mod_open_libs_sandboxed_partially clears
+// package.loaded.coroutine too, for exactly the reason it does for "debug".
+static void the_coroutine_library_is_unreachable_by_global_or_require(void) {
+  clear_mods();
+  const char *root = make_mod("nocoroutine2",
+      "id=nocoroutine2\napi=1\ngames=ages,seasons\n",
+      "if coroutine ~= nil then error('coroutine global is reachable') end\n"
+      "local ok = pcall(require, 'coroutine')\n"
+      "if ok then error('require(\"coroutine\") succeeded') end\n"
+      "oracles.log('coroutine is unreachable')\n");
+  ASSERT(mods_init(root, true));
+  ASSERT_EQ(mods_count(), 1);
+  ASSERT(mods_last_log());
+  ASSERT(strstr(mods_last_log(), "coroutine is unreachable") != NULL);
   mods_shutdown();
 }
 
@@ -1946,6 +2127,11 @@ int main(void) {
   RUN(a_pcall_wrapped_spinner_is_refused_promptly);
   RUN(a_coroutine_resume_wrapped_spinner_is_refused_promptly);
   RUN(a_coroutine_resumed_only_once_still_counts_as_exhausted);
+  RUN(a_fresh_coroutine_per_iteration_is_refused_promptly);
+  RUN(many_fresh_coroutines_per_iteration_are_refused_promptly);
+  RUN(a_pcall_wrapped_coroutine_wrap_spinner_is_refused_promptly);
+  RUN(coroutine_is_nil_in_a_loaded_mod_environment);
+  RUN(the_coroutine_library_is_unreachable_by_global_or_require);
   RUN(the_oracles_table_matches_the_registry_exactly);
   RUN(a_single_huge_allocation_is_refused_without_growing_first);
   RUN(repeated_allocate_and_free_does_not_ratchet_toward_the_cap);
