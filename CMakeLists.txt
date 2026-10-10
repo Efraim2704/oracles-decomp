@@ -132,6 +132,21 @@ if(NOT WIN32)
   target_link_libraries(oraclesui PUBLIC m)
 endif()
 
+add_library(oraclesmods STATIC third_party/lua/lapi.c third_party/lua/lauxlib.c third_party/lua/lbaselib.c
+  third_party/lua/lcode.c third_party/lua/lcorolib.c third_party/lua/lctype.c third_party/lua/ldblib.c
+  third_party/lua/ldebug.c third_party/lua/ldo.c third_party/lua/ldump.c third_party/lua/lfunc.c
+  third_party/lua/lgc.c third_party/lua/linit.c third_party/lua/liolib.c third_party/lua/llex.c
+  third_party/lua/lmathlib.c third_party/lua/lmem.c third_party/lua/loadlib.c third_party/lua/lobject.c
+  third_party/lua/lopcodes.c third_party/lua/loslib.c third_party/lua/lparser.c third_party/lua/lstate.c
+  third_party/lua/lstring.c third_party/lua/lstrlib.c third_party/lua/ltable.c third_party/lua/ltablib.c
+  third_party/lua/ltm.c third_party/lua/lundump.c third_party/lua/lutf8lib.c third_party/lua/lvm.c
+  third_party/lua/lzio.c)
+target_include_directories(oraclesmods PUBLIC src PRIVATE third_party/lua)
+target_link_libraries(oraclesmods PUBLIC oraclesui)
+if(NOT WIN32)
+  target_compile_definitions(oraclesmods PRIVATE LUA_USE_POSIX)
+endif()
+
 # The Android app: SDL3 from source, linked statically into libmain.so with the engine and the UI.
 if(ANDROID)
   enable_language(CXX)   # SDL's Android HIDAPI is C++, so libmain links the C++ runtime
@@ -148,6 +163,10 @@ enable_testing()
 add_executable(test_ui tests/test_ui.c)
 target_link_libraries(test_ui oraclesui)
 add_test(NAME ui COMMAND test_ui)
+add_executable(test_mods tests/test_mods.c)
+target_link_libraries(test_mods oraclesmods)
+target_include_directories(test_mods PRIVATE third_party/lua)
+add_test(NAME mods COMMAND test_mods)
 add_executable(test_sync tests/test_sync.c)
 target_link_libraries(test_sync oraclessync)
 add_test(NAME sync COMMAND test_sync)
