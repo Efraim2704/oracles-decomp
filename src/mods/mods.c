@@ -1,5 +1,6 @@
 #include "mods/mods.h"
 #include <dirent.h>
+#include <errno.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -8,7 +9,8 @@
 
 // id doubles as the folder name and, from Task 9 on, a path component for a mod's store file.
 // This is the one gate between an attacker-controlled mod.ini/folder name and a path traversal:
-// no byte this rejects can spell ".." or "/", so a validated id is unrepresentable as a traversal.
+// no byte this rejects can spell ".." or "/" or "\", so a validated id is unrepresentable as a
+// traversal on either a POSIX host or the MinGW/Windows target, where "\" is also a separator.
 bool mods_id_valid(const char *id) {
   if (!id || !*id) return false;
   for (const unsigned char *p = (const unsigned char *)id; *p; p++) {
@@ -61,8 +63,9 @@ static bool read_logical_line(FILE *f, char *buf, size_t n) {
 // ignored, whitespace tolerated around both key and value. Unlike settings_parse's
 // `%31[a-z_] = %255s` approach, this keeps interior spaces in the value, since mod names and
 // authors contain them. Every value is treated as hostile: over-long, empty, or full of
-// coincidental '=' or '#' characters are all handled, not just well-formed input.
-static bool read_ini(const char *path, Mod *m) {
+// coincidental '=' or '#' characters are all handled, not just well-formed input. `label` is the
+// mod's folder name, used only to name the mod in a per-token "games=" warning.
+static bool read_ini(const char *path, const char *label, Mod *m) {
   FILE *f = fopen(path, "rb");
   if (!f) return false;
   char line[256];
@@ -99,6 +102,9 @@ static bool read_ini(const char *path, Mod *m) {
         trim(tok);
         if (!strcmp(tok, "ages")) m->ages = true;
         else if (!strcmp(tok, "seasons")) m->seasons = true;
+        else if (*tok)
+          fprintf(stderr, "mods: '%s' names unrecognised game '%s' in its games=, ignoring that token\n",
+                  label, tok);
       }
     }
   }
@@ -113,8 +119,19 @@ static int cmp_name(const void *a, const void *b) {
 bool mods_init(const char *dir, bool seasons) {
   mods_shutdown();
   host_seasons = seasons;
+
+  if (!dir || !*dir) {
+    fprintf(stderr, "mods: no mods directory given\n");
+    return false;
+  }
+
+  errno = 0;
   DIR *d = opendir(dir);
-  if (!d) return true;                                   // no mods folder yet is not a failure
+  if (!d) {
+    if (errno == ENOENT) return true;                    // no mods installed yet is not a failure
+    fprintf(stderr, "mods: could not open mods directory '%s': %s\n", dir, strerror(errno));
+    return false;
+  }
 
   // Collect folder names first and sort them alphabetically before parsing anything, so load
   // order (and, from Task 5 on, main.lua run order) is deterministic rather than following
@@ -159,17 +176,24 @@ bool mods_init(const char *dir, bool seasons) {
     char ini_path[1040];
     snprintf(ini_path, sizeof ini_path, "%s/mod.ini", entry_path);
     Mod m = {.enabled = true, .api = -1};
-    if (!read_ini(ini_path, &m)) {
+    if (!read_ini(ini_path, name, &m)) {
       fprintf(stderr, "mods: '%s' has no mod.ini, skipping\n", name);
       continue;
     }
 
-    // The folder name is the canonical id. mod.ini's "id=", if present, only verifies -- it is
-    // never used to build a path, so a traversing value here (e.g. "../evil") simply fails this
-    // string comparison rather than ever being dereferenced as a filename.
-    if (m.ini_id_present && strcmp(m.ini_id, name) != 0) {
-      fprintf(stderr, "mods: '%s/mod.ini' declares id '%s', which does not match its folder name; refusing\n",
-              name, m.ini_id);
+    // The folder name is the canonical id, and mod.ini must declare the same id itself -- a mod
+    // package should say who it is, not rely solely on whatever folder it happens to be unpacked
+    // into. mod.ini's "id=" is never used to build a path, so a traversing value here (e.g.
+    // "../evil") simply fails this string comparison rather than ever being dereferenced as a
+    // filename.
+    if (!m.ini_id_present) {
+      fprintf(stderr, "mods: '%s/mod.ini' has no id=; it must declare id=%s to agree with its folder name\n",
+              name, name);
+      continue;
+    }
+    if (strcmp(m.ini_id, name) != 0) {
+      fprintf(stderr, "mods: '%s/mod.ini' declares id '%s', which does not match its folder name '%s'; refusing\n",
+              name, m.ini_id, name);
       continue;
     }
 

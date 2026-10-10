@@ -331,6 +331,75 @@ static void clear_mods(void) {
   (void)system(cmd);
 }
 
+// Captures everything written to stderr while running `body`. Needed because several of
+// mods_init's refusal paths are also reachable (for the exact same input) by a different,
+// later check -- so a bare mods_count() assertion alone cannot tell "the dedicated check I'm
+// testing actually ran" apart from "it was deleted and some other check masked that". Confirmed
+// by mutation more than once below.
+static void capture_stderr(void (*body)(void), char *out, size_t out_size) {
+  fflush(stderr);
+  char path[] = "/tmp/test_mods_stderr.XXXXXX";
+  int fd = mkstemp(path);
+  ASSERT(fd >= 0);
+  int saved = dup(fileno(stderr));
+  ASSERT(saved >= 0);
+  ASSERT(dup2(fd, fileno(stderr)) >= 0);
+  body();
+  fflush(stderr);
+  ASSERT(dup2(saved, fileno(stderr)) >= 0);
+  close(saved);
+  ASSERT(lseek(fd, 0, SEEK_SET) == 0);
+  ssize_t n = read(fd, out, out_size - 1);
+  ASSERT(n >= 0);
+  out[n] = 0;
+  close(fd);
+  unlink(path);
+}
+
+static const char *cap_root;
+static bool cap_seasons;
+static void run_cap_mods_init(void) { ASSERT(mods_init(cap_root, cap_seasons)); }
+
+// mods_id_valid is the one gate standing between an attacker-controlled id and a path traversal
+// (correction A), so it gets its own direct, table-driven test rather than relying only on
+// mods_init's end-to-end behaviour to exercise it. Covers the accepted charset, the two
+// traversal spellings (POSIX "/" and the MinGW/Windows "\\"), a bare "..", a bare ".", a
+// trailing dot, shell metacharacters, an embedded newline (as if a hostile field were spliced
+// into a format string elsewhere), and the near-misses a narrower check might still accept:
+// uppercase, underscore, embedded space, and empty.
+static void mods_id_valid_rejects_hostile_input(void) {
+  static const struct { const char *id; bool want; } cases[] = {
+    {"ok-mod-1", true},
+    {"a", true},
+    {"0", true},
+    {"a-b-c", true},
+    {"", false},
+    {"..", false},
+    {".", false},
+    {"../evil", false},
+    {"..\\evil", false},
+    {"/etc/passwd", false},
+    {"a/b", false},
+    {"a.b", false},
+    {"Bad_Name", false},
+    {"BADNAME", false},
+    {"has_underscore", false},
+    {"sp ace", false},
+    {"tilde~", false},
+    {"a$(whoami)", false},
+    {"mod\nid=other", false},
+    {"a.", false},
+  };
+  for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+    bool got = mods_id_valid(cases[i].id);
+    if (got != cases[i].want) {
+      fprintf(stderr, "FAIL %s:%d: mods_id_valid(\"%s\") = %d, want %d\n",
+              __FILE__, __LINE__, cases[i].id, got, cases[i].want);
+      exit(1);
+    }
+  }
+}
+
 // mods.h promises "an empty or missing directory is success with no mods" -- exercised directly
 // here because it's the n == 0 path through the candidate-name array (never grown past NULL),
 // which is easy to get wrong (e.g. passing a NULL base pointer to qsort).
@@ -357,6 +426,46 @@ static void an_empty_mods_directory_has_no_mods(void) {
   ASSERT(mods_init(dir, true));
   ASSERT_EQ(mods_count(), 0);
   mods_shutdown();
+}
+
+// A NULL directory can never be the "no mods installed yet" case (that's what a nonexistent
+// path means) -- it's a programming error in the caller, so it must return false rather than
+// silently reporting zero mods.
+static void mods_init_rejects_a_null_directory(void) {
+  clear_mods();
+  ASSERT(!mods_init(NULL, true));
+  ASSERT_EQ(mods_count(), 0);
+  mods_shutdown();
+}
+
+static void mods_init_rejects_an_empty_directory_string(void) {
+  clear_mods();
+  ASSERT(!mods_init("", true));
+  ASSERT_EQ(mods_count(), 0);
+  mods_shutdown();
+}
+
+// A mods directory that exists but can't be read (e.g. permissions) is a real problem the
+// caller should hear about, distinct from "doesn't exist yet" -- opendir fails with EACCES
+// here, not ENOENT, and mods_init must tell those apart rather than reporting "no mods" either
+// way. Skipped when running as root, since permission bits don't block root's own access and
+// the test would otherwise spuriously fail (or, worse, pass for the wrong reason).
+static bool an_unreadable_mods_directory_is_a_failure(void) {
+  if (geteuid() == 0) SKIP_TEST("running as root; directory permissions don't block access");
+  clear_mods();
+  const char *tmp = getenv("TMPDIR");
+  if (!tmp || !*tmp) tmp = "/tmp";
+  char dir[600];
+  snprintf(dir, sizeof dir, "%s/test_mods_root", tmp);
+  char cmd[700];
+  snprintf(cmd, sizeof cmd, "mkdir -p '%s'", dir);
+  ASSERT_EQ(system(cmd), 0);
+  ASSERT_EQ(chmod(dir, 0), 0);
+  bool ok = mods_init(dir, true);
+  ASSERT_EQ(chmod(dir, 0700), 0);   // restore first, so clear_mods()'s rm -rf can still remove it
+  ASSERT(!ok);
+  mods_shutdown();
+  return true;
 }
 
 static void a_mod_is_found_and_described(void) {
@@ -421,6 +530,48 @@ static void a_mismatched_ini_id_is_refused(void) {
   mods_shutdown();
 }
 
+// The id/folder cross-check must be a full-string comparison, not a prefix match: a weakened
+// check (e.g. strncmp with a short fixed length) would accept either of these, since both ids
+// share the first two bytes with their folder name.
+static void an_ini_id_that_is_a_prefix_of_the_folder_name_is_refused(void) {
+  clear_mods();
+  const char *root = make_mod("realfolderxyz", "id=realfolder\nname=X\napi=1\ngames=ages,seasons\n", "\n");
+  ASSERT(mods_init(root, true));
+  ASSERT_EQ(mods_count(), 0);
+  mods_shutdown();
+}
+
+static void a_folder_name_that_is_a_prefix_of_the_ini_id_is_refused(void) {
+  clear_mods();
+  const char *root = make_mod("realfolder", "id=realfolderxyz\nname=X\napi=1\ngames=ages,seasons\n", "\n");
+  ASSERT(mods_init(root, true));
+  ASSERT_EQ(mods_count(), 0);
+  mods_shutdown();
+}
+
+// id is required, symmetrically with api: a mod package should declare its own identity rather
+// than silently inheriting whatever folder a user happened to unpack or rename it into. The
+// message must be actionable, so it's checked for naming both sides of the disagreement.
+//
+// mods_count() == 0 alone cannot prove this dedicated check is what ran: with no "id=" line,
+// m.ini_id is simply the empty string, and the *separate* id-vs-folder mismatch check ("" !=
+// "noid") would refuse the mod anyway even with the dedicated required-id check deleted
+// (confirmed by mutation). So this checks for the specific "has no id=" wording, which only the
+// dedicated check prints -- the generic mismatch message never says that, even though it also
+// names "noid".
+static void a_missing_id_is_refused(void) {
+  clear_mods();
+  const char *root = make_mod("noid", "name=NoId\napi=1\ngames=ages,seasons\n", "\n");
+  cap_root = root;
+  cap_seasons = true;
+  char out[4096];
+  capture_stderr(run_cap_mods_init, out, sizeof out);
+  ASSERT_EQ(mods_count(), 0);
+  ASSERT(strstr(out, "noid") != NULL);
+  ASSERT(strstr(out, "has no id=") != NULL);
+  mods_shutdown();
+}
+
 // A folder name outside [a-z0-9-] is skipped before its mod.ini is even opened.
 static void a_badly_named_folder_is_skipped(void) {
   clear_mods();
@@ -448,35 +599,77 @@ static void a_non_numeric_api_is_refused(void) {
   mods_shutdown();
 }
 
-// Captures everything written to stderr while running `body`. Needed specifically for the test
-// below: a mod with no "games=" key is refused either way, because the later "not for this game"
-// check (ages/seasons both false) refuses it too -- so a bare mods_count() == 0 assertion cannot
-// tell "the dedicated no-supported-game check ran" apart from "it was deleted and the other check
-// happened to catch this case anyway". Confirmed by mutation: deleting that check left every
-// existing assertion passing.
-static void capture_stderr(void (*body)(void), char *out, size_t out_size) {
-  fflush(stderr);
-  char path[] = "/tmp/test_mods_stderr.XXXXXX";
-  int fd = mkstemp(path);
-  ASSERT(fd >= 0);
-  int saved = dup(fileno(stderr));
-  ASSERT(saved >= 0);
-  ASSERT(dup2(fd, fileno(stderr)) >= 0);
-  body();
-  fflush(stderr);
-  ASSERT(dup2(saved, fileno(stderr)) >= 0);
-  close(saved);
-  ASSERT(lseek(fd, 0, SEEK_SET) == 0);
-  ssize_t n = read(fd, out, out_size - 1);
-  ASSERT(n >= 0);
-  out[n] = 0;
-  close(fd);
-  unlink(path);
+// api= with nothing after the '=' is a present-but-empty value, not a present-and-valid one.
+// (Distinct from api=0 below: an empty value is rejected by the "value is non-empty" guard
+// before strtol's result is even consulted, so this alone does not exercise the v >= 1 bound.)
+static void an_empty_api_value_is_refused(void) {
+  clear_mods();
+  const char *root = make_mod("emptyapi", "id=emptyapi\nname=EmptyApi\napi=\ngames=ages,seasons\n", "\n");
+  ASSERT(mods_init(root, true));
+  ASSERT_EQ(mods_count(), 0);
+  mods_shutdown();
 }
 
-static const char *cap_root;
-static bool cap_seasons;
-static void run_cap_mods_init(void) { ASSERT(mods_init(cap_root, cap_seasons)); }
+// api=0 is a well-formed number, so it's the one case that actually exercises the "v >= 1"
+// threshold rather than the empty-value guard or the non-numeric endptr check. Confirmed by
+// mutation: an_empty_api_value_is_refused above still passes unchanged if this bound is
+// weakened to "v >= 0", since "" never reaches the comparison at all.
+static void an_api_of_zero_is_refused(void) {
+  clear_mods();
+  const char *root = make_mod("zeroapi", "id=zeroapi\nname=ZeroApi\napi=0\ngames=ages,seasons\n", "\n");
+  ASSERT(mods_init(root, true));
+  ASSERT_EQ(mods_count(), 0);
+  mods_shutdown();
+}
+
+// A mod.ini with no "name=" falls back to the (already-validated) folder name rather than
+// shipping with an empty display name.
+static void a_mod_without_a_name_falls_back_to_its_id(void) {
+  clear_mods();
+  const char *root = make_mod("noname", "id=noname\napi=1\ngames=ages,seasons\n", "\n");
+  ASSERT(mods_init(root, true));
+  ASSERT_EQ(mods_count(), 1);
+  ASSERT_EQ(strcmp(mods_name(0), "noname"), 0);
+  mods_shutdown();
+}
+
+// Mods ship in downloaded zips, where CRLF line endings are the likely case (zip tooling on
+// Windows, or an author who edited mod.ini there). Every key must still parse.
+static void crlf_line_endings_are_tolerated(void) {
+  clear_mods();
+  const char *root = make_mod("crlf", "id=crlf\r\nname=Crlf\r\napi=1\r\ngames=ages,seasons\r\n", "\n");
+  ASSERT(mods_init(root, true));
+  ASSERT_EQ(mods_count(), 1);
+  ASSERT_EQ(strcmp(mods_name(0), "Crlf"), 0);
+  mods_shutdown();
+}
+
+// A mod folder with no mod.ini at all (as opposed to one whose mod.ini fails to parse) must be
+// skipped, not treated as present-and-empty.
+//
+// mods_count() == 0 alone cannot prove read_ini's fopen-failure path is what refused it: a mod
+// with no mod.ini also has no id= and no api=, and both of *those* checks independently refuse
+// it too (confirmed by mutation: making read_ini report success on a missing file still left
+// mods_count() at 0, because the resulting all-defaults Mod has no id and an invalid api). So
+// this checks for the specific "has no mod.ini" message.
+static void a_folder_without_mod_ini_is_skipped(void) {
+  clear_mods();
+  const char *tmp = getenv("TMPDIR");
+  if (!tmp || !*tmp) tmp = "/tmp";
+  char root[600], dir[700], cmd[800];
+  snprintf(root, sizeof root, "%s/test_mods_root", tmp);
+  snprintf(dir, sizeof dir, "%s/bare", root);
+  snprintf(cmd, sizeof cmd, "mkdir -p '%s'", dir);
+  ASSERT_EQ(system(cmd), 0);
+  cap_root = root;
+  cap_seasons = true;
+  char out[4096];
+  capture_stderr(run_cap_mods_init, out, sizeof out);
+  ASSERT_EQ(mods_count(), 0);
+  ASSERT(strstr(out, "bare") != NULL);
+  ASSERT(strstr(out, "has no mod.ini") != NULL);
+  mods_shutdown();
+}
 
 // A mod that declares no game at all (or an unrecognised one) is a broken package, and must say
 // so explicitly on stderr rather than being refused as an accidental side effect of some other
@@ -508,15 +701,38 @@ static void a_substring_game_token_is_refused(void) {
   mods_shutdown();
 }
 
+// Unlike a wholly-unrecognised games= value (refused outright, above), one bad token among
+// otherwise-valid ones must not sink the whole mod: "games=ages,bogus" is Ages-only, not
+// nothing, but the typo must still be visible on stderr -- a silent "ages,seaons" installs a
+// mod that mysteriously never shows up in Seasons.
+static void an_unrecognised_game_token_is_reported_but_the_valid_one_still_loads(void) {
+  clear_mods();
+  const char *root = make_mod("partlybogus", "id=partlybogus\nname=PartlyBogus\napi=1\ngames=ages,bogus\n", "\n");
+  cap_root = root;
+  cap_seasons = false;                                   // Ages: the valid token
+  char out[4096];
+  capture_stderr(run_cap_mods_init, out, sizeof out);
+  ASSERT_EQ(mods_count(), 1);
+  ASSERT(strstr(out, "bogus") != NULL);
+
+  cap_root = root;
+  cap_seasons = true;                                     // Seasons: not named, so not loaded
+  capture_stderr(run_cap_mods_init, out, sizeof out);
+  ASSERT_EQ(mods_count(), 0);
+  mods_shutdown();
+}
+
 // Matches this project's ini conventions (settings_parse): leading whitespace, spaces around
 // '=', and an indented comment are all tolerated; unlike settings_parse's %255s, interior
-// spaces in a value (a mod's display name) survive.
+// spaces in a value (a mod's display name) survive. The comment itself contains an '=' (as if
+// a key were commented out), so this also exercises that the leading-whitespace-before-'#'
+// check is what's skipping it, not merely "a line with no '=' falls through anyway".
 static void whitespace_and_comments_are_tolerated(void) {
   clear_mods();
   const char *root = make_mod("spacey",
       "  id = spacey  \n"
       "  name = Hello World  \n"
-      "   # indented comment, with leading whitespace before the '#'\n"
+      "   # api=99 commented out, with leading whitespace before the '#'\n"
       "api=1\n"
       "games = ages , seasons \n",
       "\n");
@@ -531,26 +747,31 @@ static void whitespace_and_comments_are_tolerated(void) {
 // the tail leaked into a new line, it would override the real "api=1" declared earlier and the
 // mod would be refused as wanting a newer API than this build supports.
 //
-// mods.c reads lines into a 256-byte buffer, so fgets fills exactly 255 usable bytes before
-// returning without having seen a newline. The padding length below (250) is chosen so that
-// "note=" (5 bytes) plus the padding lands at exactly that 255-byte boundary, with "api=99\n"
-// starting clean on the far side of it -- the one split point where a leaked tail would be
-// re-parsed as the *exact* key "api" rather than some longer garbled key that no known field
-// matches. Confirmed by mutation: removing the discard-the-rest-of-the-line step and rerunning
-// with an unaligned (280-byte) padding did not fail this test, because the leaked fragment's key
-// was "<partial padding>api", not "api"; only this precise length makes the test discriminate.
+// mods.c reads lines into a buffer of some fixed size (256 bytes today), so fgets fills it to
+// one byte short of capacity before returning without having seen a newline. Rather than hard-
+// coding a padding length tied to that exact number -- which, confirmed by mutation, survives
+// simply changing the buffer size (e.g. to 512) alongside deleting the discard step, since the
+// hard-coded split point no longer lands on "api=99" either way -- this sweeps the padding length
+// over a wide range so that some iteration's split lands exactly on the "api=99" boundary for any
+// plausible buffer size, catching the bug regardless of the implementation's exact buffer size.
 static void an_overlong_line_does_not_leak_into_the_next_key(void) {
   clear_mods();
-  char padding[251];
-  memset(padding, 'x', sizeof padding - 1);
-  padding[sizeof padding - 1] = 0;
-  char ini[700];
-  snprintf(ini, sizeof ini,
-      "id=longline\nname=LongLine\napi=1\ngames=ages,seasons\nnote=%sapi=99\n", padding);
-  const char *root = make_mod("longline", ini, "\n");
-  ASSERT(mods_init(root, true));
-  ASSERT_EQ(mods_count(), 1);
-  mods_shutdown();
+  for (int pad = 1; pad <= 600; pad++) {
+    char padding[601];
+    memset(padding, 'x', (size_t)pad);
+    padding[pad] = 0;
+    char ini[900];
+    snprintf(ini, sizeof ini,
+        "id=longline\nname=LongLine\napi=1\ngames=ages,seasons\nnote=%sapi=99\n", padding);
+    const char *root = make_mod("longline", ini, "\n");
+    ASSERT(mods_init(root, true));
+    if (mods_count() != 1) {
+      fprintf(stderr, "FAIL %s:%d: an overlong line leaked into the next key at padding length %d\n",
+              __FILE__, __LINE__, pad);
+      exit(1);
+    }
+    mods_shutdown();
+  }
 }
 
 // A stray regular file sitting in the mods directory (not a mod folder at all) must be skipped
@@ -598,11 +819,22 @@ static void mods_load_in_alphabetical_order(void) {
 }
 
 // The 33rd valid mod must not vanish silently: the cap still applies (so loading stays bounded),
-// but it is the 33rd one specifically that is dropped, not just "scanning stopped early" --
-// which is why this creates MODS_MAX + 1 mods and checks the count lands exactly on MODS_MAX.
+// but it is the 33rd one specifically that is dropped, not just "scanning stopped early" -- a
+// distinction the previous version of this test (33 valid mods and nothing else) could not make,
+// since the two read the same either way. Two invalid entries -- a bad folder name and a stray
+// file -- are seeded ahead of the valid ones in sort order (uppercase 'B' and digit '0' both sort
+// before lowercase 'm' in the alphabetical scan order), so a cap that's really "the 32nd directory
+// entry, valid or not" would consume a slot on one of them and either miscount or load "m00" into
+// slot 1 instead of slot 0. The "N dropped" stderr line is also checked, since nothing did before.
 static void loading_stops_at_mods_max(void) {
   clear_mods();
-  const char *root = NULL;
+  const char *root = make_mod("Bad_Name", "id=Bad_Name\napi=1\ngames=ages,seasons\n", "\n");
+  char stray_path[700];
+  snprintf(stray_path, sizeof stray_path, "%s/0alsostray", root);
+  FILE *sf = fopen(stray_path, "wb");
+  ASSERT(sf);
+  fputs("not a mod\n", sf);
+  fclose(sf);
   for (int i = 0; i < MODS_MAX + 1; i++) {
     char id[16];
     snprintf(id, sizeof id, "m%02d", i);
@@ -610,8 +842,13 @@ static void loading_stops_at_mods_max(void) {
     snprintf(ini, sizeof ini, "id=%s\napi=1\ngames=ages,seasons\n", id);
     root = make_mod(id, ini, "\n");
   }
-  ASSERT(mods_init(root, true));
+  cap_root = root;
+  cap_seasons = true;
+  char out[8192];
+  capture_stderr(run_cap_mods_init, out, sizeof out);
   ASSERT_EQ(mods_count(), MODS_MAX);
+  ASSERT_EQ(strcmp(mods_id(0), "m00"), 0);               // the invalid entries consumed no slot
+  ASSERT(strstr(out, "1 mod(s) dropped") != NULL);
   mods_shutdown();
 }
 
@@ -627,18 +864,31 @@ int main(void) {
   RUN(overlay_survives_a_huge_string);
   RUN(overlay_draws_a_partially_clipped_glyph);
   RUN_SKIPPABLE(overlay_draws_an_item_icon);
+  RUN(mods_id_valid_rejects_hostile_input);
   RUN(a_missing_mods_directory_is_not_a_failure);
   RUN(an_empty_mods_directory_has_no_mods);
+  RUN(mods_init_rejects_a_null_directory);
+  RUN(mods_init_rejects_an_empty_directory_string);
+  RUN_SKIPPABLE(an_unreadable_mods_directory_is_a_failure);
   RUN(a_mod_is_found_and_described);
   RUN(a_newer_api_is_refused);
   RUN(the_other_games_mod_is_skipped);
   RUN(a_traversing_ini_id_is_refused);
   RUN(a_mismatched_ini_id_is_refused);
+  RUN(an_ini_id_that_is_a_prefix_of_the_folder_name_is_refused);
+  RUN(a_folder_name_that_is_a_prefix_of_the_ini_id_is_refused);
+  RUN(a_missing_id_is_refused);
   RUN(a_badly_named_folder_is_skipped);
   RUN(a_missing_api_is_refused);
   RUN(a_non_numeric_api_is_refused);
+  RUN(an_empty_api_value_is_refused);
+  RUN(an_api_of_zero_is_refused);
+  RUN(a_mod_without_a_name_falls_back_to_its_id);
+  RUN(crlf_line_endings_are_tolerated);
+  RUN(a_folder_without_mod_ini_is_skipped);
   RUN(a_missing_games_is_refused);
   RUN(a_substring_game_token_is_refused);
+  RUN(an_unrecognised_game_token_is_reported_but_the_valid_one_still_loads);
   RUN(whitespace_and_comments_are_tolerated);
   RUN(an_overlong_line_does_not_leak_into_the_next_key);
   RUN(a_stray_file_is_skipped);
