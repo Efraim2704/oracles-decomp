@@ -1269,7 +1269,10 @@ static void a_directory_named_mod_ini_is_refused(void) {
   capture_stderr(run_cap_mods_init, out, sizeof out);
   ASSERT(cap_result);
   ASSERT_EQ(mods_count(), 0);
-  ASSERT(strstr(out, "has no mod.ini") != NULL);
+  // Specifically not "has no mod.ini": the file exists, it is just not a regular file, and an
+  // author told the former would go looking for a missing file that is right there.
+  ASSERT(strstr(out, "not a regular file") != NULL);
+  ASSERT(strstr(out, "has no mod.ini") == NULL);
   mods_shutdown();
 }
 

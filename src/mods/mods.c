@@ -238,8 +238,16 @@ static bool load_one(const char *dir, const char *name, Mod *m) {
   // succeeds (reading as if empty), which previously produced a confusing "has no id=" instead of
   // "has no mod.ini", where Linux's fopen just fails outright for the same input.
   struct stat ini_st;
-  if (stat(ini_path, &ini_st) != 0 || !S_ISREG(ini_st.st_mode)) {
-    fprintf(stderr, "mods: '%s' has no mod.ini, skipping\n", name);
+  // Distinguish absent from present-but-unusable. A FIFO, or a symlink to a device, is a
+  // mispackaged or hostile mod; telling its author "has no mod.ini" about a file that plainly
+  // exists sends them looking for the wrong problem. Test the stat result rather than errno,
+  // which is untouched when stat succeeds and S_ISREG is what fails.
+  if (stat(ini_path, &ini_st) != 0) {
+    fprintf(stderr, "mods: '%s' has no mod.ini (%s), skipping\n", name, strerror(errno));
+    return false;
+  }
+  if (!S_ISREG(ini_st.st_mode)) {
+    fprintf(stderr, "mods: '%s' has a mod.ini that is not a regular file, skipping\n", name);
     return false;
   }
 
