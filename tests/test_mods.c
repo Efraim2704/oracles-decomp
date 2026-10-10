@@ -11,6 +11,16 @@
 // links oraclesmods + oraclesitem only, not the engine, so it cannot call oracles_read_file --
 // linking the engine into the mod library is exactly what the design forbids.
 
+// unit.h's SKIP is exit(77), which ends the whole process. Every other *_tas/*_wide-style test
+// file has exactly one ROM-dependent test, so that's harmless there. This file mixes ROM-free
+// tests with ROM-dependent ones, and will keep growing more of each as later tasks add tests, so
+// exiting mid-run would silently stop running every test registered after the one that skips --
+// and ctest would still report "Skipped", not a failure. NOSKIP defers the skip to the end of
+// main() instead: it prints the same line SKIP does and records that something was skipped, but
+// returns from the test so the rest of main() keeps running. Do not "simplify" this back to SKIP.
+static int skipped;
+#define NOSKIP(msg) do { printf("skip: %s\n", msg); skipped = 1; return; } while (0)
+
 // The vendored interpreter builds and runs: the floor everything else stands on.
 static void lua_runs(void) {
   lua_State *L = luaL_newstate();
@@ -139,7 +149,7 @@ static void overlay_survives_a_huge_string(void) {
 static void overlay_draws_an_item_icon(void) {
   size_t n;
   uint8_t *rom = read_file(GAME_ROM_DIR "/Legend of Zelda, The - Oracle of Seasons (USA, Australia).gbc", &n);
-  if (!rom) SKIP("ROM not present");
+  if (!rom) NOSKIP("ROM not present");
   static uint8_t c600[256];
   memset(c600, 1, sizeof c600);
   static ModOverlay o;
@@ -163,5 +173,5 @@ int main(void) {
   RUN(overlay_draws_text);
   RUN(overlay_survives_a_huge_string);
   RUN(overlay_draws_an_item_icon);
-  return 0;
+  return skipped ? 77 : 0;
 }
