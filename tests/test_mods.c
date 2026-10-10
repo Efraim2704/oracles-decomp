@@ -5,6 +5,7 @@
 #include "mods/mods.h"
 #include "mods/api.h"
 #include "mods/overlay.h"
+#include "mods/sandbox.h"
 #include "ui/ui.h"
 #include "wide/item.h"
 #include <signal.h>
@@ -2363,30 +2364,264 @@ static void a_gc_finalizer_cannot_be_armed_mid_run(void) {
   mods_shutdown();
 }
 
-// CRITICAL: load()'s mode argument segfaulted the host on the reviewer's very first fuzz trial
-// of a corrupted binary dump -- worse than any hang this module exists to prevent. The fix
-// (l_load_text_only) forces mode "t" regardless of what's requested; this reproduces the
-// scenario with a deliberately corrupted chunk signature, under alarm() since a regression here
-// would be a crash, not necessarily a clean hang this alarm would catch -- but if a *partial*
-// regression reintroduced a hang instead of a crash, this still catches that too.
-static void load_with_a_binary_chunk_mode_is_refused_safely(void) {
+// Task 7, superseding the above: load()'s mode argument segfaulted the host on the reviewer's
+// very first fuzz trial of a corrupted binary dump -- worse than any hang this module exists to
+// prevent. Task 5's fix (a since-deleted wrapper, l_load_text_only) forced mode "t" regardless of
+// what was requested; Task 7's sandbox review went further and withholds `load` outright, since
+// nothing in the planned API needs a mod to compile Lua source at runtime at all. This replaces
+// the old binary-chunk reproduction (asserting the wrapper's text-mode behaviour) with the
+// simpler, stronger claim that actually holds now: `load` itself is gone, so the crash it used to
+// risk is unreachable regardless of what argument anyone could still pass it.
+static void load_is_withheld(void) {
   clear_mods();
   const char *root = make_mod("loadbin", "id=loadbin\napi=1\ngames=ages,seasons\n",
-      "local corrupted = string.char(27) .. 'Lua' .. string.rep(string.char(255), 200)\n"
-      "local f, err = load(corrupted, nil, 'b')\n"
-      "if f then error('a binary-mode load should have been refused') end\n"
-      "oracles.log('binary load refused: ' .. tostring(err))\n");
-  cap_root = root;
-  cap_seasons = true;
-  char out[4096];
-  signal(SIGALRM, mods_test_alarm_handler);
-  alarm(10);
-  capture_stderr(run_cap_mods_init, out, sizeof out);
-  alarm(0);
-  ASSERT(cap_result);
+      "if load ~= nil then error('load is reachable') end\n"
+      "oracles.log('load is unreachable')\n");
+  ASSERT(mods_init(root, true));
   ASSERT_EQ(mods_count(), 1);
+  ASSERT(mods_enabled(0));
   ASSERT(mods_last_log());
-  ASSERT(strstr(mods_last_log(), "binary load refused") != NULL);
+  ASSERT(strstr(mods_last_log(), "load is unreachable") != NULL);
+  mods_shutdown();
+}
+
+// ---------------------------------------------------------------------------
+// Task 7: the sandbox. The spec grants a mod the standard string, table and math libraries plus
+// oracles, and nothing else -- io, os, require/package, load/loadfile/dofile (dofile already
+// covered above), string.dump, print/warn and utf8 are all withheld by mod_open_libs_hardened.
+// Each gets its own small test below, one assertion per name, so that deleting any single entry
+// from sandbox.c's `withheld` array makes exactly one test fail and names which entry is gone --
+// not a shared fixture whose one failure could be any of several missing nils at once.
+// ---------------------------------------------------------------------------
+
+static void io_is_withheld(void) {
+  clear_mods();
+  const char *root = make_mod("noio", "id=noio\napi=1\ngames=ages,seasons\n",
+      "if io ~= nil then error('io is reachable') end\n"
+      "oracles.log('io is unreachable')\n");
+  ASSERT(mods_init(root, true));
+  ASSERT_EQ(mods_count(), 1);
+  ASSERT(mods_enabled(0));
+  ASSERT(mods_last_log());
+  ASSERT(strstr(mods_last_log(), "io is unreachable") != NULL);
+  mods_shutdown();
+}
+
+// os is withheld entirely, not merely the dangerous members (os.exit, os.execute) -- see
+// mod_open_libs_hardened's own comment for why a partial allow-list was rejected. One
+// consequence that outlives this task: no os.time()/os.clock() either, so a per-frame timer
+// (the follow-up plan's speedrun-timer mod) must count frames instead.
+static void os_is_withheld(void) {
+  clear_mods();
+  const char *root = make_mod("noos", "id=noos\napi=1\ngames=ages,seasons\n",
+      "if os ~= nil then error('os is reachable') end\n"
+      "oracles.log('os is unreachable')\n");
+  ASSERT(mods_init(root, true));
+  ASSERT_EQ(mods_count(), 1);
+  ASSERT(mods_enabled(0));
+  ASSERT(mods_last_log());
+  ASSERT(strstr(mods_last_log(), "os is unreachable") != NULL);
+  mods_shutdown();
+}
+
+static void require_is_withheld(void) {
+  clear_mods();
+  const char *root = make_mod("norequire", "id=norequire\napi=1\ngames=ages,seasons\n",
+      "if require ~= nil then error('require is reachable') end\n"
+      "oracles.log('require is unreachable')\n");
+  ASSERT(mods_init(root, true));
+  ASSERT_EQ(mods_count(), 1);
+  ASSERT(mods_enabled(0));
+  ASSERT(mods_last_log());
+  ASSERT(strstr(mods_last_log(), "require is unreachable") != NULL);
+  mods_shutdown();
+}
+
+static void package_is_withheld(void) {
+  clear_mods();
+  const char *root = make_mod("nopackage", "id=nopackage\napi=1\ngames=ages,seasons\n",
+      "if package ~= nil then error('package is reachable') end\n"
+      "oracles.log('package is unreachable')\n");
+  ASSERT(mods_init(root, true));
+  ASSERT_EQ(mods_count(), 1);
+  ASSERT(mods_enabled(0));
+  ASSERT(mods_last_log());
+  ASSERT(strstr(mods_last_log(), "package is unreachable") != NULL);
+  mods_shutdown();
+}
+
+// loadfile reaches the exact same binary-chunk crash load() used to, via luaL_loadfile
+// internally, with no mode argument a caller could even force to "t" -- withheld outright for
+// the same reason load() now is, rather than wrapped.
+static void loadfile_is_withheld(void) {
+  clear_mods();
+  const char *root = make_mod("noloadfile", "id=noloadfile\napi=1\ngames=ages,seasons\n",
+      "if loadfile ~= nil then error('loadfile is reachable') end\n"
+      "oracles.log('loadfile is unreachable')\n");
+  ASSERT(mods_init(root, true));
+  ASSERT_EQ(mods_count(), 1);
+  ASSERT(mods_enabled(0));
+  ASSERT(mods_last_log());
+  ASSERT(strstr(mods_last_log(), "loadfile is unreachable") != NULL);
+  mods_shutdown();
+}
+
+// print writes straight to this process's own stdout, the exact channel ctest's own output (and
+// this suite's line-buffered "ok <test>" lines) depends on -- oracles.log is the facility a mod
+// actually has for this.
+static void print_is_withheld(void) {
+  clear_mods();
+  const char *root = make_mod("noprint", "id=noprint\napi=1\ngames=ages,seasons\n",
+      "if print ~= nil then error('print is reachable') end\n"
+      "oracles.log('print is unreachable')\n");
+  ASSERT(mods_init(root, true));
+  ASSERT_EQ(mods_count(), 1);
+  ASSERT(mods_enabled(0));
+  ASSERT(mods_last_log());
+  ASSERT(strstr(mods_last_log(), "print is unreachable") != NULL);
+  mods_shutdown();
+}
+
+// warn is Lua 5.4's addition to lbaselib.c (not present in earlier Lua tasks' own enumeration of
+// what luaL_openlibs grants): same host-stderr-writing hazard class as print, same reasoning.
+static void warn_is_withheld(void) {
+  clear_mods();
+  const char *root = make_mod("nowarn", "id=nowarn\napi=1\ngames=ages,seasons\n",
+      "if warn ~= nil then error('warn is reachable') end\n"
+      "oracles.log('warn is unreachable')\n");
+  ASSERT(mods_init(root, true));
+  ASSERT_EQ(mods_count(), 1);
+  ASSERT(mods_enabled(0));
+  ASSERT(mods_last_log());
+  ASSERT(strstr(mods_last_log(), "warn is unreachable") != NULL);
+  mods_shutdown();
+}
+
+// utf8 is not one of the three libraries the spec grants -- withheld because it was never
+// granted, not because it was found unsafe on its own.
+static void utf8_is_withheld(void) {
+  clear_mods();
+  const char *root = make_mod("noutf8", "id=noutf8\napi=1\ngames=ages,seasons\n",
+      "if utf8 ~= nil then error('utf8 is reachable') end\n"
+      "oracles.log('utf8 is unreachable')\n");
+  ASSERT(mods_init(root, true));
+  ASSERT_EQ(mods_count(), 1);
+  ASSERT(mods_enabled(0));
+  ASSERT(mods_last_log());
+  ASSERT(strstr(mods_last_log(), "utf8 is unreachable") != NULL);
+  mods_shutdown();
+}
+
+// string.dump is a field inside the one library actually granted, not a global of its own, so it
+// needs its own check rather than riding along with load_is_withheld above: a mutation that
+// re-adds load to the withheld array but forgets string.dump specifically would otherwise pass
+// every other test in this file.
+static void string_dump_is_withheld(void) {
+  clear_mods();
+  const char *root = make_mod("nodump", "id=nodump\napi=1\ngames=ages,seasons\n",
+      "if string.dump ~= nil then error('string.dump is reachable') end\n"
+      "oracles.log('string.dump is unreachable')\n");
+  ASSERT(mods_init(root, true));
+  ASSERT_EQ(mods_count(), 1);
+  ASSERT(mods_enabled(0));
+  ASSERT(mods_last_log());
+  ASSERT(strstr(mods_last_log(), "string.dump is unreachable") != NULL);
+  mods_shutdown();
+}
+
+// Defense-in-depth, forward-looking: with `require` and `package` both nil, nothing in a mod's
+// own Lua can reach package.loaded today regardless of whether it's scrubbed -- so this cannot be
+// tested through a mod's main.lua the way the debug/coroutine require-resurrection tests above
+// are. It is tested here instead by reading the registry's real LUA_LOADED_TABLE directly via the
+// C API (not through the "package" global, which is nil and so proves nothing either way about
+// the table underneath it), confirming every withheld name mod_open_libs_hardened's own list
+// clears is actually absent from the table itself, not merely absent from the global that happens
+// to expose it today. This is what keeps the defence alive if a later change ever restores
+// `require` without separately revisiting mod_open_libs_hardened.
+static void package_loaded_is_scrubbed_for_every_withheld_name(void) {
+  lua_State *L = luaL_newstate();
+  ASSERT(L);
+  mod_open_libs_hardened(L);
+  luaL_getsubtable(L, LUA_REGISTRYINDEX, LUA_LOADED_TABLE);
+  static const char *const withheld[] = {
+    "debug", "coroutine", "dofile", "loadfile", "io", "os", "require", "package",
+    "load", "print", "warn", "utf8",
+  };
+  for (size_t i = 0; i < sizeof withheld / sizeof withheld[0]; i++) {
+    lua_getfield(L, -1, withheld[i]);
+    ASSERT(lua_isnil(L, -1));
+    lua_pop(L, 1);
+  }
+  lua_pop(L, 1);
+  lua_close(L);
+}
+
+// The spec's sandbox, demonstrated end to end by a mod that actively tries to escape it: checks
+// every withheld name is absent AND that every granted library is both present and actually
+// works. Correction from the original plan sketch: asserting mods_count() == 1 alone is no
+// longer the signal its own comment once claimed ("it loaded, so none of those existed") --
+// since Task 6, a mod whose own code *errors* is also counted, still listed with
+// mods_enabled() false, so mods_count() == 1 is true either way. mods_enabled(0) plus the log
+// line are the real pair: proof this mod's main.lua actually ran every check and reached its
+// final oracles.log call, not that it merely got a slot. And checking only that the blocked
+// names are absent would equally pass a sandbox that nils everything, including string/table/
+// math/oracles themselves -- so this also confirms the granted libraries are present and a
+// representative function from each actually works, not just that they're non-nil.
+static void the_sandbox_holds(void) {
+  clear_mods();
+  const char *root = make_mod("nosy",
+      "id=nosy\nname=Nosy\napi=1\ngames=ages,seasons\n",
+      "if io ~= nil then error('io reachable') end\n"
+      "if os ~= nil then error('os reachable') end\n"
+      "if require ~= nil then error('require reachable') end\n"
+      "if package ~= nil then error('package reachable') end\n"
+      "if load ~= nil then error('load reachable') end\n"
+      "if loadfile ~= nil then error('loadfile reachable') end\n"
+      "if dofile ~= nil then error('dofile reachable') end\n"
+      "if debug ~= nil then error('debug reachable') end\n"
+      "if coroutine ~= nil then error('coroutine reachable') end\n"
+      "if print ~= nil then error('print reachable') end\n"
+      "if warn ~= nil then error('warn reachable') end\n"
+      "if utf8 ~= nil then error('utf8 reachable') end\n"
+      "if string.dump ~= nil then error('string.dump reachable') end\n"
+      "if string == nil or table == nil or math == nil or oracles == nil then\n"
+      "  error('a granted library is missing')\n"
+      "end\n"
+      "if string.upper('a') ~= 'A' then error('string does not work') end\n"
+      "if table.concat({'a', 'b'}) ~= 'ab' then error('table does not work') end\n"
+      "if math.floor(1.5) ~= 1 then error('math does not work') end\n"
+      "oracles.log('sandboxed')\n");
+  ASSERT(mods_init(root, true));
+  ASSERT_EQ(mods_count(), 1);
+  ASSERT(mods_enabled(0));
+  ASSERT(mods_last_log());
+  ASSERT(strstr(mods_last_log(), "sandboxed") != NULL);
+  mods_shutdown();
+}
+
+// The full inventory, read rather than reasoned about: dumps every key in _G from inside a
+// loaded mod's own live environment, sorted, so the exact surface a mod can see is pinned
+// directly against the expected set -- not reconstructed from a blocklist that was assumed
+// complete because it looked complete. This is literally the fixture the task asked for: run it,
+// read the list, decide name by name. It is also how "warn" (Lua 5.4's addition to lbaselib.c,
+// not named anywhere in this file before Task 7) was actually found, rather than reasoned about
+// in the abstract -- the first run of this exact test, before mod_open_libs_hardened withheld it,
+// printed it in the list.
+static void the_global_environment_is_exactly_the_granted_set(void) {
+  clear_mods();
+  const char *root = make_mod("inventory", "id=inventory\napi=1\ngames=ages,seasons\n",
+      "local names = {}\n"
+      "for k in pairs(_G) do names[#names + 1] = tostring(k) end\n"
+      "table.sort(names)\n"
+      "oracles.log(table.concat(names, ','))\n");
+  ASSERT(mods_init(root, true));
+  ASSERT_EQ(mods_count(), 1);
+  ASSERT(mods_enabled(0));
+  ASSERT(mods_last_log());
+  ASSERT_EQ(strcmp(mods_last_log(),
+      "_G,_VERSION,assert,collectgarbage,error,getmetatable,ipairs,math,next,oracles,"
+      "pairs,pcall,rawequal,rawget,rawlen,rawset,select,setmetatable,string,table,"
+      "tonumber,tostring,type,xpcall"), 0);
   mods_shutdown();
 }
 
@@ -2770,9 +3005,21 @@ int main(void) {
   RUN(a_gc_finalizer_cannot_be_armed_at_load_time);
   RUN(a_gc_finalizer_cannot_be_armed_before_a_refusal);
   RUN(a_gc_finalizer_cannot_be_armed_mid_run);
-  RUN(load_with_a_binary_chunk_mode_is_refused_safely);
+  RUN(load_is_withheld);
   RUN(a_binary_main_lua_is_refused_safely);
   RUN(dofile_is_withheld);
+  RUN(io_is_withheld);
+  RUN(os_is_withheld);
+  RUN(require_is_withheld);
+  RUN(package_is_withheld);
+  RUN(loadfile_is_withheld);
+  RUN(print_is_withheld);
+  RUN(warn_is_withheld);
+  RUN(utf8_is_withheld);
+  RUN(string_dump_is_withheld);
+  RUN(package_loaded_is_scrubbed_for_every_withheld_name);
+  RUN(the_sandbox_holds);
+  RUN(the_global_environment_is_exactly_the_granted_set);
   RUN(a_cheap_infinite_loop_is_caught_by_the_instruction_budget_specifically);
   RUN(the_live_oracles_table_in_a_loaded_mod_matches_the_registry_exactly);
   RUN(a_hostile_tostring_metamethod_does_not_hang_error_reporting);

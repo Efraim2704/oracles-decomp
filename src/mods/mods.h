@@ -10,12 +10,13 @@
 // own comment below for exactly where the line between "not a mod for this game" (skipped,
 // occupies no slot) and "a real mod whose payload failed" (listed, mods_enabled() false) sits.
 // The Lua API surface a mod sees (the `oracles` table) lives in api.h/api.c, not
-// here. What main.lua is permitted to do beyond that containment -- today it still gets io, os
-// and require, which the approved sandbox design (string/table/math only) does not grant -- is
-// still to be narrowed by a later task; nothing in the shipped app links this module yet either
-// way. "Linked into the apps only, never into the engine libraries" is the eventual design
-// constraint this module is built to hold, but today only test_mods links oraclesmods; no app
-// target does yet. Both of those are stated here as intent, not as present fact.
+// here. What main.lua is permitted to do beyond that containment is the spec's sandbox (the
+// standard string, table and math libraries, plus oracles): io, os, require/package,
+// load/loadfile/dofile, string.dump, print/warn and utf8 are all withheld (see
+// mod_open_libs_hardened in sandbox.c for exactly which and why); nothing in the shipped app
+// links this module yet either way. "Linked into the apps only, never into the engine libraries"
+// is the eventual design constraint this module is built to hold, but today only test_mods links
+// oraclesmods; no app target does yet. That is stated here as intent, not as present fact.
 #include <stdbool.h>
 #include <stddef.h>
 

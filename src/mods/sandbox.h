@@ -1,9 +1,10 @@
 #pragma once
 // The security-critical containment a mod's Lua state runs under: a bounded custom allocator,
 // an instruction-count + wall-clock budget enforced via a yielding hook, and a hardened library
-// set with specific holes closed or wrapped (see sandbox.c for exactly which, and why each one
-// breaks *this* module's own deliverable rather than merely overlapping with Task 7's eventual
-// sandbox). Split out of mods.c into its own header/source pair because mod_resume_budgeted is
+// set -- the standard string, table and math libraries plus the oracles table mods_api_open
+// installs separately, with everything else luaL_openlibs would otherwise grant either withheld
+// outright or (setmetatable only) wrapped -- see sandbox.c for exactly which names and why each
+// one is gone. Split out of mods.c into its own header/source pair because mod_resume_budgeted is
 // also what a later per-frame callback runner (Task 8) needs to call from outside mods.c, and
 // because this is one cohesive unit with a clean seam, not because mods.c's own discovery/
 // mod.ini logic has anything to do with running Lua.
@@ -30,9 +31,11 @@ typedef struct {
 // Passed to lua_newstate as the allocator function; never called directly.
 void *mod_lua_alloc(void *ud, void *ptr, size_t osize, size_t nsize);
 
-// Opens the standard libraries for a mod's state, with specific holes closed or wrapped -- see
-// sandbox.c for exactly which, and why. Not Task 7's sandbox (string/table/math only): io, os
-// and package/require stay fully open.
+// Opens the standard libraries for a mod's state, then cuts it down to the spec's sandbox: the
+// standard string, table and math libraries (oracles is installed separately, by mods_api_open)
+// and nothing else -- io, os, require/package, load/loadfile/dofile, string.dump, print/warn and
+// utf8 are all withheld; setmetatable is wrapped, not withheld, to additionally reject a __gc
+// metatable field. See sandbox.c for exactly which names and why each one is gone.
 void mod_open_libs_hardened(struct lua_State *L);
 
 // The shared instruction total and wall-clock deadline mod_resume_budgeted enforces by default

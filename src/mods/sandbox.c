@@ -363,34 +363,23 @@ static int l_setmetatable_no_gc(lua_State *L) {
   return 1;
 }
 
-// load()'s mode argument lets a caller request binary-chunk loading, and a corrupted binary dump
-// crashes the host outright -- confirmed by fuzzing: a SIGSEGV on the first trial of
-// `load(corrupted_dump, nil, 'b')`, strictly worse than any hang this module exists to prevent.
-// There is no legitimate reason a mod ships pre-compiled bytecode, so this forces mode "t"
-// regardless of what's requested, by calling through to the real `load` -- captured as this
-// closure's one upvalue before it replaces the global -- with the mode argument always
-// overridden. Preserves the "env argument was never passed" vs "env argument was explicitly nil"
-// distinction the real `load` itself cares about (lua_isnone, not lua_isnil) by only forwarding
-// an env argument when one was actually given.
-static int l_load_text_only(lua_State *L) {
-  int nargs = lua_gettop(L);
-  bool has_env = nargs >= 4 && !lua_isnone(L, 4);
-  lua_pushvalue(L, lua_upvalueindex(1));          // the real `load`
-  lua_pushvalue(L, 1);                            // chunk
-  if (nargs >= 2) lua_pushvalue(L, 2); else lua_pushnil(L);  // chunkname (or nil default)
-  lua_pushliteral(L, "t");                        // mode, forced
-  int call_nargs = 3;
-  if (has_env) { lua_pushvalue(L, 4); call_nargs = 4; }
-  lua_call(L, call_nargs, LUA_MULTRET);
-  return lua_gettop(L) - nargs;
-}
-
-// Withholds and wraps the standard-library surface that plain luaL_openlibs would otherwise
-// grant, closing holes found while building the containment above -- none of this is a start on
-// Task 7's full sandbox (string/table/math only); each entry is a specific, load-bearing defect
-// in *this* task's own deliverable (a budget that actually bounds a mod's CPU use and a host that
-// does not crash or hang loading one), closed here because leaving it open breaks that mechanism
-// today, not because it happens to overlap with where the eventual sandbox line falls:
+// Task 7's sandbox review decided `load` should be withheld outright rather than kept wrapped to
+// force text mode (the fix this function used to apply, l_load_text_only, now deleted): nothing
+// in the planned API needs a mod to compile Lua source at runtime at all, so removing `load`
+// removes the whole bytecode-chunk surface -- the thing that actually crashed the host (a SIGSEGV
+// on the first fuzz trial of `load(corrupted_dump, nil, 'b')`) -- rather than leaving it reachable
+// and continuing to police every call for the one argument that made it dangerous. `string.dump`
+// is withheld alongside it for the same reason the review raised it: once nothing can call `load`
+// on a mod's output, `string.dump` is inert on its own, but leaving a dump/load pair that would
+// become reassemblable again the moment either one is restored is a pointless risk for a function
+// nothing in the planned API has a use for either.
+//
+// Withholds the standard-library surface that plain luaL_openlibs would otherwise grant beyond
+// what the spec's sandbox actually names -- "the standard string, table and math libraries" plus
+// the oracles table mods_api_open installs separately -- closing both holes found while building
+// the earlier CPU/memory containment above (which predate this list and remain load-bearing
+// regardless of where the sandbox line falls) and the filesystem/process/host-channel surface the
+// spec never grants a mod in the first place:
 //
 // - "debug": debug.sethook() lets ordinary Lua code replace or remove *any* hook set from C,
 //   including mod_instruction_limit_hook. A single `debug.sethook()` call at the top of main.lua
@@ -409,50 +398,90 @@ static int l_load_text_only(lua_State *L) {
 //   not letting a mod create new threads at all does, for now. See the long comment above
 //   ModBudget for what to do if a later task needs this library back.
 //
-// - "dofile": the same binary-chunk crash load() has (see l_load_text_only above) reaches the
-//   host identically through dofile(), which calls luaL_loadfile with the same unrestricted
-//   default mode internally and there is no argument to override it through. Found while fixing
-//   load() specifically, not separately reported; withheld outright rather than wrapped, since a
-//   mod has no legitimate need to execute an arbitrary file straight off disk (distinct from the
-//   already-open io library's ordinary read/write primitives).
+// - "dofile" and "loadfile": both reach the exact same binary-chunk crash `load` did, via
+//   luaL_loadfile(x) internally, with no mode argument a caller could even force to "t" the way
+//   l_load_text_only used to for `load` -- found while fixing `load` specifically, not separately
+//   reported. Withheld outright rather than wrapped for the same reason `load` now is: a mod has
+//   no legitimate need to execute an arbitrary file straight off disk or compile one, distinct
+//   from the ordinary read/write primitives "io" would otherwise offer (and "io" itself is
+//   withheld below besides).
 //
-// setmetatable and load are replaced with l_setmetatable_no_gc / l_load_text_only above rather
-// than withheld outright, since both are otherwise genuinely useful and safe -- see each
-// function's own comment for what it closes and why wrapping, not removal, is correct there.
+// - "io", "os": the spec's sandbox grants string, table and math -- nothing in either of these.
+//   Beyond that, both are a direct route around the CPU containment this module otherwise
+//   enforces: os.exit() takes the whole host process down outright with no error for anything
+//   here to catch, and a blocking call (os.execute("sleep 30"), any io read/write against a slow
+//   or adversarial filesystem path) stalls past the wall-clock deadline with no VM instruction
+//   ever executing for mod_instruction_limit_hook to fire on, since that hook only runs between
+//   Lua opcodes, never while a C library call it's inside of is blocked. This is also why no
+//   number of per-name wrappers under "os" or "io" was considered as an alternative to withholding
+//   each outright: os.clock()/os.time() are individually harmless, but the module as a whole is
+//   not something a partial allow-list can make safe without re-deriving io's and os's entire
+//   surface by hand. One consequence worth recording here because nothing else will: with "os"
+//   gone, a mod has no os.time()/os.clock() either, so anything a mod needs to measure must count
+//   frames instead -- frame-accurate by construction, not a workaround.
 //
-// Everything else luaL_openlibs would open is opened exactly as before -- io, os and
-// package/require stay fully available, unlike the eventual sandbox (see this function's call
-// site). package.loadlib exists but is inert on every platform this project builds for, only
-// because LUA_USE_DLOPEN is off in loadlib.c's build configuration (CMakeLists.txt does not
-// define it) -- enabling dynamic C library loading there would hand a mod a second route to
-// debug.sethook (and everything else "debug" closes above) via any system library that exports
-// it, so that flag must stay off for as long as mods run unsandboxed C code is a possibility.
+// - "require", "package": require() reads files off disk via package.path/package.searchers, the
+//   same filesystem reach "io" and "dofile" are withheld for; package itself exposes
+//   package.loadlib (inert today only because LUA_USE_DLOPEN is off in loadlib.c's build
+//   configuration -- CMakeLists.txt does not define it -- which must stay off for as long as mods
+//   run unsandboxed C code is a possibility, since enabling it would hand a mod a second route to
+//   debug.sethook, and everything else "debug" closes above, through any system library that
+//   happens to export it) plus package.path/package.cpath/package.preload/package.searchers, none
+//   of which the spec's sandbox grants either.
 //
-// "debug", "coroutine" and "dofile" are each removed from both the globals table and
-// package.loaded (require() checks package.loaded first, so nil-ing only the global would leave
-// e.g. `require('coroutine')` able to resurrect it) -- nothing else the standard library opens
-// re-registers any of these three names under either key, so this makes all of them unreachable
-// by any ordinary means.
+// - "print", "warn": both write directly to this process's own stdout/stderr, a channel neither
+//   the spec's sandbox nor oracles.log (the facility a mod actually has for this) ever grants a
+//   mod -- and, concretely, the very channel this test binary's own capture_stderr mechanism and
+//   ctest's own output rely on, so a mod writing there corrupts the thing watching it rather than
+//   merely being unauthorised. oracles.log already covers every legitimate use "print" or "warn"
+//   would have had.
+//
+// - "utf8": luaL_openlibs installs it, but the spec's sandbox names string, table and math only --
+//   "utf8" is simply not one of the three, with no CPU/memory/host-reach defect of its own driving
+//   this one; it is withheld because it was never granted, not because it was found unsafe.
+//
+// setmetatable is replaced with l_setmetatable_no_gc above rather than withheld outright, since it
+// is otherwise genuinely useful and safe for the one thing it closes -- see that function's own
+// comment for what and why wrapping, not removal, is correct there (`load`, by contrast, had no
+// comparably narrow fix once withholding it outright was on the table at all -- see above).
+//
+// Every withheld name here is removed from both the globals table and package.loaded (require()
+// checks package.loaded first, so nil-ing only the global would leave e.g.
+// `require('coroutine')` able to resurrect it) -- a defence that is currently moot in its own
+// right, since "require" is itself withheld and so nothing in a mod's Lua can call it at all, but
+// kept anyway (two lines per name) so it still holds if a later change ever restores "require"
+// without separately revisiting this function. Several names in the list below were never
+// loadable modules in the first place (load, loadfile, dofile, require, print, warn, since none
+// of them is a luaL_requiref'd library name) -- clearing package.loaded for those is a harmless
+// no-op, kept uniform rather than special-cased, the same way "dofile" already was before this
+// list grew.
 void mod_open_libs_hardened(lua_State *L) {
   luaL_openlibs(L);
-
-  lua_getglobal(L, "load");
-  lua_pushcclosure(L, l_load_text_only, 1);
-  lua_setglobal(L, "load");
 
   lua_pushcfunction(L, l_setmetatable_no_gc);
   lua_setglobal(L, "setmetatable");
 
+  // Inert once "load" (below) is gone -- nothing can reassemble what it produces -- but kept
+  // withheld anyway rather than left reachable for no purpose; see this function's own comment.
+  lua_getglobal(L, "string");
+  lua_pushnil(L);
+  lua_setfield(L, -2, "dump");
+  lua_pop(L, 1);
+
   lua_getglobal(L, "package");
   lua_getfield(L, -1, "loaded");
-  static const char *const withheld[] = {"debug", "coroutine", "dofile"};
+  static const char *const withheld[] = {
+    "debug", "coroutine", "dofile", "loadfile", "io", "os", "require", "package",
+    "load", "print", "warn", "utf8",
+  };
   for (size_t i = 0; i < sizeof withheld / sizeof withheld[0]; i++) {
     lua_pushnil(L);
     lua_setglobal(L, withheld[i]);
     lua_pushnil(L);
-    lua_setfield(L, -2, withheld[i]);      // package.loaded[withheld[i]] = nil (harmless no-op
-                                            // for "dofile", which was never a loadable module --
-                                            // kept uniform rather than special-cased)
+    lua_setfield(L, -2, withheld[i]);      // package.loaded[withheld[i]] = nil -- a no-op for the
+                                            // several names above that were never a loadable
+                                            // module to begin with; see this function's own
+                                            // comment for which and why that's fine.
   }
   lua_pop(L, 2);           // package.loaded, package
 }

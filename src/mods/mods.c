@@ -368,12 +368,14 @@ static bool load_one(const char *dir, const char *name, Mod *m) {
 // chunk, from load() or from main.lua itself; and a hostile __tostring metamethod reached while
 // reporting an unrelated error. Each of those has a dedicated test under alarm().
 //
-// Not guaranteed, and owned by Task 7's sandbox, not this task: io and os are still fully open
-// pending that sandbox (string/table/math only), so a mod can call os.exit() to take the whole
-// process down outright, or os.execute("sleep 30") (or any other blocking os/io call) to stall
-// past the wall-clock deadline with no VM instructions ever executing for the hook to catch.
-// Neither is a defect in the containment built here; both are exactly the gap Task 7 exists to
-// close.
+// Not guaranteed, and now closed by Task 7's sandbox rather than merely scoped out of this one:
+// before Task 7, io and os were still fully open, so a mod could call os.exit() to take the
+// whole process down outright, or os.execute("sleep 30") (or any other blocking os/io call) to
+// stall past the wall-clock deadline with no VM instructions ever executing for the hook to
+// catch. mod_open_libs_hardened (sandbox.c) now withholds both libraries entirely -- along with
+// require/package, load/loadfile/dofile, string.dump, print/warn and utf8 -- so neither route is
+// reachable any more; this comment is kept to record what the gap was and that it is the reason
+// those specific names, not some other plausible-looking set, are the ones withheld.
 //
 // One known, accepted gap that is neither of the above: a mod that recursively calls pcall on
 // itself (`local function guard() while true do pcall(guard) end end guard()`) livelocks inside
@@ -433,12 +435,10 @@ static bool run_main_lua(const char *dir, const char *name, Mod *m) {
     return false;
   }
 
-  // Deliberately unrestricted for now, except for the two specific holes
-  // mod_open_libs_hardened closes below: io, os and package/require stay wide open,
-  // none of which the approved sandbox design grants a mod (string, table and math only).
-  // Closing that gap generally is a later task's job specifically, not an oversight here -- and
-  // nothing in the shipped app links this module yet either way, so no build anyone runs today
-  // is affected by a mod being able to read/write files or spawn processes through main.lua.
+  // mod_open_libs_hardened (sandbox.c) cuts the standard libraries down to the spec's sandbox --
+  // string, table and math -- plus whatever CPU/memory containment holes the earlier tasks found
+  // and closed regardless of where that line falls; io, os, require/package,
+  // load/loadfile/dofile, string.dump, print/warn and utf8 are all withheld there.
   mod_open_libs_hardened(L);
   mods_api_open(L);
 
@@ -450,9 +450,11 @@ static bool run_main_lua(const char *dir, const char *name, Mod *m) {
   bool failed = false;
 
   // "t" forced, not luaL_loadfile's NULL-mode default of "bt": main.lua itself is read straight
-  // off disk, same as load() below, and a file that happens to look like a Lua binary chunk
-  // (crafted, or merely corrupted) can crash the host outright -- see l_load_text_only's comment
-  // for the fuzzed SIGSEGV this is the other half of.
+  // off disk, and a file that happens to look like a Lua binary chunk (crafted, or merely
+  // corrupted) can crash the host outright -- fuzzed to a SIGSEGV on the first trial. This is the
+  // host-side half of that fix; `load` itself (the other half) is now withheld from mods
+  // entirely rather than kept wrapped to force the same mode -- see mod_open_libs_hardened's own
+  // comment in sandbox.c.
   if (luaL_loadfilex(runner, lua_path, "t") != LUA_OK) {
     failed = true;
     size_t elen = 0;
