@@ -132,7 +132,8 @@ if(NOT WIN32)
   target_link_libraries(oraclesui PUBLIC m)
 endif()
 
-add_library(oraclesmods STATIC third_party/lua/lapi.c third_party/lua/lauxlib.c third_party/lua/lbaselib.c
+add_library(oraclesmods STATIC src/mods/overlay.c
+  third_party/lua/lapi.c third_party/lua/lauxlib.c third_party/lua/lbaselib.c
   third_party/lua/lcode.c third_party/lua/lcorolib.c third_party/lua/lctype.c third_party/lua/ldblib.c
   third_party/lua/ldebug.c third_party/lua/ldo.c third_party/lua/ldump.c third_party/lua/lfunc.c
   third_party/lua/lgc.c third_party/lua/linit.c third_party/lua/liolib.c third_party/lua/llex.c
