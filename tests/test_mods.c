@@ -5,6 +5,7 @@
 #include "mods/overlay.h"
 #include "ui/ui.h"
 #include "wide/item.h"
+#include <time.h>
 
 // read_file comes from unit.h (used the same way by test_acid2.c / test_blargg.c): test_mods
 // links oraclesmods + oraclesitem only, not the engine, so it cannot call oracles_read_file --
@@ -86,6 +87,54 @@ static void overlay_draws_text(void) {
   ASSERT_EQ(overlay_cover_at(&o, 4, 4 + 15), 0);       // below an 8x16 cell's ink rows
 }
 
+// A mod is untrusted code: a huge string must clip in O(length), not run the 8x16 inner loop for
+// every character regardless of position. Unlike overlay_rect's clamp, these guards only change
+// how much work is done, not what ends up on the overlay: put() already clips, so the pixels this
+// test checks come out identical whether the guards are there or not (confirmed by removing them
+// and rerunning this test unchanged: it still passed). The only thing that actually distinguishes
+// "clipped in O(length)" from "ran the full 128-put inner loop on every character anyway" is time,
+// so this also times the two calls directly, excluding the malloc/memset above: on this machine
+// that's ~0.005s with the guards and ~0.9s without them for an 8 MiB string, so 0.3s is a loose
+// bound that is nowhere near either side.
+static void overlay_survives_a_huge_string(void) {
+  static ModOverlay o;
+  static UiFont font;
+  ui_font_builtin(&font);
+  size_t n = 8 * 1024 * 1024;
+  char *s = malloc(n + 1);
+  ASSERT(s);
+  memset(s, 'A', n);
+  s[n] = 0;
+
+  // Runs off the right edge after ~20 glyphs: the `break` guard must stop the rest from being
+  // walked pixel-by-pixel.
+  overlay_begin(&o, 160);
+  clock_t t0 = clock();
+  overlay_text(&o, &font, 0, 4, s, 0x7fff);
+  clock_t t1 = clock();
+  int onscreen = 0;
+  for (int y = 0; y < MOD_OVERLAY_H; y++)
+    for (int x = 0; x < 160; x++) onscreen += overlay_cover_at(&o, x, y) ? 1 : 0;
+  ASSERT(onscreen > 0);                                  // the glyphs that fit on screen drew
+  ASSERT(onscreen < 160 * MOD_OVERLAY_H);                // but the rest of the string did not
+
+  // Entirely off the left edge: the `continue` guard must skip every glyph's pixels while still
+  // walking the (long) string.
+  overlay_begin(&o, 160);
+  clock_t t2 = clock();
+  overlay_text(&o, &font, -100000000, 4, s, 0x7fff);
+  clock_t t3 = clock();
+  int offscreen = 0;
+  for (int y = 0; y < MOD_OVERLAY_H; y++)
+    for (int x = 0; x < 160; x++) offscreen += overlay_cover_at(&o, x, y) ? 1 : 0;
+  ASSERT_EQ(offscreen, 0);                               // not one glyph could land
+
+  double secs = (double)((t1 - t0) + (t3 - t2)) / CLOCKS_PER_SEC;
+  ASSERT(secs < 0.3);   // only the loop-skipping guards keep this fast; see the comment above
+
+  free(s);
+}
+
 // draw_icon reuses the ROM item-icon decoder, so mods get real item sprites.
 static void overlay_draws_an_item_icon(void) {
   size_t n;
@@ -112,6 +161,7 @@ int main(void) {
   RUN(overlay_survives_a_huge_rect);
   RUN(overlay_begin_clears_the_last_frame);
   RUN(overlay_draws_text);
+  RUN(overlay_survives_a_huge_string);
   RUN(overlay_draws_an_item_icon);
   return 0;
 }
