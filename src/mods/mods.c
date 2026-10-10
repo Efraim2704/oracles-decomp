@@ -64,17 +64,219 @@ typedef struct {
                         // build is simply too old for, listed disabled rather than refused) --
                         // see the api= branch below for why that split exists.
   lua_State *L;         // Non-NULL exactly when `enabled` is true. A mod stored in mods[] with
-                        // enabled false (api too new, or run_main_lua failed) always has L ==
-                        // NULL: run_main_lua either never created one, or already closed and
-                        // freed it itself before returning false -- see mods_shutdown's own
-                        // comment for why that invariant is what keeps it from double-closing.
+                        // enabled false (api too new, run_main_lua failed, or -- Task 8 -- a
+                        // frame handler errored or exhausted its per-frame budget) always has
+                        // L == NULL: whichever path disables the mod closes and frees its own
+                        // Lua state itself, in the same place it sets enabled = false, before
+                        // ever leaving that invariant visible to anything else -- see
+                        // mods_shutdown's own comment for why that invariant is what keeps it
+                        // from double-closing, and call_handler below for the frame-time case.
+  int on_frame_ref;     // A registry reference (luaL_ref(L, LUA_REGISTRYINDEX)) to this mod's
+  int on_room_change_ref; // on_frame/on_room_change handler, or LUA_NOREF if never registered.
+                        // Deliberately not a Lua global (`__on_frame`): a global the host sets
+                        // from C is also a global a mod could set directly, bypassing
+                        // oracles.on_frame/oracles.on_room_change entirely -- see
+                        // mods_set_on_frame_ref's own comment in mods.h. Meaningless (and never
+                        // read) once L is NULL; the ref itself dies with L at lua_close, nothing
+                        // here needs to luaL_unref it on that path.
 } Mod;
 
 static Mod mods[MODS_MAX];
 static int count;
-// Set by mods_init, still read by nothing: a future oracles.game() binding is what eventually
-// consumes it, so this is an intentional dead store for now, not an oversight.
+// Set by mods_init, read by api.c's oracles.game() by way of mods_current_frame() -- not read
+// directly here otherwise.
 static bool host_seasons;
+
+// The overlay every enabled mod's draw_rect/draw_text/draw_icon mutate, and the frame currently
+// being served to a mod's Lua -- both held here (not static locals inside mods_frame) because
+// api.c's bindings need to reach them from wherever a mod's C call lands, which is never on the
+// same call stack as mods_frame itself. `frame` starts at a sane pre-first-frame default (width
+// 160, seasons from whatever game was last initialised) rather than all-zero, so a mod calling
+// oracles.screen()/oracles.game() from main.lua's own top-level body -- before mods_frame has
+// ever run -- gets a real answer instead of width 0 (a lie no mod author would expect) or
+// seasons false (which could just as easily be wrong as right); mods_init sets both explicitly
+// from its own `seasons` argument, which is the one place that actually knows.
+static ModOverlay overlay;
+static ModsFrame frame = { .width = 160 };
+// The room mods_frame last saw, so on_room_change fires only on an actual change -- -1 (no real
+// room) rather than 0 so that the very first mods_frame call after a fresh mods_init always
+// counts as "changed", whatever room number that first call reports. Reset by mods_shutdown (and
+// so, transitively, by the mods_init that always calls it first): without that, a stale value
+// left over from a previous game/mod_init could make the very first frame of a new session wrongly
+// look like "no change" if the new session's first room happens to match the old one's last --
+// the same stale-state class as last_log (Task 5) and the `active` index Task 9's own sketch
+// left unreset; this is the third instance, closed here rather than left for a fourth.
+static int last_room = -1;
+// The mod whose Lua is currently executing -- main.lua's own top-level body (run_main_lua), or a
+// frame handler (call_handler below) -- so oracles.on_frame/oracles.on_room_change can register
+// onto *that* mod's own struct without a Lua global naming it. Set immediately around every
+// point this file calls into a mod's Lua and reset to NULL immediately after, on every path,
+// including every failure path: an "active" pointer set-but-never-reset is exactly the staleness
+// class the comment on `last_room` above just finished describing, so this one is built reset
+// from the start rather than retrofitted later the way Task 9's own sketch needed to be.
+static Mod *active_mod;
+
+void mods_set_on_frame_ref(lua_State *L, int ref) {
+  if (!active_mod) return;      // no mod's Lua is running: should not happen (a mod has no other
+                                 // way to call a C function), handled defensively regardless.
+  // `L`, not active_mod->L: during main.lua's own top-level body (run_main_lua), active_mod->L
+  // is still NULL -- it is only assigned after this whole call has returned -- while `L` (the
+  // state the binding was actually called on, here run_main_lua's `runner` coroutine) is always
+  // live, and any thread of the same global state is equally valid for a registry unref.
+  if (active_mod->on_frame_ref != LUA_NOREF)
+    luaL_unref(L, LUA_REGISTRYINDEX, active_mod->on_frame_ref);
+  active_mod->on_frame_ref = ref;
+}
+
+void mods_set_on_room_change_ref(lua_State *L, int ref) {
+  if (!active_mod) return;
+  if (active_mod->on_room_change_ref != LUA_NOREF)
+    luaL_unref(L, LUA_REGISTRYINDEX, active_mod->on_room_change_ref);
+  active_mod->on_room_change_ref = ref;
+}
+
+const ModOverlay *mods_overlay(void) { return &overlay; }
+ModOverlay *mods_overlay_mut(void) { return &overlay; }
+const ModsFrame *mods_current_frame(void) { return &frame; }
+
+// The per-frame budget mod_resume_budgeted (sandbox.h) enforces on every single on_frame/
+// on_room_change call -- deliberately tiny next to MOD_LOAD_INSTRUCTION_BUDGET/
+// MOD_LOAD_WALLCLOCK_DEADLINE_SECONDS (sandbox.h), which only ever run once per mod per session.
+// A handler runs every frame, so calling it unbudgeted (a plain lua_pcall, with neither an
+// instruction count nor a wall-clock cutoff -- what this task's own original sketch did) hangs
+// the game on its very first frame and every one after: the single most important thing this
+// file does differently from that sketch, not a refinement of it.
+//
+// Measured on this dev machine with mod_resume_budgeted itself, not guessed: a tight
+// `while true do end` loop trips the instruction-count hook's first check-in (fixed by sandbox.c
+// at MOD_INSTRUCTION_CHECKIN == 1,000,000 VM instructions -- a constant mod_resume_budgeted does
+// not expose as a per-call parameter, shared as-is with the load-time path) in ~2.8ms;
+// `while true do pcall(function() error('x') end) end` -- Lua's own error-raise-and-catch
+// machinery, 50-150x more expensive per VM instruction than plain arithmetic, the same shape
+// sandbox.c's own MOD_LOAD_INSTRUCTION_BUDGET comment documents at load scale -- takes ~60ms to
+// reach that same first check-in. A frame is 16.7ms: 2.8ms (the common, cheap-loop case)
+// comfortably fits "low single-digit milliseconds"; 60ms (the deliberately-adversarial,
+// maximally-expensive-per-instruction case) does not, and no deadline value passed to
+// mod_resume_budgeted can change that -- the wall-clock deadline is only ever consulted when the
+// instruction-count hook actually fires, and that hook's firing interval is not something this
+// caller controls. Confirmed directly: candidate deadlines from 1ms through 5ms all measured
+// within noise of each other against the expensive loop (0.0593s-0.0606s), while varying cleanly
+// against the cheap one (0.0028s-0.0028s, i.e. not varying at all below the point the
+// instruction count itself fires first).
+//
+// Reusing mod_resume_budgeted exactly as sandbox.h says it was built to be reused -- rather than
+// widening its contract to let this caller shrink that check-in interval too -- was the
+// deliberate choice here, given what the actual cost of not doing so is: a handler built
+// specifically to maximise per-instruction cost stalls that ONE frame for up to roughly 60ms on
+// this machine (a single visible stutter, not a hang), and is then poisoned (see call_handler
+// below) and never called again for the rest of the session. A smaller, host-wide change to
+// mod_resume_budgeted's check-in granularity would tighten that one bound further, but is a
+// change to security-critical, already-reviewed machinery this task's own scope does not touch;
+// recorded here as a known, accepted, measured limitation -- the same discipline sandbox.c
+// already applies to its own gaps (the recursive-pcall livelock, the fresh-thread check-in reset)
+// -- rather than silently hoping nobody hits it. See
+// a_pathologically_expensive_on_frame_handler_is_poisoned_after_one_bounded_stall in
+// tests/test_mods.c, which pins "bounded and one-time", not the literal millisecond figure,
+// since that figure is host-speed-dependent.
+#define MOD_FRAME_INSTRUCTION_BUDGET 1000000
+// "Low single-digit milliseconds", per the task this implements: large enough that, for the
+// common cheap-loop case, the instruction-count mechanism above -- not this -- is what actually
+// reports the failure (measured at ~2.8ms, comfortably under this), while still being the
+// backstop for a handler whose own instructions are legitimately, not adversarially, somewhat
+// more expensive than bare arithmetic (table indexing, a log line's string concatenation)
+// without yet being the deliberately pathological shape the comment above measures.
+#define MOD_FRAME_WALLCLOCK_DEADLINE_SECONDS 0.004
+
+// Calls mod `m`'s handler stored at registry ref `ref` (a no-op if `ref` is LUA_NOREF, i.e.
+// never registered, or `m->L` is already NULL, i.e. already disabled), passing `arg` as its one
+// argument iff `has_arg`. Every call goes through mod_resume_budgeted under the frame budget
+// above -- never a plain lua_pcall -- and on a fresh thread made for this call alone:
+// mod_resume_budgeted's own doc comment is explicit that a thread it has already driven to
+// exhaustion cannot simply be lua_resume'd again (the next resume would continue the old,
+// already-failed call where it left off, not start a new one), so reusing one thread across
+// frames is not an option without also calling lua_resetthread on every healthy return, and a
+// fresh lua_newthread each call is simpler and just as cheap -- Lua threads are small, and the
+// old one, once popped off m->L's stack below, is ordinary garbage the collector reclaims like
+// anything else. (Popping it matters beyond tidiness: lua_newthread pushes the new thread onto
+// *m->L*'s stack, not the new thread's own -- sandbox.h's own comment notes run_main_lua's single
+// load-time thread is deliberately left unpopped because that only ever happens once per mod per
+// session; this function is called every frame, so leaving each one on m->L's stack would grow
+// that stack by one slot forever.)
+//
+// A handler that errors, or whose call exhausts the frame budget, disables `m` right here --
+// enabled = false, error set, L closed and freed -- the same treatment run_main_lua gives a
+// load-time failure, so mods_enabled()/mods_error() need no separate frame-time case to check.
+// Without this, mod_resume_budgeted's own doc comment is explicit about what would happen
+// instead: a mod whose handler loops forever would simply be handed a fresh budget next frame,
+// forever -- not a disabled mod, a permanently wedged game.
+static void call_handler(Mod *m, int ref, bool has_arg, int arg) {
+  if (!m->L || ref == LUA_NOREF) return;
+  active_mod = m;
+  lua_State *runner = lua_newthread(m->L);
+  lua_rawgeti(runner, LUA_REGISTRYINDEX, ref);
+  int argc = 0;
+  if (has_arg) { lua_pushinteger(runner, arg); argc = 1; }
+  bool exhausted = false, deadline_hit = false;
+  int status = mod_resume_budgeted(runner, argc, MOD_FRAME_INSTRUCTION_BUDGET,
+                                    MOD_FRAME_WALLCLOCK_DEADLINE_SECONDS, &exhausted, &deadline_hit);
+  if (status != LUA_OK || exhausted) {
+    char reason[256];
+    if (status == LUA_YIELD || (status == LUA_OK && exhausted)) {
+      // The LUA_OK-but-exhausted branch mirrors run_main_lua's own "absorbed by a nested
+      // coroutine" case -- currently unreachable with "coroutine" withheld from mods entirely,
+      // kept as the same defence-in-depth tripwire run_main_lua keeps for the identical shape.
+      if (deadline_hit)
+        snprintf(reason, sizeof reason,
+            "a frame handler ran for over %.0fms and was cut off", MOD_FRAME_WALLCLOCK_DEADLINE_SECONDS * 1000.0);
+      else
+        snprintf(reason, sizeof reason,
+            "a frame handler exceeded its per-frame instruction budget (possible infinite loop)");
+    } else {
+      size_t elen = 0;
+      const char *emsg = lua_tolstring(runner, -1, &elen);
+      if (!emsg) { emsg = "(non-string error object)"; elen = strlen(emsg); }
+      char escaped[200];
+      mods_escape_into(escaped, sizeof escaped, emsg, elen);
+      snprintf(reason, sizeof reason, "a frame handler errored: %s", escaped);
+    }
+    fprintf(stderr, "mods: '%s' %s; disabling it for this session\n", m->id, reason);
+    snprintf(m->error, sizeof m->error, "%s", reason);
+    m->enabled = false;
+    void *ud = NULL;
+    lua_getallocf(m->L, &ud);
+    lua_close(m->L);
+    free(ud);
+    m->L = NULL;
+  } else {
+    lua_pop(m->L, 1);          // drop `runner`: see this function's own comment on why it must
+                                // not be left to accumulate on m->L's stack every frame.
+  }
+  active_mod = NULL;
+}
+
+// Runs every enabled mod's on_frame handler, then (iff f->room has changed since the last call)
+// its on_room_change handler, leaving the overlay refilled for both to have drawn into. Guards
+// `f` itself: the launcher may call this before any game is running, and mods_frame dereferencing
+// a NULL `f` would be exactly the same class of bug l_rd/l_draw_icon below guard against for
+// f->wram/f->rom -- a NULL that only shows up once no ROM is loaded, easy to never hit in a
+// quick manual test.
+void mods_frame(const ModsFrame *f) {
+  if (!f) return;
+  frame = *f;
+  overlay_begin(&overlay, f->width);
+  bool room_changed = f->room != last_room;
+  last_room = f->room;
+  for (int i = 0; i < count; i++) {
+    if (!mods[i].enabled) continue;
+    call_handler(&mods[i], mods[i].on_frame_ref, false, 0);
+    // Re-checked, not assumed still true: call_handler may have just disabled this mod (and
+    // closed its L) for the on_frame call above, in which case on_room_change must not also run
+    // against an already-freed state -- call_handler's own `!m->L` guard would catch it too, but
+    // checking here as well keeps the skip visible at the call site rather than relying solely on
+    // a defensive check buried inside the callee.
+    if (room_changed && mods[i].enabled) call_handler(&mods[i], mods[i].on_room_change_ref, true, f->room);
+  }
+}
 
 static void trim(char *s) {
   char *start = s;
@@ -449,6 +651,14 @@ static bool run_main_lua(const char *dir, const char *name, Mod *m) {
   char reason[512] = "";
   bool failed = false;
 
+  // Task 8: a mod's top-level main.lua body can itself call oracles.on_frame/on_room_change
+  // (the sketch's own test does exactly this), which needs to register onto *this* mod -- the
+  // one being constructed in mods_init's stack frame, not yet copied into mods[] -- rather than
+  // a Lua global. active_mod is that pointer; reset to NULL before every return out of this
+  // function (including every failure path below), never left dangling the way an identically-
+  // shaped `active` index was in Task 9's own sketch.
+  active_mod = m;
+
   // "t" forced, not luaL_loadfile's NULL-mode default of "bt": main.lua itself is read straight
   // off disk, and a file that happens to look like a Lua binary chunk (crafted, or merely
   // corrupted) can crash the host outright -- fuzzed to a SIGSEGV on the first trial. This is the
@@ -516,6 +726,10 @@ static bool run_main_lua(const char *dir, const char *name, Mod *m) {
     }
   }
 
+  // No Lua call for this mod happens past this point in this function -- reset now, on every
+  // path (success or failure alike), rather than only on one of them.
+  active_mod = NULL;
+
   if (failed) {
     // reason is attacker-controlled either way: main.lua's own error() argument, the literal
     // budget-exceeded text above, or Lua's fixed "not enough memory" string when the allocator
@@ -546,6 +760,11 @@ static int cmp_name(const void *a, const void *b) {
 bool mods_init(const char *dir, bool seasons) {
   mods_shutdown();
   host_seasons = seasons;
+  // Task 8 correction: oracles.screen()/oracles.game() must not lie to a mod that calls them
+  // from main.lua's own top-level body, before mods_frame has ever run once. mods_init is the
+  // one place that actually knows which game this session is -- plumb it through now, with a
+  // sane width (160, the non-widescreen default) rather than leaving `frame` all-zero.
+  frame = (ModsFrame){ .seasons = seasons, .width = 160 };
 
   if (!dir || !*dir) {
     fprintf(stderr, "mods: no mods directory given\n");
@@ -592,6 +811,9 @@ bool mods_init(const char *dir, bool seasons) {
     const char *name = names[i];
     Mod m = {0};                                          // enabled starts false; set true below
                                                             // only once this mod actually succeeds
+    m.on_frame_ref = LUA_NOREF;                            // NOT 0 -- {0} would zero-init these to
+    m.on_room_change_ref = LUA_NOREF;                      // 0, a real (if unlikely) ref value,
+                                                            // not "unregistered"; LUA_NOREF is -2.
     if (!load_one(dir, name, &m)) continue;                // not a mod for us at all: no slot used
     if (!(seasons ? m.seasons : m.ages)) continue;         // valid mod, just not for this game
 
@@ -652,6 +874,13 @@ void mods_shutdown(void) {
   // calls mods_shutdown first, so this also covers "the top of mods_init", not just an explicit
   // shutdown call.
   mods_api_clear_log();
+  // Task 8 correction: last_room must not outlive the session that set it, for the identical
+  // reason last_log above does not -- see last_room's own comment for what goes wrong if it
+  // did. active_mod is reset defensively too, though every path that sets it already resets it
+  // itself; a mods_shutdown called mid-callback should not be possible, but this is cheap
+  // insurance against ever leaving it pointing at a Mod slot that mods[] is about to reuse.
+  last_room = -1;
+  active_mod = NULL;
 }
 
 int mods_count(void) { return count; }

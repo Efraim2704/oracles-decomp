@@ -19,6 +19,23 @@
 // oraclesmods; no app target does yet. That is stated here as intent, not as present fact.
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
+// For ModOverlay/UiFont: mods_frame hands a mod's drawing bindings an overlay to mutate and a
+// frame's dimensions/resources to read, and ModsFrame below embeds both a ModOverlay* consumer
+// (api.c) and a UiFont* -- the real, tagless `typedef struct {...} UiFont` overlay.h already
+// pulls in via ui/ui.h, not a `struct UiFont;` forward declaration, which would name an
+// unrelated incomplete type and silently make every real UiFont* argument incompatible. See
+// overlay.h's own comment on exactly this trap.
+#include "mods/overlay.h"
+
+// For mods_set_on_frame_ref/mods_set_on_room_change_ref below. A forward declaration at file
+// scope, not only inside those functions' own parameter lists: a struct tag first introduced
+// inside a prototype's parameter-list scope is local to that scope, not file scope, and would
+// conflict with the file-scope "struct lua_State" lua.h's typedef later establishes once a .c
+// file includes both headers -- confirmed by the build failing with exactly that "conflicting
+// types" error without this line present. api.h and sandbox.h both already declare it the same
+// way, for the same reason.
+struct lua_State;
 
 #define MODS_API_VERSION 1
 // The hard cap on how many mods occupy a slot in mods[] at once -- counting a disabled mod
@@ -116,3 +133,63 @@ void mods_escape_into(char *dst, size_t dst_size, const char *src, size_t src_le
 // this check already covers. Shared with the folder-name check in mods_init, and meant to be
 // reused by those later call sites rather than reinventing a charset check at each one.
 bool mods_id_valid(const char *id);
+
+// What the app hands the host each frame: game RAM windows, the picture's dimensions, and the
+// resources a mod's drawing bindings need (the ROM for draw_icon, the UI font for draw_text).
+// `wram`/`hram`/`rom`/`font` may each be NULL -- before any ROM/game is actually running, or (in
+// tests) deliberately, to exercise the guards every binding that touches them must have. `wram`,
+// when non-NULL, is always the full 4096 bytes $c000..$cfff: draw_icon relies on that to read
+// `wram + 0x600` as 256 further bytes without a separate bounds check of its own.
+typedef struct {
+  const uint8_t *wram;          // $c000..$cfff, 4096 bytes, or NULL
+  const uint8_t *hram;          // $ff80..$fffe, 127 bytes, or NULL
+  bool seasons;
+  int width;                    // the picture's width: 160, or 256 in widescreen
+  int room;                     // the current room, for on_room_change
+  const uint8_t *rom;           // for draw_icon; may be NULL
+  size_t rom_size;
+  const UiFont *font;           // for draw_text; may be NULL
+} ModsFrame;
+
+// Runs every enabled mod's on_frame handler, then (when f->room has changed since the last call)
+// its on_room_change handler, then leaves the overlay refilled for this frame -- see
+// overlay_begin, called first so draw_rect/draw_text/draw_icon land on a clean buffer. Each
+// handler call is budgeted (see the MOD_FRAME_* constants documented in mods.c, next to the
+// call_handler helper that enforces them via sandbox.h's mod_resume_budgeted): an error, an
+// exhausted per-frame instruction budget, or an exceeded per-frame wall-clock deadline disables
+// that one mod -- mods_enabled() false, mods_error() the reason -- exactly as a load-time failure
+// does, never the whole scan and never merely "try again next frame" with a fresh budget, which
+// would be a permanently wedged game rather than a disabled mod -- see mod_resume_budgeted's own
+// doc comment in sandbox.h for why a per-frame caller must poison on exhaustion itself. A NULL
+// `f` is a no-op: the launcher may call this before any game is actually running.
+void mods_frame(const ModsFrame *f);
+// The overlay the app composites over the picture after this frame's mods_frame call.
+const ModOverlay *mods_overlay(void);
+// For api.c: the frame currently being served to a mod's Lua. Valid both while mods_frame is
+// calling a handler and at any other time a mod's Lua runs (including main.lua's own top-level
+// body, before mods_frame has ever been called) -- see mods_init's own comment for the sane
+// pre-first-frame default (seasons plumbed through from mods_init's own argument, width 160) it
+// sets so oracles.game()/oracles.screen() never lie to a mod that calls them at load time.
+const ModsFrame *mods_current_frame(void);
+// For api.c's drawing bindings: the overlay a mod is allowed to mutate.
+ModOverlay *mods_overlay_mut(void);
+
+// For api.c's oracles.on_frame/oracles.on_room_change bindings: registers a Lua-registry
+// reference (from luaL_ref(L, LUA_REGISTRYINDEX), on the state the binding was called from) as
+// the mod that is *currently executing Lua*'s handler for that event, replacing and unref'ing
+// whatever was registered before. Looked up by an internal "which mod is currently running"
+// pointer, not a Lua global: a global the binding itself sets (e.g. lua_setglobal(L,
+// "__on_frame")) is also a global a mod could set directly, bypassing oracles.on_frame
+// entirely, which is exactly the hole this avoids. A call from outside any mod's own Lua
+// execution (should not happen -- a mod has no other way to call a C function at all) is a
+// silent no-op.
+//
+// `L` is the state the binding itself was called on -- during main.lua's own top-level body
+// that is run_main_lua's `runner` coroutine, not the mod's main state (which active_mod->L
+// cannot stand in for: it is still NULL at that point, run_main_lua only assigns it after this
+// whole call has already returned) -- and is used for the luaL_unref of any previous ref rather
+// than active_mod->L, since any thread belonging to the same global state is equally valid for a
+// registry operation. Confirmed necessary by crashing without it: a mod that registers on_frame
+// twice from its own top-level body dereferences a NULL lua_State on the second call otherwise.
+void mods_set_on_frame_ref(struct lua_State *L, int ref);
+void mods_set_on_room_change_ref(struct lua_State *L, int ref);

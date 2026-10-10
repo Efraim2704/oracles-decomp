@@ -2119,6 +2119,11 @@ static void the_oracles_table_matches_the_registry_exactly(void) {
   lua_pushnil(L);
   while (lua_next(L, -2) != 0) {
     ASSERT_EQ(lua_type(L, -2), LUA_TSTRING);     // every key in `oracles` names a function slot
+    // Task 8 correction: the registry must match what a mod actually sees, including that every
+    // entry really is callable -- not merely that a key with the right name exists. Without
+    // this, a future `oracles.draw_icon = {}` (a table, not a function) would satisfy every
+    // check above while silently breaking any mod that calls it.
+    ASSERT(lua_iscfunction(L, -1));
     const char *key = lua_tostring(L, -2);
     bool matched = false;
     for (int i = 0; i < n; i++) {
@@ -2903,6 +2908,468 @@ static void a_legitimately_heavy_pattern_still_loads(void) {
   mods_shutdown();
 }
 
+// ---------------------------------------------------------------------------
+// Task 8: events, game state and drawing from Lua.
+// ---------------------------------------------------------------------------
+
+// on_frame fires each frame; rd() reads game RAM; draw_rect lands on the overlay. Designated
+// initializers for ModsFrame, not positional -- Task 4's review required this for an identically
+// shaped struct, for the identical reason: a positional { wram, hram, true, 256, 0, NULL, 0,
+// NULL } keeps silently compiling (and silently means something different) the moment a field
+// is reordered or a new one inserted.
+static void a_mod_sees_frames_and_draws(void) {
+  clear_mods();
+  const char *root = make_mod("hud",
+      "id=hud\nname=HUD\napi=1\ngames=ages,seasons\n",
+      "local n = 0\n"
+      "oracles.on_frame(function()\n"
+      "  n = n + 1\n"
+      "  oracles.log('frames=' .. n .. ' ram=' .. oracles.rd(0xc6bb) .. ' w=' .. oracles.screen())\n"
+      "  oracles.draw_rect(2, 3, 4, 5, 0x7fff)\n"
+      "end)\n");
+  ASSERT(mods_init(root, true));
+  static uint8_t wram[0x1000], hram[127];
+  memset(wram, 0, sizeof wram);
+  memset(hram, 0, sizeof hram);
+  wram[0x6bb] = 0x05;                                  // wEssencesObtained
+  ModsFrame f = { .wram = wram, .hram = hram, .seasons = true, .width = 256, .room = 0 };
+  mods_frame(&f);
+  ASSERT(mods_last_log());
+  ASSERT(strstr(mods_last_log(), "frames=1"));
+  ASSERT(strstr(mods_last_log(), "ram=5"));
+  ASSERT(strstr(mods_last_log(), "w=256"));
+  ASSERT_EQ(overlay_cover_at(mods_overlay(), 2, 3), 255);
+  ASSERT_EQ(overlay_cover_at(mods_overlay(), 5, 7), 255);
+  ASSERT_EQ(overlay_cover_at(mods_overlay(), 6, 3), 0);
+  mods_frame(&f);
+  ASSERT(strstr(mods_last_log(), "frames=2"));
+  ASSERT(mods_enabled(0));
+  mods_shutdown();
+}
+
+// on_room_change fires only when the room actually changes.
+static void room_changes_fire_once(void) {
+  clear_mods();
+  const char *root = make_mod("roomschg",
+      "id=roomschg\nname=Rooms\napi=1\ngames=ages,seasons\n",
+      "local n = 0\n"
+      "oracles.on_room_change(function(r) n = n + 1 oracles.log('changes=' .. n .. ' room=' .. r) end)\n");
+  ASSERT(mods_init(root, true));
+  static uint8_t wram[0x1000], hram[127];
+  ModsFrame f = { .wram = wram, .hram = hram, .seasons = true, .width = 160, .room = 7 };
+  mods_frame(&f);
+  ASSERT(mods_last_log());
+  ASSERT(strstr(mods_last_log(), "changes=1"));
+  mods_frame(&f);                                      // same room
+  ASSERT(mods_last_log());
+  ASSERT(strstr(mods_last_log(), "changes=1"));
+  f.room = 8;
+  mods_frame(&f);
+  ASSERT(strstr(mods_last_log(), "changes=2"));
+  ASSERT(strstr(mods_last_log(), "room=8"));
+  mods_shutdown();
+}
+
+// Correction: "an exhausted thread cannot be reused" is about the failure path, but even a
+// *healthy* repeated call must not reuse a thread lua_resume has already driven to completion --
+// a finished coroutine is "dead" to Lua, and a second lua_resume on a dead thread errors outright
+// ("cannot resume dead coroutine"), which would poison this mod on its second frame if
+// call_handler reused one thread across calls instead of minting a fresh one each time. Five
+// frames mirrors the depth Task 5's own review simulated for the identical hazard at load time.
+static void a_healthy_mod_runs_many_frames_without_reusing_a_dead_thread(void) {
+  clear_mods();
+  const char *root = make_mod("multiframe", "id=multiframe\napi=1\ngames=ages,seasons\n",
+      "local n = 0\n"
+      "oracles.on_frame(function() n = n + 1 oracles.log('n=' .. n) end)\n");
+  ASSERT(mods_init(root, true));
+  static uint8_t wram[0x1000], hram[127];
+  ModsFrame f = { .wram = wram, .hram = hram, .seasons = true, .width = 160, .room = 1 };
+  for (int i = 1; i <= 5; i++) {
+    mods_frame(&f);
+    ASSERT(mods_enabled(0));
+    char expect[16];
+    snprintf(expect, sizeof expect, "n=%d", i);
+    ASSERT(mods_last_log());
+    ASSERT(strstr(mods_last_log(), expect) != NULL);
+  }
+  mods_shutdown();
+}
+
+// Correction: oracles.screen() must not return 0, and oracles.game() must not report the wrong
+// game, when called from main.lua's own top-level body -- before mods_frame has ever run once.
+// mods_init is the one place that actually knows this session's real `seasons`; width defaults
+// to 160 (never widescreen) until the first real frame says otherwise.
+static void screen_and_game_are_sane_before_the_first_frame(void) {
+  clear_mods();
+  const char *root = make_mod("early",
+      "id=early\napi=1\ngames=ages,seasons\n",
+      "oracles.log('game=' .. oracles.game() .. ' screen=' .. oracles.screen())\n");
+  ASSERT(mods_init(root, true));                       // true: Seasons
+  ASSERT(mods_enabled(0));
+  ASSERT(mods_last_log());
+  ASSERT(strstr(mods_last_log(), "game=seasons") != NULL);
+  ASSERT(strstr(mods_last_log(), "screen=160") != NULL);
+  mods_shutdown();
+
+  clear_mods();
+  const char *root2 = make_mod("early2",
+      "id=early2\napi=1\ngames=ages,seasons\n",
+      "oracles.log('game=' .. oracles.game())\n");
+  ASSERT(mods_init(root2, false));                     // false: Ages
+  ASSERT(mods_last_log());
+  ASSERT(strstr(mods_last_log(), "game=ages") != NULL);
+  mods_shutdown();
+}
+
+// Correction: mods_frame dereferences `f` with no guard in the plan's sketch. A NULL `f` is the
+// launcher's own state (no game running yet) and must be a no-op, not a crash.
+static void mods_frame_with_a_null_frame_is_a_safe_no_op(void) {
+  clear_mods();
+  const char *root = make_mod("nullframe", "id=nullframe\napi=1\ngames=ages,seasons\n",
+      "oracles.on_frame(function() oracles.log('should not run') end)\n");
+  ASSERT(mods_init(root, true));
+  mods_frame(NULL);
+  ASSERT(mods_last_log() == NULL);                     // the handler never ran
+  ASSERT(mods_enabled(0));                              // and the mod itself is unaffected
+  mods_shutdown();
+}
+
+// Correction: overlay_icon's c600 argument is f->wram + 0x600 -- NULL + 0x600 is undefined
+// behaviour, not a null pointer, if f->wram is NULL, which is exactly the launcher's state
+// before any game is running. f->rom being non-NULL alone must not be enough to proceed.
+//
+// A degenerate fake ROM (a handful of zero bytes) does NOT exercise this: wide_item_icon's own
+// table walk only ever reads c600 through two gated paths -- the seasons/slingshot special case,
+// and a nonzero `level_byte` -- and with every ROM byte reading back 0 (wide_item_icon's own `rb`
+// helper returns 0 past the end of a short buffer), the item is simply never "found" and both
+// gates stay closed, so a first attempt at this test (a 4-byte fake ROM, item 0x03) passed with
+// the f->wram guard removed by hand -- the mutation never crashed because c600 was never
+// actually read, not because the guard caught anything. Confirmed by deliberately re-removing
+// the guard and rerunning: still green, for the wrong reason.
+//
+// A real ROM and item 0x13 (the slingshot) with seasons=true is what item.c's own comment
+// documents as reading c600[SLINGSHOT_LEVEL] (0xb3) -- the seasons-specific "listed twice, take
+// the hyper slingshot entry at level 2" check -- so this exercises the actual dereference rather
+// than merely calling the binding and hoping. Skips cleanly if the ROM isn't present, the same
+// convention every other ROM-dependent test in this file follows.
+static bool draw_icon_with_no_wram_does_not_crash(void) {
+  size_t n;
+  uint8_t *rom = read_file(GAME_ROM_DIR "/Legend of Zelda, The - Oracle of Seasons (USA, Australia).gbc", &n);
+  if (!rom) SKIP_TEST("ROM not present");
+
+  clear_mods();
+  const char *root = make_mod("iconnowram", "id=iconnowram\napi=1\ngames=ages,seasons\n",
+      "oracles.on_frame(function()\n"
+      "  local ok = oracles.draw_icon(0x13, 10, 10)\n"            // 0x13: the slingshot
+      "  oracles.log('ok=' .. tostring(ok))\n"
+      "end)\n");
+  ASSERT(mods_init(root, true));
+  ModsFrame f = { .wram = NULL, .hram = NULL, .seasons = true, .width = 160, .room = 1,
+                  .rom = rom, .rom_size = n };
+  mods_frame(&f);
+  ASSERT(mods_enabled(0));
+  ASSERT(mods_last_log());
+  ASSERT(strstr(mods_last_log(), "ok=false") != NULL);
+  mods_shutdown();
+  free(rom);
+  return true;
+}
+
+// draw_text with no font installed (before a ROM provides one) must silently draw nothing, never
+// crash by dereferencing a NULL font.
+static void draw_text_with_no_font_draws_nothing(void) {
+  clear_mods();
+  const char *root = make_mod("textnofont", "id=textnofont\napi=1\ngames=ages,seasons\n",
+      "oracles.on_frame(function()\n"
+      "  oracles.draw_text(4, 4, 'hello', 0x7fff)\n"
+      "  oracles.log('drew')\n"
+      "end)\n");
+  ASSERT(mods_init(root, true));
+  static uint8_t wram[0x1000], hram[127];
+  ModsFrame f = { .wram = wram, .hram = hram, .seasons = true, .width = 160, .room = 1 };
+  mods_frame(&f);
+  ASSERT(mods_enabled(0));
+  ASSERT(mods_last_log());
+  ASSERT(strstr(mods_last_log(), "drew") != NULL);
+  for (int y = 0; y < MOD_OVERLAY_H; y++)
+    for (int x = 0; x < 160; x++) ASSERT_EQ(overlay_cover_at(mods_overlay(), x, y), 0);
+  mods_shutdown();
+}
+
+// Correction: (int)luaL_checkinteger truncates a 64-bit lua_Integer, so a Lua number like
+// 4294967296 + 5 (2^32 + 5) would arrive at a bare cast as w == 5 -- not an error, not INT_MAX,
+// simply wrong in a way no mod author watching their own source could predict. check_int clamps
+// instead: the whole row, not five columns, must end up covered.
+static void draw_rect_clamps_rather_than_wrapping_a_huge_width(void) {
+  clear_mods();
+  const char *root = make_mod("hugerect", "id=hugerect\napi=1\ngames=ages,seasons\n",
+      "oracles.on_frame(function() oracles.draw_rect(0, 0, 4294967296 + 5, 1, 0x7fff) end)\n");
+  ASSERT(mods_init(root, true));
+  static uint8_t wram[0x1000], hram[127];
+  ModsFrame f = { .wram = wram, .hram = hram, .seasons = true, .width = 160, .room = 1 };
+  mods_frame(&f);
+  ASSERT(mods_enabled(0));
+  ASSERT_EQ(overlay_cover_at(mods_overlay(), 0, 0), 255);
+  ASSERT_EQ(overlay_cover_at(mods_overlay(), 159, 0), 255);   // the whole row, not just 5 columns
+  mods_shutdown();
+}
+
+// Correction: a Lua string may legally contain an embedded NUL. Decided deliberately (see
+// l_draw_text's own comment in api.c): overlay_text (Task 3, unchanged here) takes a plain
+// NUL-terminated C string, so "A\0B" draws only "A"'s glyph. Pinned so a future accidental
+// change either way -- silently "fixing" the truncation, or regressing to read past the NUL --
+// is caught.
+static void draw_text_truncates_at_an_embedded_nul(void) {
+  clear_mods();
+  const char *root = make_mod("textnul", "id=textnul\napi=1\ngames=ages,seasons\n",
+      "oracles.on_frame(function() oracles.draw_text(0, 0, 'A\\0B', 0x7fff) end)\n");
+  ASSERT(mods_init(root, true));
+  static uint8_t wram[0x1000], hram[127];
+  static UiFont font;
+  ui_font_builtin(&font);
+  ModsFrame f = { .wram = wram, .hram = hram, .seasons = true, .width = 160, .room = 1, .font = &font };
+  mods_frame(&f);
+  ASSERT(mods_enabled(0));
+  // "A" alone puts ink only in the first glyph cell's columns; a second glyph ("B") would put
+  // ink starting at x == UI_GLYPH_W, which must not happen if the embedded NUL actually stopped
+  // the draw there.
+  bool ink_in_first_glyph = false, ink_past_first_glyph = false;
+  for (int y = 0; y < MOD_OVERLAY_H; y++)
+    for (int x = 0; x < 160; x++) {
+      if (!overlay_cover_at(mods_overlay(), x, y)) continue;
+      if (x < UI_GLYPH_W) ink_in_first_glyph = true;
+      else ink_past_first_glyph = true;
+    }
+  ASSERT(ink_in_first_glyph);
+  ASSERT(!ink_past_first_glyph);
+  mods_shutdown();
+}
+
+// Correction (noted for MODDING.md, Task 11): oracles.rd only reaches $c000..$cfff and
+// $ff80..$fffe. $d000 (the switchable WRAM bank) and $0000 are both outside those windows and
+// must read back 0 -- not whatever bytes happen to sit at that offset in ModsFrame's buffers,
+// and not a crash.
+static void rd_outside_the_known_windows_reads_as_zero(void) {
+  clear_mods();
+  const char *root = make_mod("rdrange", "id=rdrange\napi=1\ngames=ages,seasons\n",
+      "oracles.on_frame(function()\n"
+      "  oracles.log('d000=' .. oracles.rd(0xd000) .. ' zero=' .. oracles.rd(0))\n"
+      "end)\n");
+  ASSERT(mods_init(root, true));
+  static uint8_t wram[0x1000], hram[127];
+  memset(wram, 0xff, sizeof wram);     // if the range guard were missing, a nonzero byte would leak
+  memset(hram, 0xff, sizeof hram);
+  ModsFrame f = { .wram = wram, .hram = hram, .seasons = true, .width = 160, .room = 1 };
+  mods_frame(&f);
+  ASSERT(mods_enabled(0));
+  ASSERT(mods_last_log());
+  ASSERT(strstr(mods_last_log(), "d000=0 zero=0") != NULL);
+  mods_shutdown();
+}
+
+// Correction: a handler must not be reachable by a mod setting a plain Lua global itself (the
+// plan's own sketch used lua_setglobal(L, "__on_frame")) -- that is also a global a mod could
+// set directly, bypassing oracles.on_frame entirely. Pinning the negative: a mod that assigns
+// what would be that exact global, without ever calling oracles.on_frame, must never have it
+// invoked by the host.
+static void a_bare_global_assignment_never_runs_as_a_handler(void) {
+  clear_mods();
+  const char *root = make_mod("bypass", "id=bypass\napi=1\ngames=ages,seasons\n",
+      "__on_frame = function() oracles.log('bypass ran') end\n");
+  ASSERT(mods_init(root, true));
+  static uint8_t wram[0x1000], hram[127];
+  ModsFrame f = { .wram = wram, .hram = hram, .seasons = true, .width = 160, .room = 1 };
+  mods_frame(&f);
+  ASSERT(mods_enabled(0));
+  ASSERT(mods_last_log() == NULL);              // the host never reads any such global
+  mods_shutdown();
+}
+
+// Registering on_frame twice replaces, rather than stacking, the handler -- consistent with the
+// registry-ref design holding exactly one slot per mod per event (see mods_set_on_frame_ref's own
+// comment in mods.h), and confirms the luaL_unref of the previous ref does not somehow also
+// un-register the new one.
+static void re_registering_on_frame_replaces_the_previous_handler(void) {
+  clear_mods();
+  const char *root = make_mod("reregister", "id=reregister\napi=1\ngames=ages,seasons\n",
+      "oracles.on_frame(function() oracles.log('first') end)\n"
+      "oracles.on_frame(function() oracles.log('second') end)\n");
+  ASSERT(mods_init(root, true));
+  static uint8_t wram[0x1000], hram[127];
+  ModsFrame f = { .wram = wram, .hram = hram, .seasons = true, .width = 160, .room = 1 };
+  mods_frame(&f);
+  ASSERT(mods_enabled(0));
+  ASSERT(mods_last_log());
+  ASSERT(strstr(mods_last_log(), "second") != NULL);
+  ASSERT(strstr(mods_last_log(), "first") == NULL);
+  mods_shutdown();
+}
+
+// on_room_change must be a safe no-op for a mod that never registered one, even though the room
+// did change.
+static void on_room_change_is_skipped_when_never_registered(void) {
+  clear_mods();
+  const char *root = make_mod("noroomhandler", "id=noroomhandler\napi=1\ngames=ages,seasons\n",
+      "oracles.on_frame(function() oracles.log('frame ran') end)\n");
+  ASSERT(mods_init(root, true));
+  static uint8_t wram[0x1000], hram[127];
+  ModsFrame f = { .wram = wram, .hram = hram, .seasons = true, .width = 160, .room = 1 };
+  mods_frame(&f);
+  ASSERT(mods_enabled(0));
+  ASSERT(mods_last_log());
+  ASSERT(strstr(mods_last_log(), "frame ran") != NULL);
+  f.room = 2;                      // room changes, but this mod never called on_room_change
+  mods_frame(&f);
+  ASSERT(mods_enabled(0));         // must not error just because there is nothing to call
+  mods_shutdown();
+}
+
+// Correction: last_room is static and, without an explicit reset, would outlive mods_shutdown/
+// mods_init -- the same stale-state class as last_log (Task 5). A fresh session whose first real
+// room happens to equal the *previous* session's last room must still fire on_room_change once,
+// since this genuinely is the first frame of a new session.
+static void last_room_resets_across_a_reinit(void) {
+  clear_mods();
+  const char *root = make_mod("roomreset", "id=roomreset\napi=1\ngames=ages,seasons\n",
+      "local n = 0\n"
+      "oracles.on_room_change(function(r) n = n + 1 oracles.log('changes=' .. n) end)\n");
+  ASSERT(mods_init(root, true));
+  static uint8_t wram[0x1000], hram[127];
+  ModsFrame f = { .wram = wram, .hram = hram, .seasons = true, .width = 160, .room = 5 };
+  mods_frame(&f);
+  ASSERT(mods_last_log());
+  ASSERT(strstr(mods_last_log(), "changes=1") != NULL);
+  mods_shutdown();
+
+  ASSERT(mods_init(root, true));                 // a brand new session
+  mods_frame(&f);                                // same room (5) as the previous session's last
+  // Checked separately from the strstr below, not combined into one ASSERT(strstr(...)): if
+  // last_room were ever left stale, the handler above would simply never fire on this "new"
+  // session's first frame, mods_last_log() would return NULL (nothing logged, same as before
+  // mods_init), and strstr(NULL, ...) is undefined behaviour -- a crash that obscures which half
+  // of the check actually failed. Asserting non-NULL first turns that into a clean, named
+  // failure instead.
+  ASSERT(mods_last_log());
+  ASSERT(strstr(mods_last_log(), "changes=1") != NULL);   // must fire again: frame 1 of a new
+                                                            // session, not "no change"
+  mods_shutdown();
+}
+
+// CRITICAL correction: the plan's own sketch calls lua_pcall directly in call_handler, with no
+// budget, no deadline, and no dedicated thread -- oracles.on_frame(function() while true do end
+// end) hangs the game on its first frame and every one after, the precise failure Task 5's whole
+// budget mechanism exists to prevent at load time. pcall is core Lua and cannot be withheld the
+// way "debug" is, so this must be tested the same way the load-time budget is: a pcall-wrapped
+// spinner inside on_frame must be caught promptly and the mod poisoned (mods_enabled false, not
+// merely yielded-and-retried). The healthy mods on either side -- and a second mods_frame call
+// afterward -- are the half a load-time-only test cannot show, since a load happens once per
+// session: "disable everything" must not pass this.
+static void a_pcall_wrapped_spinner_inside_on_frame_is_poisoned_promptly(void) {
+  clear_mods();
+  make_mod("aaa-frame-healthy", "id=aaa-frame-healthy\napi=1\ngames=ages,seasons\n",
+      "local n = 0\noracles.on_frame(function() n = n + 1 oracles.log('aaa n=' .. n) end)\n");
+  make_mod("mid-frame-pcall-spin", "id=mid-frame-pcall-spin\napi=1\ngames=ages,seasons\n",
+      "oracles.on_frame(function() while true do pcall(function() while true do end end) end end)\n");
+  const char *root = make_mod("zzz-frame-healthy", "id=zzz-frame-healthy\napi=1\ngames=ages,seasons\n",
+      "local n = 0\noracles.on_frame(function() n = n + 1 oracles.log('zzz n=' .. n) end)\n");
+  ASSERT(mods_init(root, true));
+  ASSERT_EQ(mods_count(), 3);
+  ASSERT(mods_enabled(0));
+  ASSERT(mods_enabled(1));
+  ASSERT(mods_enabled(2));
+
+  static uint8_t wram[0x1000], hram[127];
+  ModsFrame f = { .wram = wram, .hram = hram, .seasons = true, .width = 160, .room = 1 };
+
+  signal(SIGALRM, mods_test_alarm_handler);
+  alarm(20);
+  double t0 = wall_seconds();
+  mods_frame(&f);
+  double t1 = wall_seconds();
+  alarm(0);
+  ASSERT_PROMPT(t0, t1);
+  ASSERT(mods_enabled(0));
+  ASSERT(!mods_enabled(1));                             // poisoned, not merely yielded
+  ASSERT(mods_enabled(2));
+  ASSERT_BUDGET_OR_DEADLINE(mods_error(1));
+  ASSERT(mods_last_log());
+  ASSERT(strstr(mods_last_log(), "zzz n=1") != NULL);    // zzz still ran on this very frame
+
+  // A second frame: the poisoned mod has no L left to even try resuming, and the healthy ones
+  // either side must keep going.
+  mods_frame(&f);
+  ASSERT(mods_enabled(0));
+  ASSERT(!mods_enabled(1));
+  ASSERT(mods_enabled(2));
+  ASSERT(mods_last_log());
+  ASSERT(strstr(mods_last_log(), "zzz n=2") != NULL);
+  mods_shutdown();
+}
+
+// CRITICAL correction, second route: coroutine.resume is itself implemented via lua_resume on
+// the nested thread, and a budget yield there is indistinguishable, to coroutine.resume's own
+// caller, from an ordinary coroutine.yield() -- the same bypass the load-time tests above pin.
+// "coroutine" is withheld from mods entirely (mod_open_libs_hardened), so inside on_frame this
+// fails on its very first line instead -- a nil-global error, not a budget message. The task
+// asks specifically which mechanism stopped it, not just that something did, so that is what
+// this asserts.
+static void a_coroutine_wrapped_spinner_inside_on_frame_fails_on_the_nil_global(void) {
+  clear_mods();
+  const char *root = make_mod("framecoro", "id=framecoro\napi=1\ngames=ages,seasons\n",
+      "oracles.on_frame(function()\n"
+      "  local ok, err = pcall(function()\n"
+      "    local co = coroutine.create(function() while true do end end)\n"
+      "    coroutine.resume(co)\n"
+      "  end)\n"
+      "  oracles.log('ok=' .. tostring(ok) .. ' err=' .. tostring(err))\n"
+      "end)\n");
+  ASSERT(mods_init(root, true));
+  static uint8_t wram[0x1000], hram[127];
+  ModsFrame f = { .wram = wram, .hram = hram, .seasons = true, .width = 160, .room = 1 };
+  signal(SIGALRM, mods_test_alarm_handler);
+  alarm(10);
+  mods_frame(&f);
+  alarm(0);
+  ASSERT(mods_enabled(0));                        // the handler's own pcall caught the error --
+                                                    // it never even reached the frame budget
+  ASSERT(mods_last_log());
+  ASSERT(strstr(mods_last_log(), "ok=false") != NULL);
+  ASSERT(strstr(mods_last_log(), "coroutine") != NULL);  // "...nil value (global 'coroutine')"
+  mods_shutdown();
+}
+
+// Measured, not guessed (see MOD_FRAME_INSTRUCTION_BUDGET's own comment in mods.c): a handler
+// built specifically to maximise per-VM-instruction cost (repeated pcall/error, 50-150x more
+// expensive per instruction than plain arithmetic) cannot be stopped within the per-frame
+// deadline's own nominal millisecond figure, because the wall-clock deadline is only ever
+// consulted when the shared instruction-count hook fires, and that hook's firing interval is a
+// sandbox.c constant this caller does not control. What this pins is what IS guaranteed instead:
+// the stall is bounded (nowhere near the alarm below -- measured at ~0.06s on this dev machine)
+// and happens exactly once, since the mod is poisoned on this very frame and never called again.
+static void a_pathologically_expensive_on_frame_handler_is_poisoned_after_one_bounded_stall(void) {
+  clear_mods();
+  const char *root = make_mod("expensive", "id=expensive\napi=1\ngames=ages,seasons\n",
+      "oracles.on_frame(function()\n"
+      "  while true do pcall(function() error('x') end) end\n"
+      "end)\n");
+  ASSERT(mods_init(root, true));
+  static uint8_t wram[0x1000], hram[127];
+  ModsFrame f = { .wram = wram, .hram = hram, .seasons = true, .width = 160, .room = 1 };
+  signal(SIGALRM, mods_test_alarm_handler);
+  alarm(15);
+  double t0 = wall_seconds();
+  mods_frame(&f);
+  double t1 = wall_seconds();
+  alarm(0);
+  ASSERT(!mods_enabled(0));
+  ASSERT((t1 - t0) < 2.0);           // bounded (measured ~0.06s on this machine), not a hang
+  double t2 = wall_seconds();
+  mods_frame(&f);                    // a second call must not stall again: there is no L left
+  double t3 = wall_seconds();
+  ASSERT((t3 - t2) < 0.1);
+  mods_shutdown();
+}
+
 int main(void) {
   // The alarm handler's _exit(1) skips normal stdio teardown (deliberately: calling atexit
   // handlers or flushing from inside a signal handler is not safe), which means any buffered
@@ -3027,5 +3494,22 @@ int main(void) {
   RUN(a_catastrophic_find_pattern_is_refused_by_the_matcher_itself);
   RUN(a_catastrophic_gsub_pattern_is_refused_by_the_matcher_itself);
   RUN(a_legitimately_heavy_pattern_still_loads);
+  RUN(a_mod_sees_frames_and_draws);
+  RUN(room_changes_fire_once);
+  RUN(a_healthy_mod_runs_many_frames_without_reusing_a_dead_thread);
+  RUN(screen_and_game_are_sane_before_the_first_frame);
+  RUN(mods_frame_with_a_null_frame_is_a_safe_no_op);
+  RUN_SKIPPABLE(draw_icon_with_no_wram_does_not_crash);
+  RUN(draw_text_with_no_font_draws_nothing);
+  RUN(draw_rect_clamps_rather_than_wrapping_a_huge_width);
+  RUN(draw_text_truncates_at_an_embedded_nul);
+  RUN(rd_outside_the_known_windows_reads_as_zero);
+  RUN(a_bare_global_assignment_never_runs_as_a_handler);
+  RUN(re_registering_on_frame_replaces_the_previous_handler);
+  RUN(on_room_change_is_skipped_when_never_registered);
+  RUN(last_room_resets_across_a_reinit);
+  RUN(a_pcall_wrapped_spinner_inside_on_frame_is_poisoned_promptly);
+  RUN(a_coroutine_wrapped_spinner_inside_on_frame_fails_on_the_nil_global);
+  RUN(a_pathologically_expensive_on_frame_handler_is_poisoned_after_one_bounded_stall);
   return skipped ? 77 : 0;
 }
