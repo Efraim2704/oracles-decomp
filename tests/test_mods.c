@@ -3,6 +3,7 @@
 #include "lauxlib.h"
 #include "lualib.h"
 #include "mods/mods.h"
+#include "mods/api.h"
 #include "mods/overlay.h"
 #include "ui/ui.h"
 #include "wide/item.h"
@@ -1276,6 +1277,263 @@ static void a_directory_named_mod_ini_is_refused(void) {
   mods_shutdown();
 }
 
+// Task 5: main.lua runs at load, and the oracles table is there.
+static void main_lua_runs(void) {
+  clear_mods();
+  const char *root = make_mod("logger", "id=logger\nname=Logger\napi=1\ngames=ages,seasons\n",
+      "oracles.log('loaded ok')\n");
+  ASSERT(mods_init(root, true));
+  ASSERT_EQ(mods_count(), 1);
+  ASSERT(mods_last_log());
+  ASSERT(strstr(mods_last_log(), "loaded ok"));
+  mods_shutdown();
+}
+
+// Every binding the host registers is discoverable, which is what MODDING.md is checked against.
+static void the_api_registry_lists_itself(void) {
+  int n = mods_api_count();
+  ASSERT(n > 0);
+  bool saw_log = false;
+  for (int i = 0; i < n; i++)
+    if (!strcmp(mods_api_name(i), "log")) saw_log = true;
+  ASSERT(saw_log);
+}
+
+// Correction B: mods_shutdown must not let a stale oracles.log() message outlive the mod that
+// logged it. A mods_count()-only check can't see this bug at all; only reading mods_last_log()
+// itself, after an unrelated, silent mod has since loaded, can.
+static void mods_last_log_is_cleared_by_shutdown(void) {
+  clear_mods();
+  const char *root = make_mod("chatty", "id=chatty\napi=1\ngames=ages,seasons\n", "oracles.log('loaded ok')\n");
+  ASSERT(mods_init(root, true));
+  ASSERT_EQ(mods_count(), 1);
+  ASSERT(mods_last_log());
+  ASSERT(strstr(mods_last_log(), "loaded ok") != NULL);
+  mods_shutdown();
+  ASSERT(mods_last_log() == NULL);
+
+  clear_mods();
+  const char *root2 = make_mod("silent", "id=silent\napi=1\ngames=ages,seasons\n", "-- says nothing\n");
+  ASSERT(mods_init(root2, true));
+  ASSERT_EQ(mods_count(), 1);
+  ASSERT(mods_last_log() == NULL);           // must not inherit "loaded ok" from the previous mod
+  mods_shutdown();
+}
+
+// Correction A, instruction half: a `while true do end` main.lua never returns to luaL_dofile on
+// its own -- there is nothing for an ordinary pcall to catch, unlike a Lua-level `error("boom")` --
+// so without mod_set_instruction_budget's LUA_MASKCOUNT hook this would hang mods_init forever.
+// Two healthy mods, sorted alphabetically on either side of the hang, make sure a mutant that
+// aborted the *whole scan* on any single failure (rather than just skipping the one bad mod)
+// still fails this test. Timed, not just asserted to terminate: "aborts eventually" is not the
+// bar -- the budget must be small enough to abort within about a tenth of a second on this
+// machine, so even a CI box several times slower stays well under the 2s bound here.
+static void a_hanging_mod_is_skipped_and_other_mods_still_load(void) {
+  clear_mods();
+  make_mod("aaa-healthy", "id=aaa-healthy\napi=1\ngames=ages,seasons\n", "oracles.log('aaa ok')\n");
+  make_mod("mid-hang", "id=mid-hang\napi=1\ngames=ages,seasons\n", "while true do end\n");
+  const char *root = make_mod("zzz-healthy", "id=zzz-healthy\napi=1\ngames=ages,seasons\n", "oracles.log('zzz ok')\n");
+  cap_root = root;
+  cap_seasons = true;
+  char out[4096];
+  clock_t t0 = clock();
+  capture_stderr(run_cap_mods_init, out, sizeof out);
+  clock_t t1 = clock();
+  ASSERT(cap_result);
+  ASSERT((double)(t1 - t0) / CLOCKS_PER_SEC < 2.0);
+  ASSERT_EQ(mods_count(), 2);
+  ASSERT_EQ(strcmp(mods_id(0), "aaa-healthy"), 0);
+  ASSERT_EQ(strcmp(mods_id(1), "zzz-healthy"), 0);
+  ASSERT(strstr(out, "mid-hang") != NULL);
+  ASSERT(strstr(out, "instruction budget") != NULL);
+  mods_shutdown();
+}
+
+// Correction A, memory half: an allocation loop with no infinite-loop shape at all (each iteration
+// terminates fine; it's the total that's unbounded) must be caught by the memory cap specifically,
+// not the instruction budget -- this loop runs only a handful of VM instructions per iteration, so
+// it hits MOD_MEM_CAP (8 MiB, 1 MiB per iteration) in about 8 iterations, nowhere near
+// MOD_LOAD_INSTRUCTION_BUDGET's 50 million. Same "two healthy mods either side, and it's fast"
+// shape as the instruction-budget test above, for the same reasons.
+static void an_unbounded_allocation_mod_is_skipped_and_other_mods_still_load(void) {
+  clear_mods();
+  make_mod("aaa-healthy2", "id=aaa-healthy2\napi=1\ngames=ages,seasons\n", "oracles.log('aaa ok')\n");
+  make_mod("mid-oom", "id=mid-oom\napi=1\ngames=ages,seasons\n",
+      "local t = {} while true do t[#t+1] = string.rep('x', 1000000) end\n");
+  const char *root = make_mod("zzz-healthy2", "id=zzz-healthy2\napi=1\ngames=ages,seasons\n", "oracles.log('zzz ok')\n");
+  cap_root = root;
+  cap_seasons = true;
+  char out[4096];
+  clock_t t0 = clock();
+  capture_stderr(run_cap_mods_init, out, sizeof out);
+  clock_t t1 = clock();
+  ASSERT(cap_result);
+  ASSERT((double)(t1 - t0) / CLOCKS_PER_SEC < 2.0);
+  ASSERT_EQ(mods_count(), 2);
+  ASSERT_EQ(strcmp(mods_id(0), "aaa-healthy2"), 0);
+  ASSERT_EQ(strcmp(mods_id(1), "zzz-healthy2"), 0);
+  ASSERT(strstr(out, "mid-oom") != NULL);
+  ASSERT(strstr(out, "not enough memory") != NULL);
+  mods_shutdown();
+}
+
+// Correction F: a mod whose zip forgot main.lua gets a specific, actionable message -- not
+// whatever generic complaint lauxlib's own file-open failure happens to produce.
+static void a_mod_with_no_main_lua_is_refused_clearly(void) {
+  clear_mods();
+  const char *tmp = getenv("TMPDIR");
+  if (!tmp || !*tmp) tmp = "/tmp";
+  char root[600], dir[700], cmd[800];
+  snprintf(root, sizeof root, "%s/test_mods_root", tmp);
+  snprintf(dir, sizeof dir, "%s/nomain", root);
+  snprintf(cmd, sizeof cmd,
+      "mkdir -p '%s' && printf 'id=nomain\\napi=1\\ngames=ages,seasons\\n' > '%s/mod.ini'", dir, dir);
+  ASSERT_EQ(system(cmd), 0);
+  cap_root = root;
+  cap_seasons = true;
+  char out[4096];
+  capture_stderr(run_cap_mods_init, out, sizeof out);
+  ASSERT(cap_result);
+  ASSERT_EQ(mods_count(), 0);
+  ASSERT(strstr(out, "nomain") != NULL);
+  ASSERT(strstr(out, "has no main.lua") != NULL);
+  mods_shutdown();
+}
+
+// Hazard found while implementing Task 5, not in the original plan: the exact same FIFO-blocks-
+// fopen-forever hazard Task 4 fixed for mod.ini applies identically to main.lua, since lauxlib's
+// own file loader is just another fopen/fread loop underneath with no protection of its own.
+// Wrapped in a real alarm(), like the mod.ini version, so a regression actually fails this test
+// (and kills the whole binary promptly) instead of hanging CI indefinitely.
+static bool a_fifo_main_lua_does_not_hang(void) {
+  clear_mods();
+  const char *tmp = getenv("TMPDIR");
+  if (!tmp || !*tmp) tmp = "/tmp";
+  char root[600], dir[700], cmd[900];
+  snprintf(root, sizeof root, "%s/test_mods_root", tmp);
+  snprintf(dir, sizeof dir, "%s/fifolua", root);
+  snprintf(cmd, sizeof cmd,
+      "mkdir -p '%s' && printf 'id=fifolua\\napi=1\\ngames=ages,seasons\\n' > '%s/mod.ini' && mkfifo '%s/main.lua'",
+      dir, dir, dir);
+  if (system(cmd) != 0) SKIP_TEST("mkfifo not available on this filesystem");
+  signal(SIGALRM, mods_test_alarm_handler);
+  alarm(5);
+  bool ok = mods_init(root, true);
+  alarm(0);
+  ASSERT(ok);
+  ASSERT_EQ(mods_count(), 0);
+  mods_shutdown();
+  return true;
+}
+
+// Same hazard, the symlink-to-character-device shape: main.lua -> /dev/zero would stream forever
+// with no newline for lauxlib's loader to stop on, exactly like mod.ini's own version of this.
+static bool a_symlink_main_lua_to_a_character_device_does_not_hang(void) {
+  clear_mods();
+  const char *tmp = getenv("TMPDIR");
+  if (!tmp || !*tmp) tmp = "/tmp";
+  char root[600], dir[700], cmd[900];
+  snprintf(root, sizeof root, "%s/test_mods_root", tmp);
+  snprintf(dir, sizeof dir, "%s/zerolua", root);
+  snprintf(cmd, sizeof cmd,
+      "mkdir -p '%s' && printf 'id=zerolua\\napi=1\\ngames=ages,seasons\\n' > '%s/mod.ini' && ln -sf /dev/zero '%s/main.lua'",
+      dir, dir, dir);
+  if (system(cmd) != 0) SKIP_TEST("/dev/zero not available on this machine");
+  signal(SIGALRM, mods_test_alarm_handler);
+  alarm(5);
+  bool ok = mods_init(root, true);
+  alarm(0);
+  ASSERT(ok);
+  ASSERT_EQ(mods_count(), 0);
+  mods_shutdown();
+  return true;
+}
+
+// Correction D: the error text a failed main.lua produces is attacker-controlled (main.lua's own
+// error() argument), exactly like a hostile mod.ini value, and must go through the same escaper
+// before it ever reaches a terminal -- otherwise an embedded CR + ANSI "clear line" escape could
+// forge a fake success line the moment this process's own diagnostic is printed raw.
+static void a_hostile_lua_error_is_escaped_before_printing(void) {
+  clear_mods();
+  const char *root = make_mod("badlua", "id=badlua\napi=1\ngames=ages,seasons\n",
+      "error('boom\\r\\27[2KFAKE SUCCESS')\n");
+  cap_root = root;
+  cap_seasons = true;
+  char out[4096];
+  capture_stderr(run_cap_mods_init, out, sizeof out);
+  ASSERT(cap_result);
+  ASSERT_EQ(mods_count(), 0);
+  ASSERT(strstr(out, "badlua") != NULL);
+  for (const char *p = out; *p; p++)
+    ASSERT(!((unsigned char)*p < 0x20 && *p != '\n'));    // no raw control byte survived
+  ASSERT(strstr(out, "\\x0d") != NULL);                    // the CR became visible text instead
+  ASSERT(strstr(out, "\\x1b") != NULL);                    // and so did the ESC
+  mods_shutdown();
+}
+
+// Correction E: oracles.log() must not silently truncate at an embedded NUL the way
+// luaL_checkstring's bare `const char *` would. The choice made in api.c is to escape rather than
+// truncate -- mods_escape_into renders a NUL as a literal "\x00", so the byte after it ('b' here)
+// is not silently lost.
+static void oracles_log_with_an_embedded_nul_is_escaped_not_truncated(void) {
+  clear_mods();
+  const char *root = make_mod("nullog", "id=nullog\napi=1\ngames=ages,seasons\n", "oracles.log('a\\0b')\n");
+  ASSERT(mods_init(root, true));
+  ASSERT_EQ(mods_count(), 1);
+  ASSERT(mods_last_log());
+  ASSERT(strstr(mods_last_log(), "a\\x00b") != NULL);
+  mods_shutdown();
+}
+
+// Hazard found while implementing Task 5, not in the original plan: debug.sethook() lets Lua code
+// remove any hook set from C, including mod_instruction_limit_hook. A mod that calls it before
+// looping forever would otherwise disarm the very protection this task exists to add -- the
+// instruction budget would never fire, so this would hang exactly like a_hanging_mod above but
+// with one extra line of Lua defeating the defence outright. Confirmed empirically before the fix
+// (see mods.c's mod_open_libs_without_debug): unpatched, this exact script ran to completion
+// instead of aborting. Paired with healthy mods either side for the same reason as the other
+// budget tests above, and timed the same way.
+static void a_mod_cannot_disarm_its_own_instruction_budget_via_debug_sethook(void) {
+  clear_mods();
+  make_mod("aaa-healthy3", "id=aaa-healthy3\napi=1\ngames=ages,seasons\n", "oracles.log('aaa ok')\n");
+  make_mod("mid-disarm", "id=mid-disarm\napi=1\ngames=ages,seasons\n",
+      "debug.sethook()\nwhile true do end\n");
+  const char *root = make_mod("zzz-healthy3", "id=zzz-healthy3\napi=1\ngames=ages,seasons\n", "oracles.log('zzz ok')\n");
+  cap_root = root;
+  cap_seasons = true;
+  char out[4096];
+  clock_t t0 = clock();
+  capture_stderr(run_cap_mods_init, out, sizeof out);
+  clock_t t1 = clock();
+  ASSERT(cap_result);
+  ASSERT((double)(t1 - t0) / CLOCKS_PER_SEC < 2.0);
+  ASSERT_EQ(mods_count(), 2);
+  ASSERT_EQ(strcmp(mods_id(0), "aaa-healthy3"), 0);
+  ASSERT_EQ(strcmp(mods_id(1), "zzz-healthy3"), 0);
+  ASSERT(strstr(out, "mid-disarm") != NULL);
+  mods_shutdown();
+}
+
+// Hazard, continued: "debug" must be unreachable outright, not merely harmless to call once --
+// otherwise a mod could still read debug.gethook()/debug.getinfo() or any other piece of it.
+// require() checks package.loaded before searching the filesystem, so this also pins that
+// mod_open_libs_without_debug clears package.loaded.debug, not just the global: nil-ing only the
+// global would leave require('debug') able to resurrect it from package.loaded.
+static void the_debug_library_is_unreachable_by_global_or_require(void) {
+  clear_mods();
+  const char *root = make_mod("nodebug",
+      "id=nodebug\napi=1\ngames=ages,seasons\n",
+      "if debug ~= nil then error('debug global is reachable') end\n"
+      "local ok = pcall(require, 'debug')\n"
+      "if ok then error('require(\"debug\") succeeded') end\n"
+      "oracles.log('debug is unreachable')\n");
+  ASSERT(mods_init(root, true));
+  ASSERT_EQ(mods_count(), 1);
+  ASSERT(mods_last_log());
+  ASSERT(strstr(mods_last_log(), "debug is unreachable") != NULL);
+  mods_shutdown();
+}
+
 int main(void) {
   RUN(lua_runs);
   RUN(overlay_draws_a_rect);
@@ -1334,5 +1592,17 @@ int main(void) {
   RUN_SKIPPABLE(a_fifo_mod_ini_does_not_hang);
   RUN_SKIPPABLE(a_symlink_to_a_character_device_does_not_hang);
   RUN(a_directory_named_mod_ini_is_refused);
+  RUN(main_lua_runs);
+  RUN(the_api_registry_lists_itself);
+  RUN(mods_last_log_is_cleared_by_shutdown);
+  RUN(a_hanging_mod_is_skipped_and_other_mods_still_load);
+  RUN(an_unbounded_allocation_mod_is_skipped_and_other_mods_still_load);
+  RUN(a_mod_with_no_main_lua_is_refused_clearly);
+  RUN_SKIPPABLE(a_fifo_main_lua_does_not_hang);
+  RUN_SKIPPABLE(a_symlink_main_lua_to_a_character_device_does_not_hang);
+  RUN(a_hostile_lua_error_is_escaped_before_printing);
+  RUN(oracles_log_with_an_embedded_nul_is_escaped_not_truncated);
+  RUN(a_mod_cannot_disarm_its_own_instruction_budget_via_debug_sethook);
+  RUN(the_debug_library_is_unreachable_by_global_or_require);
   return skipped ? 77 : 0;
 }

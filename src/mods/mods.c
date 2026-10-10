@@ -1,4 +1,8 @@
 #include "mods/mods.h"
+#include "mods/api.h"
+#include "lua.h"
+#include "lauxlib.h"
+#include "lualib.h"
 #include <dirent.h>
 #include <errno.h>
 #include <limits.h>
@@ -27,8 +31,8 @@ bool mods_id_valid(const char *id) {
 typedef struct {
   char id[MOD_FIELD_LEN];     // canonical: the validated folder name, never the mod.ini field directly
   char name[MOD_FIELD_LEN];
-  char ini_id[MOD_FIELD_LEN]; // raw "id=" value from mod.ini (escaped; see escape_into), kept only
-                              // to cross-check against id
+  char ini_id[MOD_FIELD_LEN]; // raw "id=" value from mod.ini (escaped; see mods_escape_into), kept
+                              // only to cross-check against id
   bool ini_id_present;
   bool enabled;         // always true today; Task 6 adds mods.ini-based enable/disable and will be
                         // the first thing that ever clears this -- not a bug that nothing does yet.
@@ -40,12 +44,14 @@ typedef struct {
                         // *acceptable* value (>= 1, <= MODS_API_VERSION) is mods_init/load_one's
                         // call, not read_ini's -- see the api= branch below for why that split
                         // matters.
+  lua_State *L;         // NULL until run_main_lua succeeds; only mods actually stored in mods[]
+                        // (post game/cap filtering) ever get one.
 } Mod;
 
 static Mod mods[MODS_MAX];
 static int count;
-// Set by mods_init, read by nothing in this task; Task 5/8's oracles.game() binding is what
-// eventually consumes it, so this is an intentional dead store for now, not an oversight.
+// Set by mods_init, still read by nothing: a future oracles.game() binding is what eventually
+// consumes it, so this is an intentional dead store for now, not an oversight.
 static bool host_seasons;
 
 static void trim(char *s) {
@@ -57,22 +63,21 @@ static void trim(char *s) {
   if (start != s) memmove(s, start, len + 1);
 }
 
-// Copies src into dst (bounded by dst_size, always NUL-terminated), replacing every byte outside
-// printable ASCII (0x20..0x7e) with a \xHH escape. A mod.ini value reaches a terminal two ways --
-// this process's own stderr diagnostics, and a future caller of mods_name()/mods_id() printing it
-// directly (a mod list UI, say) -- so sanitizing once, at the point a value is stored, keeps both
-// safe rather than re-escaping at every print site. Without this, a value like
-// "victim\r\x1b[2K\rmods: 'victim' loaded OK (api 1)" overwrites the current terminal line with a
-// forged success message the moment it's printed raw.
-static void escape_into(char *dst, size_t dst_size, const char *src) {
+// See mods.h for why this exists and why it is shared with api.c. Takes an explicit src_len
+// (rather than relying on strlen) so a hostile value containing an embedded NUL -- a mod.ini
+// value can't, since contains_nul already refuses those, but a Lua string from oracles.log() or
+// a failed main.lua's error text can -- is escaped in full rather than silently cut short at the
+// first NUL byte.
+void mods_escape_into(char *dst, size_t dst_size, const char *src, size_t src_len) {
   size_t o = 0;
-  for (const unsigned char *p = (const unsigned char *)src; *p && o + 1 < dst_size; p++) {
-    if (*p >= 0x20 && *p < 0x7f) {
-      dst[o++] = (char)*p;
+  for (size_t i = 0; i < src_len && o + 1 < dst_size; i++) {
+    unsigned char c = (unsigned char)src[i];
+    if (c >= 0x20 && c < 0x7f) {
+      dst[o++] = (char)c;
     } else {
       char esc[5];
-      snprintf(esc, sizeof esc, "\\x%02x", *p);
-      for (int i = 0; esc[i] && o + 1 < dst_size; i++) dst[o++] = esc[i];
+      snprintf(esc, sizeof esc, "\\x%02x", c);
+      for (int j = 0; esc[j] && o + 1 < dst_size; j++) dst[o++] = esc[j];
     }
   }
   dst[o] = 0;
@@ -146,10 +151,10 @@ static bool read_ini(const char *path, const char *label, Mod *m) {
     if (!*key) continue;
 
     if (!strcmp(key, "id")) {
-      escape_into(m->ini_id, sizeof m->ini_id, value);
+      mods_escape_into(m->ini_id, sizeof m->ini_id, value, strlen(value));
       m->ini_id_present = true;
     } else if (!strcmp(key, "name")) {
-      escape_into(m->name, sizeof m->name, value);
+      mods_escape_into(m->name, sizeof m->name, value, strlen(value));
     } else if (!strcmp(key, "api")) {
       // This function's job is only to establish whether the (int) cast is well-defined and to
       // record that the key was present at all -- not whether the resulting number is an
@@ -182,7 +187,7 @@ static bool read_ini(const char *path, const char *label, Mod *m) {
         else if (!strcmp(tok, "seasons")) m->seasons = true;
         else if (*tok) {
           char esc[128];
-          escape_into(esc, sizeof esc, tok);
+          mods_escape_into(esc, sizeof esc, tok, strlen(tok));
           fprintf(stderr, "mods: '%s' names unrecognised game '%s' in its games=, ignoring that token\n",
                   label, esc);
         }
@@ -196,11 +201,14 @@ static bool read_ini(const char *path, const char *label, Mod *m) {
 // Validates and fully populates *m for the mod folder `name` directly under `dir`: charset and
 // length of the id, that it's actually a directory, that its mod.ini is a regular file (not a
 // FIFO, a symlink to a character device, or anything else that could block or loop forever in
-// fopen/fgets), free of embedded NUL bytes, parses, declares a matching id, and has a usable
-// api= and games=. Prints its own stderr diagnostic on every refusal path. Does not decide
-// whether the mod applies to the game being played, or apply the MODS_MAX cap -- those depend on
-// state (which game, how many mods are already loaded) that spans the whole scan, so they stay
-// in mods_init's loop.
+// fopen/fgets), free of embedded NUL bytes, parses, declares a matching id, has a usable api= and
+// games=, and that main.lua exists and is also a regular file (the exact same FIFO/device-symlink
+// hazard that mod.ini faces applies equally to main.lua -- lauxlib's own file loader is just an
+// fopen/fread loop underneath, with no protection of its own). Prints its own stderr diagnostic on
+// every refusal path. Does not decide whether the mod applies to the game being played, apply the
+// MODS_MAX cap, or actually run main.lua -- those depend on state (which game, how many mods are
+// already loaded) that spans the whole scan, or are too expensive/risky to do for a mod that
+// might not even end up kept, so they stay in mods_init's loop (see run_main_lua below).
 static bool load_one(const char *dir, const char *name, Mod *m) {
   if (!mods_id_valid(name)) {
     fprintf(stderr, "mods: '%s' is not a valid mod id (lowercase letters, digits, hyphen only), skipping\n", name);
@@ -291,8 +299,221 @@ static bool load_one(const char *dir, const char *name, Mod *m) {
     return false;
   }
 
+  // Checked last, only once mod.ini itself is fully valid: a mod with a broken mod.ini should be
+  // told about *that* first (e.g. the embedded-NUL or missing-id= checks above), rather than
+  // "has no main.lua" masking the real problem for a mod that, as it happens, also forgot
+  // main.lua. Task 4 deliberately left main.lua unchecked (running it wasn't this module's job
+  // yet); now that it is, a mod that forgot to ship one deserves this specific message, not
+  // whatever generic complaint lauxlib's own file loader happens to produce about a missing file
+  // -- and, just as importantly, the same FIFO-blocks-forever / symlink-to-device-streams-forever
+  // hazard that mod.ini's S_ISREG check above guards against applies identically here, since
+  // lauxlib's loader is just another fopen/fread loop with no defence of its own. stat() before
+  // ever touching the file closes that off the same way.
+  char lua_path[1056];
+  int n3 = snprintf(lua_path, sizeof lua_path, "%s/main.lua", entry_path);
+  if (n3 < 0 || (size_t)n3 >= sizeof lua_path) {
+    fprintf(stderr, "mods: '%s' path too long, skipping\n", name);
+    return false;
+  }
+  struct stat lua_st;
+  if (stat(lua_path, &lua_st) != 0) {
+    fprintf(stderr, "mods: '%s' has no main.lua, skipping\n", name);
+    return false;
+  }
+  if (!S_ISREG(lua_st.st_mode)) {
+    fprintf(stderr, "mods: '%s' has a main.lua that is not a regular file, skipping\n", name);
+    return false;
+  }
+
   snprintf(m->id, sizeof m->id, "%s", name);
   if (!m->name[0]) snprintf(m->name, sizeof m->name, "%s", name);
+  return true;
+}
+
+// Per-mod Lua heap accounting, passed as the `ud` of lua_newstate's custom allocator. One of
+// these is malloc'd for the lifetime of a mod's Lua state and freed right alongside it.
+typedef struct {
+  size_t used;
+  size_t cap;
+} ModAlloc;
+
+// How much Lua heap one mod's main.lua may use at once (and, from Task 8 on, its per-frame
+// callbacks too, since they share the same state and so the same cap). Measured empirically on
+// this dev machine with this exact allocator wired up: a fresh lua_newstate()+luaL_openlibs()
+// costs about 19 KB, and a main.lua that builds a 1000-entry table of {x=,y=,name=} sub-tables
+// costs about 250 KB total. 8 MiB is >30x that already-elaborate example -- generous for anything
+// a reasonable main.lua would do -- while still being far too small for an unbounded-allocation
+// loop to get anywhere: `local t={} while true do t[#t+1]=string.rep('x',1e6) end` allocates a
+// megabyte-sized string per iteration, so it trips after roughly 8 of them.
+#define MOD_MEM_CAP ((size_t)8 * 1024 * 1024)
+
+// Lua's custom-allocator contract (see third_party/lua/lmem.c's comment on frealloc): ptr == NULL
+// means "create a new block of size nsize, no matter what osize says" -- osize is not reliably a
+// byte count in that case, it can be a type tag Lua uses only for its own GC bookkeeping -- and
+// nsize == 0 means "free ptr (which osize does correctly describe here), return NULL". So `used`
+// is adjusted by nsize alone on creation, and by the difference on resize/free, and osize is never
+// consulted when ptr == NULL. Returning NULL for an over-cap allocation is exactly how an ordinary
+// out-of-memory realloc looks to Lua, which already knows how to turn that into a clean LUA_ERRMEM
+// error -- so the memory cap needs no Lua-side cooperation at all, unlike the instruction budget
+// below, which has to raise that error itself.
+static void *mod_lua_alloc(void *ud, void *ptr, size_t osize, size_t nsize) {
+  ModAlloc *a = (ModAlloc *)ud;
+  if (ptr == NULL) {
+    if (nsize == 0) return NULL;                    // frealloc(ud, NULL, x, 0) is defined as a no-op
+    if (a->used + nsize > a->cap) return NULL;       // over budget before even trying to allocate
+    void *p = malloc(nsize);
+    if (!p) return NULL;
+    a->used += nsize;
+    return p;
+  }
+  if (nsize == 0) {
+    free(ptr);
+    a->used -= osize;
+    return NULL;
+  }
+  // Guard the comparison with nsize > osize so it's only ever evaluated as a widening resize
+  // (nsize - osize would underflow as size_t arithmetic otherwise); a shrinking resize can never
+  // push a mod over its own cap and so is never blocked by it.
+  if (nsize > osize && a->used + (nsize - osize) > a->cap) return NULL;  // old block, still valid,
+                                                                           // untouched -- matches
+                                                                           // what a real failing
+                                                                           // realloc() would leave
+  void *p = realloc(ptr, nsize);
+  if (!p) return NULL;
+  // nsize - osize computed as size_t can itself "underflow" when nsize < osize (a shrink), but
+  // adding that wrapped value back to `used` is exactly correct modulo 2^64 -- unsigned
+  // subtraction-then-addition cancels out to the true signed difference as long as neither byte
+  // count is anywhere near the 64-bit wraparound, which no real allocation ever is.
+  a->used += nsize - osize;
+  return p;
+}
+
+// The hook lua_sethook installs below (see mod_set_instruction_budget), called once LUA_MASKCOUNT
+// VM instructions have run since the hook was set. Raising a Lua error here is what makes a
+// runaway `while true do end` abort exactly the way a Lua-level `error("boom")` already does:
+// lua_error longjmps out of whatever VM code is executing, straight into the lua_pcall that
+// luaL_dofile already wraps the whole chunk in, landing in run_main_lua's existing "mod failed"
+// path below with zero special-casing there.
+static void mod_instruction_limit_hook(lua_State *L, lua_Debug *ar) {
+  (void)ar;
+  luaL_error(L, "exceeded its instruction budget (possible infinite loop)");
+}
+
+// How many Lua VM instructions a mod's main.lua may execute before mod_instruction_limit_hook
+// aborts it. Measured empirically on this dev machine: a tight `while true do i=i+1 end` loop
+// runs at roughly 450 million VM instructions per second, so 50 million is about a tenth of a
+// second of real wall-clock time for a runaway script -- generous margin under "a couple of
+// seconds" even on CI hardware several times slower than this machine, while still being orders
+// of magnitude more than any realistic main.lua setup script (defining a handful of functions and
+// a modest table) will ever use.
+//
+// Deliberately not folded directly into a single lua_sethook call: mod_set_instruction_budget
+// takes `count` as a parameter precisely so Task 8 can call it again, with a much smaller count,
+// right before each per-frame callback runs -- lua_sethook simply replaces the previous hook and
+// resets its countdown, so nothing about this needs to change to support that reuse.
+#define MOD_LOAD_INSTRUCTION_BUDGET 50000000
+
+static void mod_set_instruction_budget(lua_State *L, int count) {
+  lua_sethook(L, mod_instruction_limit_hook, LUA_MASKCOUNT, count);
+}
+
+// Hazard found while building the instruction budget above, not in the original plan: Lua's
+// "debug" library -- part of plain luaL_openlibs, and still deliberately open today since the
+// sandbox that would otherwise close it is a later task's job -- includes debug.sethook(), which
+// lets ordinary Lua code replace or remove *any* hook set from C, including
+// mod_instruction_limit_hook. A single `debug.sethook()` call (or `debug.sethook(nil)`,
+// equivalent) at the top of main.lua would silently disarm the anti-hang protection before the
+// mod's own infinite loop ever ran -- confirmed empirically: unpatched, `debug.sethook() while
+// true do end` inside a 1,000,000-instruction budget ran a 2,000,000-iteration loop to completion
+// instead of aborting. That defeats the one thing this task is specifically required to build, so
+// it's closed here rather than left for Task 7's broader sandbox: every other standard library
+// luaL_openlibs would open is opened exactly as before (io/os/package/require stay available,
+// unlike the eventual sandbox -- see the comment at this function's call site), only "debug" is
+// withheld. Removed from both the globals table and package.loaded (require() checks
+// package.loaded first, so nil-ing only the global would leave `require('debug')` able to
+// resurrect it) -- nothing else the standard library opens re-registers "debug" under either key,
+// so this makes it unreachable by any ordinary means.
+static void mod_open_libs_without_debug(lua_State *L) {
+  luaL_openlibs(L);
+  lua_pushnil(L);
+  lua_setglobal(L, "debug");
+  lua_getglobal(L, "package");
+  lua_getfield(L, -1, "loaded");
+  lua_pushnil(L);
+  lua_setfield(L, -2, "debug");
+  lua_pop(L, 2);           // package.loaded, package
+}
+
+// Actually runs a mod's main.lua -- the one part of loading a mod that executes untrusted code,
+// which is why it happens here, in mods_init's loop, rather than inside load_one: by the time this
+// is called, the mod has already cleared every load_one check *and* been confirmed to apply to the
+// game being played *and* still fit under MODS_MAX, so Lua only ever runs for a mod that is
+// actually going to be kept. load_one has already proven main.lua exists and is a regular file, so
+// the only new failure modes here are the mod's own code, an over-budget allocation, and an
+// over-budget instruction count -- all three land in the same "mod failed to load" refusal, and
+// all three leave the rest of the scan completely unaffected: a broken mod is skipped, never
+// fatal, exactly per the "a broken mod must never take the app down" design.
+static bool run_main_lua(const char *dir, const char *name, Mod *m) {
+  char lua_path[1056];
+  int n = snprintf(lua_path, sizeof lua_path, "%s/%s/main.lua", dir, name);
+  if (n < 0 || (size_t)n >= sizeof lua_path) {
+    fprintf(stderr, "mods: '%s' path too long, skipping\n", name);
+    return false;
+  }
+
+  ModAlloc *a = malloc(sizeof *a);
+  if (!a) {
+    fprintf(stderr, "mods: '%s' out of memory allocating its Lua accounting, skipping\n", name);
+    return false;
+  }
+  a->used = 0;
+  a->cap = MOD_MEM_CAP;
+
+  // lua_newstate, not luaL_newstate: every byte this mod's Lua allocates -- its own strings and
+  // tables as well as the interpreter's internal objects -- is counted against that mod's own
+  // cap, not the host process's whole heap. Without this, an unbounded allocation loop would grow
+  // until the OS killed the process rather than failing cleanly inside Lua.
+  lua_State *L = lua_newstate(mod_lua_alloc, a);
+  if (!L) {
+    // Not silent: a NULL here means even the initial handful of KB the interpreter needs to boot
+    // itself failed to allocate, which the caller deserves to know about rather than just losing
+    // the mod with no explanation.
+    fprintf(stderr, "mods: '%s' could not create a Lua state, skipping\n", name);
+    free(a);
+    return false;
+  }
+
+  // Deliberately unrestricted for now, except for one specific hole closed below: io, os and
+  // package/require stay wide open, none of which the approved sandbox design grants a mod
+  // (string, table and math only). Closing that gap generally is a later task's job specifically,
+  // not an oversight here -- and nothing in the shipped app links this module yet either way, so
+  // no build anyone runs today is affected by a mod being able to read/write files or spawn
+  // processes through main.lua.
+  mod_open_libs_without_debug(L);
+  mods_api_open(L);
+
+  // Set before a single byte of main.lua runs, so `while true do end` can never get started
+  // without a countdown already ticking against it.
+  mod_set_instruction_budget(L, MOD_LOAD_INSTRUCTION_BUDGET);
+
+  if (luaL_dofile(L, lua_path) != LUA_OK) {
+    // The error text is attacker-controlled either way: it's main.lua's own error() argument, or
+    // the literal text of mod_instruction_limit_hook's message, or Lua's fixed "not enough
+    // memory" string when the allocator cap was hit. mods_escape_into is the same escaper mod.ini
+    // values go through, reused here rather than duplicated, for the identical reason: printed
+    // raw, a crafted error string could forge a fake success line on a terminal via an embedded
+    // CR and ANSI escape.
+    size_t elen = 0;
+    const char *emsg = lua_tolstring(L, -1, &elen);
+    char esc[512];
+    mods_escape_into(esc, sizeof esc, emsg ? emsg : "", emsg ? elen : 0);
+    fprintf(stderr, "mods: '%s' failed to run main.lua: %s\n", name, esc);
+    lua_close(L);
+    free(a);
+    return false;
+  }
+
+  m->L = L;
   return true;
 }
 
@@ -355,6 +576,10 @@ bool mods_init(const char *dir, bool seasons) {
       dropped_for_cap++;
       continue;
     }
+    // Only now -- known to apply to this game, and known to still have a slot -- is it worth the
+    // cost and risk of actually running this mod's Lua. run_main_lua already printed why on
+    // failure.
+    if (!run_main_lua(dir, name, &m)) continue;
     mods[loaded++] = m;
   }
   count = loaded;
@@ -366,7 +591,26 @@ bool mods_init(const char *dir, bool seasons) {
   return true;
 }
 
-void mods_shutdown(void) { count = 0; }
+void mods_shutdown(void) {
+  // Close every mod's Lua state (and free the per-mod allocator accounting that went with it)
+  // before resetting count -- not after, since mods[] is about to become meaningless, and not
+  // skipped for mods whose L is NULL (none in mods[] today ever are, since only a mod that
+  // run_main_lua fully succeeded on is ever stored there, but the check costs nothing and keeps
+  // this safe against that invariant ever loosening).
+  for (int i = 0; i < count; i++) {
+    if (!mods[i].L) continue;
+    void *ud = NULL;
+    lua_getallocf(mods[i].L, &ud);
+    lua_close(mods[i].L);
+    free(ud);
+  }
+  count = 0;
+  // Correction: a stale oracles.log() message must not outlive the mod that logged it, or a
+  // silent mod loaded afterwards would be misreported as having said something. mods_init always
+  // calls mods_shutdown first, so this also covers "the top of mods_init", not just an explicit
+  // shutdown call.
+  mods_api_clear_log();
+}
 
 int mods_count(void) { return count; }
 const char *mods_id(int i) { return i >= 0 && i < count ? mods[i].id : ""; }
