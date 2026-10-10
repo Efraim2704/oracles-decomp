@@ -15,9 +15,9 @@
 // file has exactly one ROM-dependent test, so that's harmless there. This file mixes ROM-free
 // tests with ROM-dependent ones, and will keep growing more of each as later tasks add tests, so
 // exiting mid-run would silently stop running every test registered after the one that skips --
-// and ctest would still report "Skipped", not a failure. SKIP_TEST defers the skip to the end of
-// main() instead: it prints the same line SKIP does and records that something was skipped, but
-// returns from the test so the rest of main() keeps running. Do not "simplify" this back to SKIP.
+// and ctest would still report "Skipped", not a failure. SKIP_TEST prints the same line SKIP does
+// and returns false instead of exiting, so the rest of main() keeps running; RUN_SKIPPABLE is what
+// records that something was skipped, from that false return. Do not "simplify" this back to SKIP.
 //
 // A skippable test returns false rather than void, because unit.h's RUN prints "ok" unconditionally
 // once the body returns -- a skipped test would be reported as both skipped and passing, which
@@ -86,20 +86,64 @@ static void overlay_begin_clears_the_last_frame(void) {
   ASSERT_EQ(overlay_cover_at(&o, 200, 10), 0);         // not left over from two frames ago
 }
 
-// Text uses the built-in font so a mod can draw before any ROM is installed.
+// Text uses the built-in font so a mod can draw before any ROM is installed. Checked exactly,
+// pixel by pixel, against the font data itself: this single full-overlay comparison subsumes the
+// inversion (clear bit is ink), the x advance between characters, the y offset per row, "only ink
+// is covered" and "not a filled block" all at once, and fails on a stray write anywhere outside
+// the two glyph cells too.
 static void overlay_draws_text(void) {
   static ModOverlay o;
   static UiFont font;
   ui_font_builtin(&font);
   overlay_begin(&o, 160);
-  overlay_text(&o, &font, 4, 4, "AB", 0x7fff);
-  int ink = 0;
+  const char *s = "AB";
+  overlay_text(&o, &font, 4, 4, s, 0x7fff);
+
+  int inkx = -1, inky = -1;
   for (int y = 0; y < MOD_OVERLAY_H; y++)
-    for (int x = 0; x < 160; x++) ink += overlay_cover_at(&o, x, y) ? 1 : 0;
-  ASSERT(ink > 0);                                     // something was drawn
-  ASSERT(ink < 160 * MOD_OVERLAY_H);                   // and it is not a filled block
-  // Only the glyph's ink is covered, so the game shows through the gaps.
-  ASSERT_EQ(overlay_cover_at(&o, 4, 4 + 15), 0);       // below an 8x16 cell's ink rows
+    for (int x = 0; x < 160; x++) {
+      int rel_x = x - 4, rel_y = y - 4;
+      int expected = 0;
+      if (rel_x >= 0 && rel_x < (int)strlen(s) * UI_GLYPH_W && rel_y >= 0 && rel_y < UI_GLYPH_H) {
+        int i = rel_x / UI_GLYPH_W, b = rel_x % UI_GLYPH_W;
+        expected = !(font.glyph[(uint8_t)s[i]][rel_y] & (0x80 >> b)) ? 255 : 0;
+      }
+      ASSERT_EQ(overlay_cover_at(&o, x, y), expected);
+      if (expected && inkx < 0) { inkx = x; inky = y; }
+    }
+  ASSERT(inkx >= 0);                                   // sanity: "AB" has some ink to check below
+
+  // The ink pixels carry the colour that was passed in, not just coverage.
+  const uint8_t *p = overlay_rgb_at(&o, inkx, inky);
+  ASSERT_EQ(p[0], 255); ASSERT_EQ(p[1], 255); ASSERT_EQ(p[2], 255);  // 0x7fff -> white
+}
+
+// A mod-supplied string can contain bytes >= 0x80, and ui_font_builtin's glyph table is only
+// [128][UI_GLYPH_H]: without the `ch >= 128` skip, overlay_text would read font.glyph[ch] past the
+// end of that array. Verified once under -fsanitize=address with the skip removed -- see the
+// report for what ASan said -- rather than relying on this assertion to notice stray memory
+// contents happening to look like ink, which it cannot do reliably.
+static void overlay_text_skips_high_bytes(void) {
+  static ModOverlay o;
+  static UiFont font;
+  ui_font_builtin(&font);
+  overlay_begin(&o, 160);
+  char s[] = { (char)0x80, (char)0xff, 0 };
+  overlay_text(&o, &font, 4, 4, s, 0x7fff);
+  for (int y = 0; y < MOD_OVERLAY_H; y++)
+    for (int x = 0; x < 160; x++) ASSERT_EQ(overlay_cover_at(&o, x, y), 0);
+}
+
+// Before a ROM is installed and ui_font_load has never run (or ui_font_builtin hasn't either),
+// a zero-initialized UiFont has loaded == false and must draw nothing rather than reading
+// never-filled-in glyph data.
+static void overlay_text_with_unloaded_font_draws_nothing(void) {
+  static ModOverlay o;
+  static UiFont font;                  // zero-initialized static storage: loaded == false
+  overlay_begin(&o, 160);
+  overlay_text(&o, &font, 4, 4, "AB", 0x7fff);
+  for (int y = 0; y < MOD_OVERLAY_H; y++)
+    for (int x = 0; x < 160; x++) ASSERT_EQ(overlay_cover_at(&o, x, y), 0);
 }
 
 // A mod is untrusted code: a huge string must clip in O(length), not run the 8x16 inner loop for
@@ -150,21 +194,45 @@ static void overlay_survives_a_huge_string(void) {
   free(s);
 }
 
-// draw_icon reuses the ROM item-icon decoder, so mods get real item sprites.
+// draw_icon reuses the ROM item-icon decoder, so mods get real item sprites. Decoding directly
+// here with wide_item_icon (not just through overlay_icon) is legitimate rather than circular:
+// overlay_icon's job is compositing an already-decoded WideItemIcon onto the overlay, and the
+// decode itself is independently verified against the game's own WRAM by the wide tests. Checked
+// exactly, pixel by pixel, against that decode: this subsumes index-0-stays-clear, the (x, y)
+// placement, the grey ramp and the halves bound all at once, and fails on a stray write anywhere
+// outside the icon's rectangle too.
 static bool overlay_draws_an_item_icon(void) {
   size_t n;
   uint8_t *rom = read_file(GAME_ROM_DIR "/Legend of Zelda, The - Oracle of Seasons (USA, Australia).gbc", &n);
   if (!rom) SKIP_TEST("ROM not present");
   static uint8_t c600[256];
   memset(c600, 1, sizeof c600);
+
+  WideItemIcon ic;
+  ASSERT(wide_item_icon(rom, n, true, 0x03, c600, &ic));        // bombs, decoded directly
+
   static ModOverlay o;
   overlay_begin(&o, 160);
-  ASSERT(overlay_icon(&o, rom, n, true, 0x03, c600, 20, 20));   // bombs
-  int ink = 0;
+  ASSERT(overlay_icon(&o, rom, n, true, 0x03, c600, 20, 20));
+
+  // Mirrors overlay.c's static shade[] ramp: colour index 0 is left clear, 1-3 map to greys.
+  static const int shade[4] = {0, 0x4210, 0x6318, 0x7fff};
   for (int y = 0; y < MOD_OVERLAY_H; y++)
-    for (int x = 0; x < 160; x++) ink += overlay_cover_at(&o, x, y) ? 1 : 0;
-  ASSERT(ink > 0);
-  ASSERT_EQ(overlay_cover_at(&o, 19, 20), 0);          // nothing drawn left of it
+    for (int x = 0; x < 160; x++) {
+      int rel_x = x - 20, rel_y = y - 20;
+      bool in_icon = rel_x >= 0 && rel_x < ic.halves * 8 && rel_y >= 0 && rel_y < 16;
+      int ci = in_icon ? ic.ci[rel_y][rel_x] : 0;
+      ASSERT_EQ(overlay_cover_at(&o, x, y), ci ? 255 : 0);
+      if (ci) {
+        int colour = shade[ci];
+        int r = colour & 31, g = (colour >> 5) & 31, b = (colour >> 10) & 31;
+        const uint8_t *p = overlay_rgb_at(&o, x, y);
+        ASSERT_EQ(p[0], (uint8_t)((r << 3) | (r >> 2)));
+        ASSERT_EQ(p[1], (uint8_t)((g << 3) | (g >> 2)));
+        ASSERT_EQ(p[2], (uint8_t)((b << 3) | (b >> 2)));
+      }
+    }
+
   ASSERT(!overlay_icon(&o, rom, n, true, 0, c600, 0, 0));       // no item, nothing drawn
   free(rom);
   return true;
@@ -177,6 +245,8 @@ int main(void) {
   RUN(overlay_survives_a_huge_rect);
   RUN(overlay_begin_clears_the_last_frame);
   RUN(overlay_draws_text);
+  RUN(overlay_text_skips_high_bytes);
+  RUN(overlay_text_with_unloaded_font_draws_nothing);
   RUN(overlay_survives_a_huge_string);
   RUN_SKIPPABLE(overlay_draws_an_item_icon);
   return skipped ? 77 : 0;
