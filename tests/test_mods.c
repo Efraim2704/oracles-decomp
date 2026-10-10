@@ -3,6 +3,12 @@
 #include "lauxlib.h"
 #include "lualib.h"
 #include "mods/overlay.h"
+#include "ui/ui.h"
+#include "wide/item.h"
+
+// read_file comes from unit.h (used the same way by test_acid2.c / test_blargg.c): test_mods
+// links oraclesmods + oraclesitem only, not the engine, so it cannot call oracles_read_file --
+// linking the engine into the mod library is exactly what the design forbids.
 
 // The vendored interpreter builds and runs: the floor everything else stands on.
 static void lua_runs(void) {
@@ -64,11 +70,48 @@ static void overlay_begin_clears_the_last_frame(void) {
   ASSERT_EQ(overlay_cover_at(&o, 200, 10), 0);         // not left over from two frames ago
 }
 
+// Text uses the built-in font so a mod can draw before any ROM is installed.
+static void overlay_draws_text(void) {
+  static ModOverlay o;
+  static UiFont font;
+  ui_font_builtin(&font);
+  overlay_begin(&o, 160);
+  overlay_text(&o, &font, 4, 4, "AB", 0x7fff);
+  int ink = 0;
+  for (int y = 0; y < MOD_OVERLAY_H; y++)
+    for (int x = 0; x < 160; x++) ink += overlay_cover_at(&o, x, y) ? 1 : 0;
+  ASSERT(ink > 0);                                     // something was drawn
+  ASSERT(ink < 160 * MOD_OVERLAY_H);                   // and it is not a filled block
+  // Only the glyph's ink is covered, so the game shows through the gaps.
+  ASSERT_EQ(overlay_cover_at(&o, 4, 4 + 15), 0);       // below an 8x16 cell's ink rows
+}
+
+// draw_icon reuses the ROM item-icon decoder, so mods get real item sprites.
+static void overlay_draws_an_item_icon(void) {
+  size_t n;
+  uint8_t *rom = read_file(GAME_ROM_DIR "/Legend of Zelda, The - Oracle of Seasons (USA, Australia).gbc", &n);
+  if (!rom) SKIP("ROM not present");
+  static uint8_t c600[256];
+  memset(c600, 1, sizeof c600);
+  static ModOverlay o;
+  overlay_begin(&o, 160);
+  ASSERT(overlay_icon(&o, rom, n, true, 0x03, c600, 20, 20));   // bombs
+  int ink = 0;
+  for (int y = 0; y < MOD_OVERLAY_H; y++)
+    for (int x = 0; x < 160; x++) ink += overlay_cover_at(&o, x, y) ? 1 : 0;
+  ASSERT(ink > 0);
+  ASSERT_EQ(overlay_cover_at(&o, 19, 20), 0);          // nothing drawn left of it
+  ASSERT(!overlay_icon(&o, rom, n, true, 0, c600, 0, 0));       // no item, nothing drawn
+  free(rom);
+}
+
 int main(void) {
   RUN(lua_runs);
   RUN(overlay_draws_a_rect);
   RUN(overlay_clips);
   RUN(overlay_survives_a_huge_rect);
   RUN(overlay_begin_clears_the_last_frame);
+  RUN(overlay_draws_text);
+  RUN(overlay_draws_an_item_icon);
   return 0;
 }

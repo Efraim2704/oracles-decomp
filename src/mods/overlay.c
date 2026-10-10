@@ -1,4 +1,6 @@
 #include "mods/overlay.h"
+#include "ui/ui.h"
+#include "wide/item.h"
 #include <string.h>
 
 void overlay_begin(ModOverlay *o, int width) {
@@ -28,6 +30,36 @@ void overlay_rect(ModOverlay *o, int x, int y, int w, int h, int colour) {
   if (y1 > MOD_OVERLAY_H) y1 = MOD_OVERLAY_H;
   for (long long j = y0; j < y1; j++)
     for (long long i = x0; i < x1; i++) put(o, (int)i, (int)j, colour);
+}
+
+void overlay_text(ModOverlay *o, const UiFont *font, int x, int y, const char *s, int colour) {
+  const UiFont *f = font;
+  if (!f->loaded) return;
+  for (; *s; s++, x += UI_GLYPH_W) {
+    // Guards against mod-supplied strings, not micro-optimisation: Task 8 hands this string
+    // straight from Lua, and Lua strings can be megabytes. Without these, every character would
+    // run a 16x8 inner loop even when the glyph is nowhere near the visible overlay, so a huge
+    // string would spin for a very long time instead of clipping like overlay_rect does.
+    if (x >= o->width) break;          // x only grows, so nothing further right can draw either
+    if (x + UI_GLYPH_W <= 0) continue; // glyph is entirely off the left edge: skip its pixels
+    uint8_t ch = (uint8_t)*s;
+    if (ch >= 128) continue;
+    for (int r = 0; r < UI_GLYPH_H; r++)
+      for (int b = 0; b < UI_GLYPH_W; b++)
+        if (!(f->glyph[ch][r] & (0x80 >> b))) put(o, x + b, y + r, colour);
+  }
+}
+
+bool overlay_icon(ModOverlay *o, const uint8_t *rom, size_t rom_size, bool seasons, uint8_t item,
+                  const uint8_t *c600, int x, int y) {
+  WideItemIcon ic;
+  if (!wide_item_icon(rom, rom_size, seasons, item, c600, &ic)) return false;
+  // The icon is palette-indexed; without the game's live palettes a mod gets a readable grey ramp.
+  static const int shade[4] = {0, 0x4210, 0x6318, 0x7fff};
+  for (int j = 0; j < 16; j++)
+    for (int i = 0; i < ic.halves * 8; i++)
+      if (ic.ci[j][i]) put(o, x + i, y + j, shade[ic.ci[j][i]]);
+  return true;
 }
 
 uint8_t overlay_cover_at(const ModOverlay *o, int x, int y) {
