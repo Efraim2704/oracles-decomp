@@ -174,7 +174,6 @@ add_test(NAME ui COMMAND test_ui)
 add_executable(test_mods tests/test_mods.c)
 target_link_libraries(test_mods oraclesmods)
 target_include_directories(test_mods PRIVATE third_party/lua)
-target_compile_definitions(test_mods PRIVATE GAME_ROM_DIR="${GAME_ROM_DIR}")
 add_test(NAME mods COMMAND test_mods)
 # TIMEOUT is a backstop, not the primary defence: test_mods's own hang-risk tests each wrap their
 # mods_init call in its own alarm() so a real hang fails fast with a named, diagnostic message
@@ -187,7 +186,20 @@ add_test(NAME mods COMMAND test_mods)
 # the suite's own (sub-second-to-low-single-digit-second) running time and ordinary scheduling
 # overhead between tests, while still catching, in well under ctest's 1500s default, a hang that
 # happens to land before any alarm() call is reached at all.
-set_tests_properties(mods PROPERTIES SKIP_RETURN_CODE 77 LABELS "rom" TIMEOUT 400)
+#
+# Deliberately NOT labelled "rom": this file carries no ROM-dependent test any more (the two that
+# needed it moved to test_mods_rom, below) precisely so `ctest -LE rom` -- the fast gate, and what
+# CI runs -- actually exercises this whole suite instead of skipping it outright. SKIP_RETURN_CODE
+# 77 stays, because several tests here still skip for unrelated environment reasons (no root, no
+# mkfifo, an unwritable path), via the same RUN_SKIPPABLE mechanism the ROM tests used to share.
+set_tests_properties(mods PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 400)
+# The two mod tests that need the real ROM, split out so `mods` above can stay unlabelled (see its
+# own comment). Kept to the same SKIP_RETURN_CODE/LABELS convention as test_wide/test_room/etc.
+add_executable(test_mods_rom tests/test_mods_rom.c)
+target_link_libraries(test_mods_rom oraclesmods)
+target_compile_definitions(test_mods_rom PRIVATE GAME_ROM_DIR="${GAME_ROM_DIR}")
+add_test(NAME mods_rom COMMAND test_mods_rom)
+set_tests_properties(mods_rom PROPERTIES SKIP_RETURN_CODE 77 LABELS "rom" TIMEOUT 120)
 add_executable(test_sync tests/test_sync.c)
 target_link_libraries(test_sync oraclessync)
 add_test(NAME sync COMMAND test_sync)

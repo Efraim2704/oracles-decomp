@@ -7,7 +7,6 @@
 #include "mods/overlay.h"
 #include "mods/sandbox.h"
 #include "ui/ui.h"
-#include "wide/item.h"
 #include <signal.h>
 #include <sys/stat.h>
 #include <time.h>
@@ -62,17 +61,19 @@ static double wall_seconds(void) {
 #define ASSERT_BUDGET_OR_DEADLINE(out) \
   ASSERT(strstr((out), "instruction budget") != NULL || strstr((out), "cut off") != NULL)
 
-// read_file comes from unit.h (used the same way by test_acid2.c / test_blargg.c): test_mods
-// links oraclesmods + oraclesitem only, not the engine, so it cannot call oracles_read_file --
-// linking the engine into the mod library is exactly what the design forbids.
-
-// unit.h's SKIP is exit(77), which ends the whole process. Every other *_tas/*_wide-style test
-// file has exactly one ROM-dependent test, so that's harmless there. This file mixes ROM-free
-// tests with ROM-dependent ones, and will keep growing more of each as later tasks add tests, so
-// exiting mid-run would silently stop running every test registered after the one that skips --
-// and ctest would still report "Skipped", not a failure. SKIP_TEST prints the same line SKIP does
-// and returns false instead of exiting, so the rest of main() keeps running; RUN_SKIPPABLE is what
-// records that something was skipped, from that false return. Do not "simplify" this back to SKIP.
+// The two tests that needed the real ROM (overlay_draws_an_item_icon, draw_icon_with_no_wram_
+// does_not_crash) moved to tests/test_mods_rom.c, a separate executable labelled "rom" in
+// CMakeLists.txt, precisely so this file -- and the `mods` ctest it backs -- carries no ROM
+// dependency at all and runs under `ctest -LE rom`, which is also what CI is. This file still
+// has several tests that skip for a different reason (no root, no mkfifo, an unwritable path),
+// which is what the SKIP_TEST/RUN_SKIPPABLE pair below still exists for.
+//
+// unit.h's SKIP is exit(77), which ends the whole process. This file registers dozens of tests
+// after any one of those skippable ones, so exiting mid-run would silently stop running every
+// test registered after the one that skips -- and ctest would still report "Skipped", not a
+// failure. SKIP_TEST prints the same line SKIP does and returns false instead of exiting, so the
+// rest of main() keeps running; RUN_SKIPPABLE is what records that something was skipped, from
+// that false return. Do not "simplify" this back to SKIP.
 //
 // A skippable test returns false rather than void, because unit.h's RUN prints "ok" unconditionally
 // once the body returns -- a skipped test would be reported as both skipped and passing, which
@@ -279,82 +280,6 @@ static void overlay_draws_a_partially_clipped_glyph(void) {
         expected = !(font.glyph[(uint8_t)'A'][rel_y] & (0x80 >> rel_x)) ? 255 : 0;
       ASSERT_EQ(overlay_cover_at(&o, x, y), expected);
     }
-}
-
-// Shared by overlay_draws_an_item_icon for both items it checks: asserts the whole overlay
-// matches a decoded icon drawn at (ox, oy), pixel by pixel, including that nothing is covered
-// outside its rectangle. (overlay_icon's `i < ic->halves * 8` loop bound is defensive only --
-// wide_item_icon zero-fills ci beyond the real width and the index-0 check already suppresses an
-// unused second half, so i < 16 is an equivalent mutant and no pixel-level test can pin that
-// bound specifically.)
-static void assert_icon_drawn_exactly(const ModOverlay *o, const WideItemIcon *ic, int ox, int oy) {
-  static const int shade[4] = {0, 0x4210, 0x6318, 0x7fff};   // mirrors overlay.c's static shade[]
-  for (int y = 0; y < MOD_OVERLAY_H; y++)
-    for (int x = 0; x < 160; x++) {
-      int rel_x = x - ox, rel_y = y - oy;
-      bool in_icon = rel_x >= 0 && rel_x < ic->halves * 8 && rel_y >= 0 && rel_y < 16;
-      int ci = in_icon ? ic->ci[rel_y][rel_x] : 0;
-      ASSERT_EQ(overlay_cover_at(o, x, y), ci ? 255 : 0);
-      if (ci) {
-        int colour = shade[ci];
-        int r = colour & 31, g = (colour >> 5) & 31, b = (colour >> 10) & 31;
-        const uint8_t *p = overlay_rgb_at(o, x, y);
-        ASSERT_EQ(p[0], (uint8_t)((r << 3) | (r >> 2)));
-        ASSERT_EQ(p[1], (uint8_t)((g << 3) | (g >> 2)));
-        ASSERT_EQ(p[2], (uint8_t)((b << 3) | (b >> 2)));
-      }
-    }
-}
-
-// draw_icon reuses the ROM item-icon decoder, so mods get real item sprites. Decoding directly
-// here with wide_item_icon (not just through overlay_icon) is legitimate rather than circular:
-// overlay_icon's job is compositing an already-decoded WideItemIcon onto the overlay, and the
-// decode itself is independently verified against the game's own WRAM by the wide tests. Checked
-// exactly, pixel by pixel, against that decode: this subsumes index-0-stays-clear, the (x, y)
-// placement and the grey ramp all at once, and fails on a stray write anywhere outside the icon's
-// rectangle too.
-static bool overlay_draws_an_item_icon(void) {
-  size_t n;
-  uint8_t *rom = read_file(GAME_ROM_DIR "/Legend of Zelda, The - Oracle of Seasons (USA, Australia).gbc", &n);
-  if (!rom) SKIP_TEST("ROM not present");
-  static uint8_t c600[256];
-  // The entries name a byte in $c600 -- a level, or which seeds are selected -- that picks the
-  // variant to show; every byte being 1 makes each item decode its level-1 (or first-seed)
-  // variant, whatever that item has.
-  memset(c600, 1, sizeof c600);
-  static ModOverlay o;
-
-  // Bombs (0x03): halves == 1, the 8-wide path.
-  WideItemIcon bombs;
-  ASSERT(wide_item_icon(rom, n, true, 0x03, c600, &bombs));
-  int ink = 0;
-  for (int j = 0; j < 16; j++)
-    for (int i = 0; i < bombs.halves * 8; i++) ink += bombs.ci[j][i] ? 1 : 0;
-  ASSERT(ink > 0);          // a blank decode would make the pixel sweep below vacuously pass
-  overlay_begin(&o, 160);
-  ASSERT(overlay_icon(&o, rom, n, true, 0x03, c600, 20, 20));
-  assert_icon_drawn_exactly(&o, &bombs, 20, 20);
-
-  // Item 0x0e: halves == 2, the 16-wide path nothing else here exercises.
-  WideItemIcon wide_item;
-  ASSERT(wide_item_icon(rom, n, true, 0x0e, c600, &wide_item));
-  ink = 0;
-  for (int j = 0; j < 16; j++)
-    for (int i = 0; i < wide_item.halves * 8; i++) ink += wide_item.ci[j][i] ? 1 : 0;
-  ASSERT(ink > 0);
-  overlay_begin(&o, 160);
-  ASSERT(overlay_icon(&o, rom, n, true, 0x0e, c600, 20, 20));
-  assert_icon_drawn_exactly(&o, &wide_item, 20, 20);
-
-  // No item: false, and nothing drawn -- checked for real with a fresh, otherwise-untouched
-  // overlay, not just the return value.
-  overlay_begin(&o, 160);
-  ASSERT(!overlay_icon(&o, rom, n, true, 0, c600, 0, 0));
-  for (int y = 0; y < MOD_OVERLAY_H; y++)
-    for (int x = 0; x < 160; x++) ASSERT_EQ(overlay_cover_at(&o, x, y), 0);
-
-  free(rom);
-  return true;
 }
 
 // Writes <dir>/<id>/{mod.ini,main.lua} and returns <dir>.
@@ -3034,48 +2959,6 @@ static void mods_frame_with_a_null_frame_is_a_safe_no_op(void) {
   mods_shutdown();
 }
 
-// Correction: overlay_icon's c600 argument is f->wram + 0x600 -- NULL + 0x600 is undefined
-// behaviour, not a null pointer, if f->wram is NULL, which is exactly the launcher's state
-// before any game is running. f->rom being non-NULL alone must not be enough to proceed.
-//
-// A degenerate fake ROM (a handful of zero bytes) does NOT exercise this: wide_item_icon's own
-// table walk only ever reads c600 through two gated paths -- the seasons/slingshot special case,
-// and a nonzero `level_byte` -- and with every ROM byte reading back 0 (wide_item_icon's own `rb`
-// helper returns 0 past the end of a short buffer), the item is simply never "found" and both
-// gates stay closed, so a first attempt at this test (a 4-byte fake ROM, item 0x03) passed with
-// the f->wram guard removed by hand -- the mutation never crashed because c600 was never
-// actually read, not because the guard caught anything. Confirmed by deliberately re-removing
-// the guard and rerunning: still green, for the wrong reason.
-//
-// A real ROM and item 0x13 (the slingshot) with seasons=true is what item.c's own comment
-// documents as reading c600[SLINGSHOT_LEVEL] (0xb3) -- the seasons-specific "listed twice, take
-// the hyper slingshot entry at level 2" check -- so this exercises the actual dereference rather
-// than merely calling the binding and hoping. Skips cleanly if the ROM isn't present, the same
-// convention every other ROM-dependent test in this file follows.
-static bool draw_icon_with_no_wram_does_not_crash(void) {
-  size_t n;
-  uint8_t *rom = read_file(GAME_ROM_DIR "/Legend of Zelda, The - Oracle of Seasons (USA, Australia).gbc", &n);
-  if (!rom) SKIP_TEST("ROM not present");
-
-  clear_mods();
-  const char *root = make_mod("iconnowram", "id=iconnowram\napi=1\ngames=ages,seasons\n",
-      "oracles.on_frame(function()\n"
-      "  local ok = oracles.draw_icon(0x13, 10, 10)\n"            // 0x13: the slingshot
-      "  oracles.log('ok=' .. tostring(ok))\n"
-      "end)\n");
-  ASSERT(mods_init(root, true));
-  ModsFrame f = { .wram = NULL, .hram = NULL, .seasons = true, .width = 160, .room = 1,
-                  .rom = rom, .rom_size = n };
-  mods_frame(&f);
-  ASSERT(mods_enabled(0));
-  ASSERT(mods_last_log());
-  ASSERT(strstr(mods_last_log(), "ok=false") != NULL);
-  mods_shutdown();
-  free(rom);
-  return true;
-}
-
-// draw_text with no font installed (before a ROM provides one) must silently draw nothing, never
 // crash by dereferencing a NULL font.
 static void draw_text_with_no_font_draws_nothing(void) {
   clear_mods();
@@ -3910,7 +3793,8 @@ int main(void) {
   RUN(overlay_text_with_unloaded_font_draws_nothing);
   RUN(overlay_survives_a_huge_string);
   RUN(overlay_draws_a_partially_clipped_glyph);
-  RUN_SKIPPABLE(overlay_draws_an_item_icon);
+  // overlay_draws_an_item_icon moved to test_mods_rom.c: it needs the real ROM (see
+  // CMakeLists.txt's split between the `mods` and `mods_rom` tests).
   RUN(mods_id_valid_rejects_hostile_input);
   RUN(a_missing_mods_directory_is_not_a_failure);
   RUN(an_empty_mods_directory_has_no_mods);
@@ -4020,7 +3904,7 @@ int main(void) {
   RUN(a_healthy_mod_runs_many_frames_without_reusing_a_dead_thread);
   RUN(screen_and_game_are_sane_before_the_first_frame);
   RUN(mods_frame_with_a_null_frame_is_a_safe_no_op);
-  RUN_SKIPPABLE(draw_icon_with_no_wram_does_not_crash);
+  // draw_icon_with_no_wram_does_not_crash moved to test_mods_rom.c: it needs the real ROM.
   RUN(draw_text_with_no_font_draws_nothing);
   RUN(draw_rect_clamps_rather_than_wrapping_a_huge_width);
   RUN(draw_text_truncates_at_an_embedded_nul);
