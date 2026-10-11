@@ -23,6 +23,9 @@ android {
             cmake {
                 // the engine is too slow unoptimised, so debug APKs build it as Release too
                 arguments += "-DCMAKE_BUILD_TYPE=Release"
+                // 16 KB pages (Android 15+ phones may use them): Android won't install an app whose
+                // native code is aligned for 4 KB only; NDK 28 makes this the default
+                arguments += "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"
                 targets += "main"
             }
         }
