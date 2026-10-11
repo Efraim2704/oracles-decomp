@@ -191,8 +191,16 @@ ModOverlay *mods_overlay_mut(void);
 // than active_mod->L, since any thread belonging to the same global state is equally valid for a
 // registry operation. Confirmed necessary by crashing without it: a mod that registers on_frame
 // twice from its own top-level body dereferences a NULL lua_State on the second call otherwise.
-void mods_set_on_frame_ref(struct lua_State *L, int ref);
-void mods_set_on_room_change_ref(struct lua_State *L, int ref);
+//
+// The parameter is named `lua_vm`, not the conventional `L` every .c file in this module uses for
+// the same type: game/asm.h, which src/platform/app.c already includes (via game/game.h) before
+// this header, #defines `L` as `gb->l` for the CPU emulator's own convenience and never #undefs
+// it, so a prototype parameter named `L` here fails to parse in any translation unit that
+// includes both -- confirmed by app.c's own build once it had to include this header. Only the
+// declaration's parameter name needs to change; a declaration's parameter names are documentation
+// only, so mods.c's actual definitions keep `L`, as does every other Lua-facing file here.
+void mods_set_on_frame_ref(struct lua_State *lua_vm, int ref);
+void mods_set_on_room_change_ref(struct lua_State *lua_vm, int ref);
 
 // ---------------------------------------------------------------------------------------------
 // Task 9: settings and the per-mod store.
