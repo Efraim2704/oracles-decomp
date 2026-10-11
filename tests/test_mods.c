@@ -3387,6 +3387,29 @@ static void a_pathologically_expensive_on_frame_handler_is_poisoned_after_one_bo
 // The task's own given test: nothing is stored yet on the first run (oracles.load returns nil),
 // and the value written on that run is read back correctly after a full mods_shutdown/mods_init
 // cycle -- a round trip across a reload, not merely within one.
+// Every key store() accepts must be one load() can give back. A key whose written line the
+// reader would skip or re-trim is worse than a refused one: the mod is told it saved and silently
+// has not. Found by storing each shape and reading it back, not by reading the parser -- "#k",
+// " k" and "k " were all accepted and then lost.
+static void a_store_key_either_round_trips_or_is_refused(void) {
+  clear_mods();
+  const char *root = make_mod("rt", "id=rt\nname=RT\napi=1\ngames=ages,seasons\n",
+      "local keys = {'#hash', ' lead', 'trail ', '\\thtab', '[sect]', 'mid#hash', 'a b', ';semi', 'plain'}\n"
+      "local lost = {}\n"
+      "for _, k in ipairs(keys) do\n"
+      "  local ok = pcall(oracles.store, k, 'V')\n"
+      "  if ok and oracles.load(k) ~= 'V' then lost[#lost+1] = k end\n"
+      "end\n"
+      "oracles.log('lost=' .. #lost)\n");
+  ASSERT(mods_init(root, true));
+  ASSERT_EQ(mods_count(), 1);
+  ASSERT(mods_enabled(0));
+  ASSERT(mods_last_log());
+  // Not "the blocklist has these entries" -- the property itself: nothing accepted is unreadable.
+  ASSERT(strstr(mods_last_log(), "lost=0"));
+  mods_shutdown();
+}
+
 static void a_mod_remembers(void) {
   clear_mods();
   const char *root = make_mod("memo",
@@ -4009,6 +4032,7 @@ int main(void) {
   RUN(a_pcall_wrapped_spinner_inside_on_frame_is_poisoned_promptly);
   RUN(a_coroutine_wrapped_spinner_inside_on_frame_fails_on_the_nil_global);
   RUN(a_pathologically_expensive_on_frame_handler_is_poisoned_after_one_bounded_stall);
+  RUN(a_store_key_either_round_trips_or_is_refused);
   RUN(a_mod_remembers);
   RUN(a_mod_adds_a_setting);
   RUN(a_mod_adds_a_numeric_setting);

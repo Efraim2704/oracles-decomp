@@ -560,6 +560,15 @@ bool mods_store_key_valid(const char *key, size_t key_len) {
     unsigned char c = (unsigned char)key[i];
     if (!is_store_byte(c) || c == '=') return false;    // '=' is the key/value separator itself
   }
+  // Refuse the keys the reader could not give back. store() writing a key that load() can never
+  // retrieve is worse than refusing it: the mod is told it saved, and silently has not. Three
+  // shapes do that, all found by storing them and reading them back rather than by reading the
+  // parser: a leading '#' makes the whole line a comment, and leading or trailing space is
+  // trimmed off, so " k" and "k" would collide and neither round-trips. A '#' anywhere else in
+  // the key is fine -- only a line-leading one starts a comment.
+  if (key[0] == '#') return false;
+  if (key[0] == ' ' || key[0] == '\t') return false;
+  if (key[key_len - 1] == ' ' || key[key_len - 1] == '\t') return false;
   return true;
 }
 
