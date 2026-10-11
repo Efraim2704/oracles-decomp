@@ -3338,14 +3338,23 @@ static void a_coroutine_wrapped_spinner_inside_on_frame_fails_on_the_nil_global(
   mods_shutdown();
 }
 
-// Measured, not guessed (see MOD_FRAME_INSTRUCTION_BUDGET's own comment in mods.c): a handler
-// built specifically to maximise per-VM-instruction cost (repeated pcall/error, 50-150x more
-// expensive per instruction than plain arithmetic) cannot be stopped within the per-frame
-// deadline's own nominal millisecond figure, because the wall-clock deadline is only ever
-// consulted when the shared instruction-count hook fires, and that hook's firing interval is a
-// sandbox.c constant this caller does not control. What this pins is what IS guaranteed instead:
-// the stall is bounded (nowhere near the alarm below -- measured at ~0.06s on this dev machine)
-// and happens exactly once, since the mod is poisoned on this very frame and never called again.
+// Measured, not guessed (see MOD_FRAME_INSTRUCTION_BUDGET's own comment in mods.c, and
+// MOD_INSTRUCTION_CHECKIN's in sandbox.c): a handler built specifically to maximise
+// per-VM-instruction cost (repeated pcall/error, 50-150x more expensive per instruction than
+// plain arithmetic) stresses the one thing the per-frame deadline cannot fully promise on its
+// own -- the wall-clock deadline is only ever consulted when the shared instruction-count hook
+// fires, so the deadline is only as enforceable as that hook's firing interval is fine-grained.
+// It used to not be: with MOD_INSTRUCTION_CHECKIN at its original 1,000,000, this exact shape
+// measured ~60-67ms to be caught (15-17x the nominal 4ms deadline), both in this repo's own
+// benchmark and in an independent reviewer re-measurement. Lowering MOD_INSTRUCTION_CHECKIN to
+// 10,000 (sandbox.c) closed that gap: the same shape now measures ~4.2ms (9-trial median),
+// within ~5% of the deadline instead of 15-17x over it. The bound below is tightened from the
+// original (nowhere-near-a-hang) 2.0s to 0.05s specifically so it actually pins that
+// improvement -- 0.05s is still ~12x the measured 4.2ms for ordinary scheduling jitter and slower
+// CI hardware, but it is well under the old ~60-67ms figure, so a regression back to that
+// behaviour (MOD_INSTRUCTION_CHECKIN raised again, or any other change that coarsens how often
+// the hook fires) fails this test rather than silently passing under a bound generous enough to
+// hide it.
 static void a_pathologically_expensive_on_frame_handler_is_poisoned_after_one_bounded_stall(void) {
   clear_mods();
   const char *root = make_mod("expensive", "id=expensive\napi=1\ngames=ages,seasons\n",
@@ -3362,7 +3371,8 @@ static void a_pathologically_expensive_on_frame_handler_is_poisoned_after_one_bo
   double t1 = wall_seconds();
   alarm(0);
   ASSERT(!mods_enabled(0));
-  ASSERT((t1 - t0) < 2.0);           // bounded (measured ~0.06s on this machine), not a hang
+  ASSERT((t1 - t0) < 0.05);          // bounded and tight (measured ~0.0042s on this machine) --
+                                      // not merely "not a hang" (see this function's own comment)
   double t2 = wall_seconds();
   mods_frame(&f);                    // a second call must not stall again: there is no L left
   double t3 = wall_seconds();

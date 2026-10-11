@@ -148,43 +148,43 @@ const ModsFrame *mods_current_frame(void) { return &frame; }
 // file does differently from that sketch, not a refinement of it.
 //
 // Measured on this dev machine with mod_resume_budgeted itself, not guessed: a tight
-// `while true do end` loop trips the instruction-count hook's first check-in (fixed by sandbox.c
-// at MOD_INSTRUCTION_CHECKIN == 1,000,000 VM instructions -- a constant mod_resume_budgeted does
-// not expose as a per-call parameter, shared as-is with the load-time path) in ~2.8ms;
-// `while true do pcall(function() error('x') end) end` -- Lua's own error-raise-and-catch
-// machinery, 50-150x more expensive per VM instruction than plain arithmetic, the same shape
-// sandbox.c's own MOD_LOAD_INSTRUCTION_BUDGET comment documents at load scale -- takes ~60ms to
-// reach that same first check-in. A frame is 16.7ms: 2.8ms (the common, cheap-loop case)
-// comfortably fits "low single-digit milliseconds"; 60ms (the deliberately-adversarial,
-// maximally-expensive-per-instruction case) does not, and no deadline value passed to
-// mod_resume_budgeted can change that -- the wall-clock deadline is only ever consulted when the
-// instruction-count hook actually fires, and that hook's firing interval is not something this
-// caller controls. Confirmed directly: candidate deadlines from 1ms through 5ms all measured
-// within noise of each other against the expensive loop (0.0593s-0.0606s), while varying cleanly
-// against the cheap one (0.0028s-0.0028s, i.e. not varying at all below the point the
-// instruction count itself fires first).
+// `while true do end` loop trips the instruction-count hook's first check-in (sandbox.c's
+// MOD_INSTRUCTION_CHECKIN -- a constant mod_resume_budgeted does not expose as a per-call
+// parameter, shared as-is with the load-time path) in ~2.8-3.9ms; `while true do
+// pcall(function() error('x') end) end` -- Lua's own error-raise-and-catch machinery, 50-150x
+// more expensive per VM instruction than plain arithmetic, the same shape sandbox.c's own
+// MOD_LOAD_INSTRUCTION_BUDGET comment documents at load scale -- took ~60-67ms to reach that
+// same first check-in when MOD_INSTRUCTION_CHECKIN was still 1,000,000 (this repo's own
+// benchmark and an independent reviewer re-measurement agreed on that figure to within noise).
+// A frame is 16.7ms, so 60-67ms was 15-17x the 4ms deadline below -- not because the deadline
+// value was wrong, but because the wall-clock deadline is only ever consulted when the
+// instruction-count hook actually fires, and at the time that firing interval was coarser than
+// the deadline itself.
 //
-// Reusing mod_resume_budgeted exactly as sandbox.h says it was built to be reused -- rather than
-// widening its contract to let this caller shrink that check-in interval too -- was the
-// deliberate choice here, given what the actual cost of not doing so is: a handler built
-// specifically to maximise per-instruction cost stalls that ONE frame for up to roughly 60ms on
-// this machine (a single visible stutter, not a hang), and is then poisoned (see call_handler
-// below) and never called again for the rest of the session. A smaller, host-wide change to
-// mod_resume_budgeted's check-in granularity would tighten that one bound further, but is a
-// change to security-critical, already-reviewed machinery this task's own scope does not touch;
-// recorded here as a known, accepted, measured limitation -- the same discipline sandbox.c
-// already applies to its own gaps (the recursive-pcall livelock, the fresh-thread check-in reset)
-// -- rather than silently hoping nobody hits it. See
+// That gap is closed in sandbox.c, not here: MOD_INSTRUCTION_CHECKIN was lowered from 1,000,000
+// to 10,000 (see its own comment in sandbox.c for the full measurement table across candidate
+// values and confirmation that legitimate load-path scripts show no measurable cost from
+// checking in 100x more often). With that change, the same adversarial handler above is now
+// caught at a measured ~4.2ms median (9 trials) -- within ~5% of this deadline, not 15-17x over
+// it -- while the cheap-loop case is unchanged (~2.8-3.9ms, the same run-to-run noise band as
+// before). Reusing mod_resume_budgeted exactly as sandbox.h says it was built to be reused, with
+// its own check-in constant doing the work, rather than widening mod_resume_budgeted's own
+// contract to let this one caller shrink that interval itself, was the deliberate choice both
+// times this was considered: the constant is shared with (and sized for) the load path too, and
+// changing it there was simpler, better-tested by the full existing hostile-fixture suite, and
+// leaves mod_resume_budgeted's signature exactly as documented. See
 // a_pathologically_expensive_on_frame_handler_is_poisoned_after_one_bounded_stall in
-// tests/test_mods.c, which pins "bounded and one-time", not the literal millisecond figure,
-// since that figure is host-speed-dependent.
+// tests/test_mods.c, which pins "bounded and one-time" rather than a literal millisecond figure,
+// since the figure is host-speed-dependent (now ~4-5ms on this machine, not ~60-67ms).
 #define MOD_FRAME_INSTRUCTION_BUDGET 1000000
 // "Low single-digit milliseconds", per the task this implements: large enough that, for the
 // common cheap-loop case, the instruction-count mechanism above -- not this -- is what actually
-// reports the failure (measured at ~2.8ms, comfortably under this), while still being the
+// reports the failure (measured at ~2.8-3.9ms, comfortably under this), while still being the
 // backstop for a handler whose own instructions are legitimately, not adversarially, somewhat
 // more expensive than bare arithmetic (table indexing, a log line's string concatenation)
-// without yet being the deliberately pathological shape the comment above measures.
+// without yet being the deliberately pathological shape the comment above measures. Now actually
+// enforceable to within ~5% of this value for that pathological shape too, once
+// MOD_INSTRUCTION_CHECKIN (sandbox.c) was lowered to make the hook check it often enough.
 #define MOD_FRAME_WALLCLOCK_DEADLINE_SECONDS 0.004
 
 // Calls mod `m`'s handler stored at registry ref `ref` (a no-op if `ref` is LUA_NOREF, i.e.

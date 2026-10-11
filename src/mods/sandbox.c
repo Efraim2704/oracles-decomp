@@ -153,11 +153,61 @@ typedef struct {
 // budget itself: since lua_newthread resets a new coroutine's own countdown fresh (see the long
 // comment above), a mod spinning up many short-lived coroutines could otherwise run each one for
 // up to a full `count` instructions before its very first check-in, each slice invisible to every
-// other thread's own accounting until it checks in. 1,000,000 bounds that slack to roughly a
-// couple of milliseconds per coroutine, however many a mod creates, while keeping the hook's own
-// call overhead negligible against legitimate work (confirmed: the "healthy" case below still
-// completes instantly).
-#define MOD_INSTRUCTION_CHECKIN 1000000
+// other thread's own accounting until it checks in.
+//
+// Originally 1,000,000, picked only against that coroutine-slack concern. Task 8 (mods.c's
+// call_handler) found a second, sharper reason this matters: the wall-clock deadline passed to
+// mod_resume_budgeted is only ever consulted when this hook fires, so this constant is also the
+// floor on how promptly *any* caller's deadline can actually be enforced -- a caller with a tiny
+// deadline (Task 8's own per-frame budget is a few milliseconds, against a 16.7ms frame) gets no
+// benefit from that deadline being small if the hook that checks it only fires once every
+// 1,000,000 instructions, because an adversarial handler built to make every instruction
+// maximally expensive (the shape right above this comment: repeated pcall/error, 50-150x the
+// per-instruction cost of plain arithmetic) can take tens of milliseconds of real time to retire
+// even one checkin's worth of instructions -- confirmed by measurement, twice independently: a
+// handler of exactly that shape, run under mod_resume_budgeted with this constant at 1,000,000
+// and a nominal 4ms deadline, actually took ~67ms (both this repo's own benchmark against
+// liboraclesmods.a and an independent re-measurement by a reviewer agreed to within noise) to be
+// caught -- 17x the deadline it was nominally bounded by, because the deadline simply never got
+// *checked* until that first, very expensive, checkin arrived.
+//
+// Lowering this constant is what actually closes that gap, and it is cheap to lower: the hook
+// decrements a counter and compares two integers regardless of the threshold, so the per-firing
+// cost (one clock_gettime -- a vDSO call, tens of nanoseconds -- plus the arithmetic above) is
+// the same at any threshold; only how *often* that cost is paid changes, and legitimate code pays
+// it rarely to never, since an ordinary handler finishes before the hook ever fires once. Measured
+// directly (9-trial medians, this dev machine, against the same adversarial pcall/error shape,
+// total=1,000,000 and deadline=4ms -- Task 8's own per-frame shape):
+//
+//   checkin    adversarial-handler median      vs. nominal 4ms deadline
+//   1,000,000  ~67ms                           17x over
+//     100,000  ~11ms                            3x over
+//      50,000  ~5.9ms                         1.5x over
+//      30,000  ~5.4ms                         1.4x over
+//      20,000  ~4.8ms                         1.2x over
+//      10,000  ~4.2ms                         1.05x over  <- chosen
+//       5,000  ~4.2ms                         1.05x over
+//       2,000  ~4.1ms                         1.02x over
+//       1,000  ~4.0ms                         1.01x over
+//
+// 10,000 is where the curve has already flattened: tightening further to 1,000 (10x more
+// check-ins everywhere, including the load path's 50,000,000-instruction budget) buys only
+// another ~0.2ms, while 10,000 already brings the worst case to within ~5% of the nominal
+// deadline instead of 17x over it. The same benchmark run against the load path's own shape
+// (total=50,000,000, deadline=2.0s) with two representative *legitimate* finite scripts --
+// a_legitimately_heavy_pattern_still_loads' own ~19,000-word gsub, and the thousand-entry table
+// build MOD_MEM_CAP's own comment measures -- showed no measurable trend across the entire
+// 1,000..1,000,000 range tried (every value landed within the same sub-millisecond run-to-run
+// noise band), confirming the "noise, not signal" prediction this change was made on: checking in
+// 100x more often costs nothing a legitimate mod would ever notice, because a legitimate mod's
+// own handler or main.lua finishes long before the hook needs to fire even once.
+//
+// MOD_PATTERN_STEP_BUDGET (third_party/lua/lstrlib.c) is a separate mechanism -- a step counter
+// inside the pattern-matching engine itself, not tied to this hook or to Lua's own VM-instruction
+// count at all -- and is unaffected by this constant either way; re-confirmed by rerunning
+// a_catastrophic_find_pattern_is_refused_by_the_matcher_itself and its gsub counterpart after
+// this change, unchanged.
+#define MOD_INSTRUCTION_CHECKIN 10000
 
 // The shared instruction total. Measured empirically on this dev machine: a tight
 // `while true do i=i+1 end` loop runs at roughly 450 million VM instructions per second, so 50
