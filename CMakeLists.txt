@@ -174,6 +174,10 @@ add_test(NAME ui COMMAND test_ui)
 add_executable(test_mods tests/test_mods.c)
 target_link_libraries(test_mods oraclesmods)
 target_include_directories(test_mods PRIVATE third_party/lua)
+# For the_docs_document_exactly_the_live_api, which reads MODDING.md from the repository root and
+# compares it against the live `oracles` table -- the docs-drift gate. A compiled-in absolute path
+# rather than a relative one, so the test does not depend on which directory ctest runs it from.
+target_compile_definitions(test_mods PRIVATE REPO_ROOT="${CMAKE_SOURCE_DIR}")
 add_test(NAME mods COMMAND test_mods)
 # TIMEOUT is a backstop, not the primary defence: test_mods's own hang-risk tests each wrap their
 # mods_init call in its own alarm() so a real hang fails fast with a named, diagnostic message

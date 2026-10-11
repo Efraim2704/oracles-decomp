@@ -1022,7 +1022,8 @@ static bool load_one(const char *dir, const char *name, Mod *m) {
 // deliberate construction rather than being a plausible accident, and is left unfixed by
 // deliberate decision -- not a TODO, a decision -- rather than taking on out-of-band machinery
 // (a signal-based watchdog, abandoning Lua states on timeout) disproportionate to the risk at
-// this stage. Task 11's user-facing docs should carry this forward once they exist.
+// this stage. MODDING.md carries it forward to mod authors, under "Limitations, honestly",
+// together with the advice it implies: install mods only from sources you trust.
 static bool run_main_lua(const char *dir, const char *name, Mod *m) {
   char lua_path[1056];
   int n = snprintf(lua_path, sizeof lua_path, "%s/%s/main.lua", dir, name);

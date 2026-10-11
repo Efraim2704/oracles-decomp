@@ -13,10 +13,13 @@
 // here. What main.lua is permitted to do beyond that containment is the spec's sandbox (the
 // standard string, table and math libraries, plus oracles): io, os, require/package,
 // load/loadfile/dofile, string.dump, print/warn and utf8 are all withheld (see
-// mod_open_libs_hardened in sandbox.c for exactly which and why); nothing in the shipped app
-// links this module yet either way. "Linked into the apps only, never into the engine libraries"
-// is the eventual design constraint this module is built to hold, but today only test_mods links
-// oraclesmods; no app target does yet. That is stated here as intent, not as present fact.
+// mod_open_libs_hardened in sandbox.c for exactly which and why). "Linked into the apps only,
+// never into the engine libraries" is the design constraint this module holds, and as of Task 10
+// it is present fact rather than intent: oraclesmods is linked into the SDL app targets (and
+// test_mods/test_mods_rom) and into nothing else, so oraclescore/oraclesnative -- the TAS
+// verification path -- still cannot load a mod. MODDING.md, at the repo root, is the
+// player-facing reference for everything below that a mod can actually see; test_mods's
+// the_docs_document_exactly_the_live_api fails the build if the two ever disagree.
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -229,8 +232,8 @@ typedef enum { MOD_SETTING_BOOL, MOD_SETTING_NUMBER } ModSettingKind;
 // for. Implementing persistence now would mean inventing a storage location Plan 2's manager UI
 // might not actually want (the spec's mods.ini, which also owns load order and enabled state, is
 // squarely that plan's file to design): the two given tests for this task don't exercise setting
-// persistence across a reload either, only store/load does. Task 11's MODDING.md must say this
-// plainly, not leave a mod author to discover it by losing a user's toggle.
+// persistence across a reload either, only store/load does. MODDING.md says so plainly under
+// oracles.setting, rather than leaving a mod author to discover it by losing a user's toggle.
 //
 // The rows themselves (how many exist, and which mod and name each one is for) also do not
 // survive a reload -- mods_shutdown clears the whole table -- which is correct given the above:

@@ -2656,19 +2656,38 @@ static int cmp_cstr(const void *a, const void *b) {
 // with just "overlay" listed while actually being a table a mod cannot call directly --
 // type(v) == 'function' is true for both Lua and C functions, which is the distinction that
 // actually matters (can a mod call oracles.xxx(...) at all), not which language implemented it.
-static void the_live_oracles_table_in_a_loaded_mod_matches_the_registry_exactly(void) {
+//
+// Task 11 extracted the enumeration itself into live_api_names below, so that the docs-drift
+// check compares MODDING.md against this same live reading rather than growing a second,
+// subtly-different copy of it -- the registry already has one test too many standing between it
+// and what a mod actually sees.
+static void live_api_names(char *out, size_t out_size) {
   clear_mods();
   const char *root = make_mod("registrycheck", "id=registrycheck\napi=1\ngames=ages,seasons\n",
       "local k = {}\n"
       "for n, v in pairs(oracles) do\n"
       "  if type(v) ~= 'function' then error('oracles.' .. tostring(n) .. ' is not callable') end\n"
-      "  k[#k+1] = n\n"
+      "  k[#k+1] = tostring(n)\n"
       "end\n"
       "table.sort(k)\n"
       "oracles.log(table.concat(k, ','))\n");
   ASSERT(mods_init(root, true));
   ASSERT_EQ(mods_count(), 1);
+  ASSERT(mods_enabled(0));
   ASSERT(mods_last_log());
+  // mods_last_log() is a 512-byte buffer that mods_escape_into fills by silent truncation, and
+  // `out` is finite too: a comma-joined list that ever grew near either bound would leave both
+  // callers below comparing a cut-off list and passing for the wrong reason. Refuse here instead,
+  // with room to spare, rather than let that happen quietly if the API ever triples in size.
+  ASSERT(strlen(mods_last_log()) < 400);
+  ASSERT(strlen(mods_last_log()) < out_size);
+  snprintf(out, out_size, "%s", mods_last_log());
+  mods_shutdown();
+}
+
+static void the_live_oracles_table_in_a_loaded_mod_matches_the_registry_exactly(void) {
+  char live[1024];
+  live_api_names(live, sizeof live);
 
   int n = mods_api_count();
   ASSERT(n > 0);
@@ -2681,8 +2700,114 @@ static void the_live_oracles_table_in_a_loaded_mod_matches_the_registry_exactly(
     if (i > 0) strcat(expected, ",");
     strcat(expected, names[i]);
   }
-  ASSERT_EQ(strcmp(mods_last_log(), expected), 0);
-  mods_shutdown();
+  ASSERT_EQ(strcmp(live, expected), 0);
+}
+
+// ---------------------------------------------------------------------------
+// Task 11: the documentation drift check.
+// ---------------------------------------------------------------------------
+
+// True iff `csv` (a comma-separated list, no spaces) contains `name` as a whole element.
+static bool list_has(const char *csv, const char *name) {
+  size_t len = strlen(name);
+  for (const char *p = csv; *p;) {
+    const char *end = strchr(p, ',');
+    size_t n = end ? (size_t)(end - p) : strlen(p);
+    if (n == len && !memcmp(p, name, n)) return true;
+    if (!end) break;
+    p = end + 1;
+  }
+  return false;
+}
+
+// Appends `name` to `csv` if it is not already an element, so the caller ends up with a set.
+static void list_add(char *csv, size_t csv_size, const char *name) {
+  if (list_has(csv, name)) return;
+  size_t have = strlen(csv);
+  // Not a silent skip: a MODDING.md that outgrew this buffer would otherwise drop names off the
+  // end of the documented set and report them as undocumented, which sends the reader hunting
+  // through the wrong file for a problem that is really this buffer's.
+  ASSERT(have + strlen(name) + 2 < csv_size);
+  snprintf(csv + have, csv_size - have, "%s%s", have ? "," : "", name);
+}
+
+// Prints "docs drift: <pre><name><post>" for every element of `names` that `other` does not have,
+// and returns how many that was. One helper for both directions, so the two cannot drift apart in
+// how carefully they check; the message is split either side of the name rather than passed as a
+// format string so there is no non-literal format to get wrong.
+static int report_names_missing_from(const char *names, const char *other, const char *pre,
+                                      const char *post) {
+  int problems = 0;
+  for (const char *p = names; *p;) {
+    const char *end = strchr(p, ',');
+    size_t len = end ? (size_t)(end - p) : strlen(p);
+    char name[64];
+    ASSERT(len < sizeof name);
+    memcpy(name, p, len);
+    name[len] = 0;
+    if (!list_has(other, name)) {
+      fprintf(stderr, "docs drift: %s%s%s\n", pre, name, post);
+      problems++;
+    }
+    if (!end) break;
+    p = end + 1;
+  }
+  return problems;
+}
+
+// Every function a mod can actually call is documented in MODDING.md, and MODDING.md documents
+// nothing a mod cannot call. Hand-written API docs rot; here rot is a test failure, the way
+// leaked ROM bytes already are (tools/check_native_binary.py).
+//
+// Compared against the *live* `oracles` table (live_api_names above, which loads a real mod and
+// walks what that mod sees) rather than against api.c's luaL_Reg array: Task 5's review proved a
+// binding installed outside that array -- lua_pushcfunction/lua_setfield anywhere along the load
+// path -- is fully callable from main.lua while being invisible to the array, so a docs check
+// that trusted the array would certify a mod-callable function as documented without ever
+// looking at it. the_live_oracles_table_in_a_loaded_mod_matches_the_registry_exactly above pins
+// live == registry separately; this pins docs == live, and the two together are what make
+// "documented" mean "callable".
+//
+// A documented name is any `oracles.<name>` in the file, with <name> one or more of [a-z0-9_] --
+// deliberately not requiring a following "(", so a name mentioned only in prose still counts as
+// a documentation claim this has to stand behind. Markdown backticks and ordinary punctuation
+// end a name, so "`oracles.rd`'s" reads as "rd".
+static void the_docs_document_exactly_the_live_api(void) {
+  char live[1024];
+  live_api_names(live, sizeof live);
+
+  size_t n = 0;
+  unsigned char *doc = read_file(REPO_ROOT "/MODDING.md", &n);
+  // A hard failure, not unit.h's SKIP: MODDING.md is a committed artifact at a path compiled in
+  // from CMAKE_SOURCE_DIR, so "not found" means it was deleted or moved, which is drift of the
+  // worst kind rather than an environment this test should tolerate. (SKIP is exit(77) besides,
+  // which would silently stop every test registered after this one -- see SKIP_TEST's comment.)
+  if (!doc) fprintf(stderr, "MODDING.md is missing from the repository root (%s)\n", REPO_ROOT);
+  ASSERT(doc != NULL);
+
+  char documented[1024] = "";
+  for (size_t i = 0; i + 8 < n; i++) {
+    if (memcmp(doc + i, "oracles.", 8)) continue;
+    char name[64];
+    size_t k = 0;
+    for (size_t j = i + 8; j < n && k < sizeof name - 1; j++) {
+      unsigned char c = doc[j];
+      if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_')) break;
+      name[k++] = (char)c;
+    }
+    name[k] = 0;
+    if (k) list_add(documented, sizeof documented, name);
+  }
+  free(doc);
+
+  // Both directions, each naming the offending function and which side it is missing from: a
+  // drift failure that only said "mismatch" would send the next person reading two files by
+  // hand. Every offender is printed before the assertion fires, so one run lists them all.
+  int problems = report_names_missing_from(live, documented, "oracles.",
+      " is callable from a mod but MODDING.md does not document it");
+  problems += report_names_missing_from(documented, live, "MODDING.md documents oracles.",
+      ", which is not in the oracles table a mod actually sees");
+  ASSERT_EQ(problems, 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -3894,6 +4019,7 @@ int main(void) {
   RUN(the_global_environment_is_exactly_the_granted_set);
   RUN(a_cheap_infinite_loop_is_caught_by_the_instruction_budget_specifically);
   RUN(the_live_oracles_table_in_a_loaded_mod_matches_the_registry_exactly);
+  RUN(the_docs_document_exactly_the_live_api);
   RUN(a_hostile_tostring_metamethod_does_not_hang_error_reporting);
   RUN(array_growth_is_refused_via_the_realloc_path);
   RUN(a_catastrophic_find_pattern_is_refused_by_the_matcher_itself);

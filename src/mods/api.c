@@ -84,8 +84,9 @@ static int l_screen(lua_State *L) {
 // ModsFrame carries. The switchable bank at $d000..$dfff is not exposed at all: a plausible-
 // looking address in that range silently reads back 0, the same as any other address outside
 // both windows, rather than erroring -- acceptable for this stage (nothing in the planned API
-// needs it yet), but worth a mod author being told in MODDING.md (Task 11) rather than
-// discovering it by reading zeroes and assuming their own math was wrong.
+// needs it yet), but worth a mod author being told in MODDING.md, which says so under
+// oracles.rd, rather than their discovering it by reading zeroes and assuming their own math
+// was wrong.
 static int l_rd(lua_State *L) {
   int addr = check_int(L, 1);
   const ModsFrame *f = mods_current_frame();
@@ -115,7 +116,7 @@ static int l_draw_text(lua_State *L) {
     // discarded) so the decision is visible at the call site, and so a future change here, or in
     // overlay_text, has it on hand rather than needing to recompute it. See
     // draw_text_truncates_at_an_embedded_nul in test_mods.c for the pinned behaviour, and
-    // MODDING.md (Task 11) for where a mod author is actually told.
+    // MODDING.md's own oracles.draw_text entry for where a mod author is actually told.
     size_t len;
     const char *s = luaL_checklstring(L, 3, &len);
     (void)len;

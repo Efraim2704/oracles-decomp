@@ -251,6 +251,11 @@ warning, when they are missing).
 - `src/wide/`: the widescreen renderer, the ROM room decoder, and `item.c`, which decodes an
   item's status-bar icon from the ROM so the X and Y slots can be shown beside the bar.
 - `src/sync/`: the save-sync client.
+- `src/mods/`: the mod host — Lua, the `oracles` API, and the overlay mods draw into. `MODDING.md`
+  (repo root) is its player-facing reference, and `test_mods` fails the build if that file and the
+  API a loaded mod actually sees ever disagree, in either direction — the same kind of gate
+  `native_binary` is for leaked ROM bytes.
+- `third_party/lua/`: Lua 5.4.9 (MIT), the mod runtime.
 - `third_party/xbrz/`, `third_party/hqx/`: the two pixel-art scalers (GPLv3 and LGPL 2.1) behind
   the XBRZ and HQX screen filters, wrapped by `src/ui/upscale.cpp`. Each folder's `README.md`
   lists what was changed locally.
