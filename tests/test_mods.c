@@ -3380,6 +3380,494 @@ static void a_pathologically_expensive_on_frame_handler_is_poisoned_after_one_bo
   mods_shutdown();
 }
 
+// ---------------------------------------------------------------------------
+// Task 9: settings and the per-mod store.
+// ---------------------------------------------------------------------------
+
+// The task's own given test: nothing is stored yet on the first run (oracles.load returns nil),
+// and the value written on that run is read back correctly after a full mods_shutdown/mods_init
+// cycle -- a round trip across a reload, not merely within one.
+static void a_mod_remembers(void) {
+  clear_mods();
+  const char *root = make_mod("memo",
+      "id=memo\nname=Memo\napi=1\ngames=ages,seasons\n",
+      "local best = oracles.load('best')\n"
+      "oracles.log('best=' .. tostring(best))\n"
+      "oracles.store('best', 42)\n");
+  ASSERT(mods_init(root, true));
+  ASSERT(strstr(mods_last_log(), "best=nil"));         // nothing stored yet
+  mods_shutdown();
+  ASSERT(mods_init(root, true));
+  ASSERT(strstr(mods_last_log(), "best=42"));
+  mods_shutdown();
+}
+
+// The task's own given test: a settings row appears for the host to draw, and the mod reads it
+// back through the getter closure oracles.setting() returns, not a cached value.
+static void a_mod_adds_a_setting(void) {
+  clear_mods();
+  const char *root = make_mod("opt",
+      "id=opt\nname=Opt\napi=1\ngames=ages,seasons\n",
+      "local show = oracles.setting('Show', true)\n"
+      "oracles.log('show=' .. tostring(show()))\n");
+  ASSERT(mods_init(root, true));
+  ASSERT_EQ(mods_setting_count(), 1);
+  ASSERT_EQ(strcmp(mods_setting_name(0), "Show"), 0);
+  ASSERT(mods_setting_value(0));
+  ASSERT(strstr(mods_last_log(), "show=true"));
+  mods_shutdown();
+}
+
+// The spec's second settings shape: {min, max, default} makes a numeric row, not a boolean one.
+// A pre-dispatch audit flagged that this task's own planning sketch implemented only the boolean
+// shape, with nothing stopping oracles.setting(name, {1, 10, 5}) from silently behaving as a
+// (truthy) boolean instead -- this pins that the numeric shape is both recognised (kind, min,
+// max, number all report correctly) and actually usable from Lua.
+static void a_mod_adds_a_numeric_setting(void) {
+  clear_mods();
+  const char *root = make_mod("vol", "id=vol\napi=1\ngames=ages,seasons\n",
+      "local v = oracles.setting('Volume', {0, 10, 5})\n"
+      "oracles.log('vol=' .. tostring(v()))\n");
+  ASSERT(mods_init(root, true));
+  ASSERT_EQ(mods_setting_count(), 1);
+  ASSERT_EQ(strcmp(mods_setting_name(0), "Volume"), 0);
+  ASSERT_EQ(mods_setting_kind(0), MOD_SETTING_NUMBER);
+  ASSERT_EQ(mods_setting_number(0), 5);
+  ASSERT_EQ(mods_setting_min(0), 0);
+  ASSERT_EQ(mods_setting_max(0), 10);
+  ASSERT(!mods_setting_value(0));            // a NUMBER row reads as false through the BOOL accessor
+  ASSERT(strstr(mods_last_log(), "vol=5"));
+  mods_shutdown();
+}
+
+// A mod author's min > max is a typo, not hostility -- swapped rather than refused, and the
+// clamped default still lands inside the corrected range.
+static void a_numeric_setting_with_min_and_max_swapped_is_tolerated(void) {
+  clear_mods();
+  const char *root = make_mod("swapped", "id=swapped\napi=1\ngames=ages,seasons\n",
+      "local v = oracles.setting('Vol', {10, 0, 5})\n"
+      "oracles.log('vol=' .. v())\n");
+  ASSERT(mods_init(root, true));
+  ASSERT(mods_enabled(0));
+  ASSERT_EQ(mods_setting_min(0), 0);
+  ASSERT_EQ(mods_setting_max(0), 10);
+  ASSERT(strstr(mods_last_log(), "vol=5"));
+  mods_shutdown();
+}
+
+// Toggling a BOOL row flips it, and flips back.
+static void toggling_a_boolean_setting_flips_it(void) {
+  clear_mods();
+  const char *root = make_mod("toggle", "id=toggle\napi=1\ngames=ages,seasons\n",
+      "oracles.setting('Show', true)\n");
+  ASSERT(mods_init(root, true));
+  ASSERT(mods_setting_value(0));
+  mods_setting_toggle(0);
+  ASSERT(!mods_setting_value(0));
+  mods_setting_toggle(0);
+  ASSERT(mods_setting_value(0));
+  mods_shutdown();
+}
+
+// Toggling a NUMBER row is a no-op, not a reinterpretation of ivalue/imin/imax as a bool.
+static void toggling_a_numeric_setting_is_a_no_op(void) {
+  clear_mods();
+  const char *root = make_mod("togglenum", "id=togglenum\napi=1\ngames=ages,seasons\n",
+      "oracles.setting('Vol', {0, 10, 5})\n");
+  ASSERT(mods_init(root, true));
+  ASSERT_EQ(mods_setting_number(0), 5);
+  mods_setting_toggle(0);
+  ASSERT_EQ(mods_setting_number(0), 5);
+  mods_shutdown();
+}
+
+// Correction 1: two different mods calling oracles.setting("enabled", ...) with different
+// defaults must get two independent rows, not share one -- the exact bug a pre-dispatch audit
+// found in this task's own planning sketch (mods_setting_add looked a row up by name alone and
+// never set the `mod` field its own struct declared).
+static void settings_with_the_same_name_in_different_mods_do_not_collide(void) {
+  clear_mods();
+  make_mod("alpha", "id=alpha\napi=1\ngames=ages,seasons\n",
+      "local show = oracles.setting('enabled', true)\n"
+      "oracles.log('alpha=' .. tostring(show()))\n");
+  const char *root = make_mod("beta", "id=beta\napi=1\ngames=ages,seasons\n",
+      "local show = oracles.setting('enabled', false)\n"
+      "oracles.log('beta=' .. tostring(show()))\n");
+  ASSERT(mods_init(root, true));
+  ASSERT_EQ(mods_count(), 2);
+  ASSERT_EQ(mods_setting_count(), 2);          // not 1: a collision would merge these into one row
+  bool v0 = mods_setting_value(0), v1 = mods_setting_value(1);
+  ASSERT(v0 != v1);                            // alpha's true and beta's false, independently
+  ASSERT_EQ(strcmp(mods_setting_mod_id(0), "alpha"), 0);
+  ASSERT_EQ(strcmp(mods_setting_mod_id(1), "beta"), 0);
+  // Both rows are still named "enabled" -- mods_setting_name() itself is NOT expected to
+  // disambiguate (a_mod_adds_a_setting above pins that it returns the mod's own unprefixed
+  // label); mods_setting_mod_id() is what a host UI combines with it to tell them apart.
+  ASSERT_EQ(strcmp(mods_setting_name(0), "enabled"), 0);
+  ASSERT_EQ(strcmp(mods_setting_name(1), "enabled"), 0);
+  mods_shutdown();
+}
+
+// Correction 5 (numbered differently across the plan and the dispatch note, same defect): past
+// MODS_MAX_SETTINGS, oracles.setting() must raise a Lua error, not hand back a getter closure
+// over an invalid (-1) row index that would always read as false.
+static void registering_past_the_settings_cap_raises_a_lua_error(void) {
+  clear_mods();
+  char lua[2048] = "";
+  for (int i = 0; i <= MODS_MAX_SETTINGS; i++) {       // one more than the cap allows
+    char line[48];
+    snprintf(line, sizeof line, "oracles.setting('s%d', true)\n", i);
+    strcat(lua, line);
+  }
+  strcat(lua, "oracles.log('should not reach here')\n");
+  const char *root = make_mod("toomany", "id=toomany\napi=1\ngames=ages,seasons\n", lua);
+  char out[8192];
+  cap_root = root;
+  cap_seasons = true;
+  capture_stderr(run_cap_mods_init, out, sizeof out);
+  ASSERT(cap_result);
+  ASSERT_EQ(mods_count(), 1);
+  ASSERT(!mods_enabled(0));                    // the uncaught Lua error disabled the whole mod
+  ASSERT_EQ(mods_setting_count(), MODS_MAX_SETTINGS);  // exactly the cap, not one more
+  ASSERT(strstr(out, "toomany") != NULL);              // mods.c's own unconditional stderr log
+  mods_shutdown();
+}
+
+// Correction 6/7: a name good enough to fit in 31 bytes raw might not fit once mods_escape_into
+// expands a non-printable byte to \xHH, but this test pins the simpler, more common case too --
+// plain over-length is refused outright (via a Lua error a pcall can observe), never silently
+// cut down to a 31-byte prefix that could collide with some other mod's differently-long name.
+static void an_overlong_setting_name_is_rejected_not_truncated(void) {
+  clear_mods();
+  char longname[200];
+  memset(longname, 'x', sizeof longname - 1);
+  longname[sizeof longname - 1] = 0;
+  char lua[512];
+  snprintf(lua, sizeof lua,
+      "local ok, err = pcall(oracles.setting, '%s', true)\n"
+      "oracles.log('ok=' .. tostring(ok))\n", longname);
+  const char *root = make_mod("longname", "id=longname\napi=1\ngames=ages,seasons\n", lua);
+  ASSERT(mods_init(root, true));
+  ASSERT_EQ(mods_count(), 1);
+  ASSERT(mods_enabled(0));                     // the mod's own pcall caught the error
+  ASSERT_EQ(mods_setting_count(), 0);          // nothing was registered
+  ASSERT(strstr(mods_last_log(), "ok=false"));
+  mods_shutdown();
+}
+
+// Out-of-range accessor contract, matching the convention already established for
+// mods_id/mods_name/mods_enabled elsewhere in this file: never a crash, never a read past the
+// array, and a toggle on an out-of-range index is a silent no-op.
+static void setting_accessors_reject_out_of_range_indices(void) {
+  clear_mods();
+  ASSERT_EQ(mods_setting_count(), 0);
+  ASSERT_EQ(strcmp(mods_setting_name(0), ""), 0);
+  ASSERT_EQ(strcmp(mods_setting_name(-1), ""), 0);
+  ASSERT_EQ(strcmp(mods_setting_mod_id(0), ""), 0);
+  ASSERT(!mods_setting_value(0));
+  ASSERT_EQ(mods_setting_number(0), 0);
+  ASSERT_EQ(mods_setting_min(0), 0);
+  ASSERT_EQ(mods_setting_max(0), 0);
+  mods_setting_toggle(0);                      // must not crash
+  mods_setting_toggle(-1);
+}
+
+// Security note: mods_store_path builds "<mods_dir>/<id>/store.ini", and l_store writes it. A
+// mod folder that is itself a symlink -- a perfectly valid [a-z0-9-]+ name pointing anywhere on
+// disk, which discovery already tolerates for reading -- must not get that write followed
+// through the link: oracles.store() must refuse, and no store.ini must appear at the symlink's
+// target.
+static void a_symlinked_mod_folder_does_not_get_its_store_written_through_the_link(void) {
+  clear_mods();
+  const char *tmp = getenv("TMPDIR");
+  if (!tmp || !*tmp) tmp = "/tmp";
+  char root[700], outside[768], cmd[1700];
+  snprintf(root, sizeof root, "%s/test_mods_root", tmp);
+  snprintf(outside, sizeof outside, "%s/test_mods_outside_evil", tmp);
+  snprintf(cmd, sizeof cmd, "rm -rf '%s' '%s'; mkdir -p '%s' '%s'", root, outside, root, outside);
+  ASSERT_EQ(system(cmd), 0);
+
+  char path[900];
+  snprintf(path, sizeof path, "%s/mod.ini", outside);
+  FILE *f = fopen(path, "wb");
+  ASSERT(f);
+  fputs("id=evil\nname=Evil\napi=1\ngames=ages,seasons\n", f);
+  fclose(f);
+  snprintf(path, sizeof path, "%s/main.lua", outside);
+  f = fopen(path, "wb");
+  ASSERT(f);
+  fputs("local ok, err = pcall(oracles.store, 'k', 'v')\n"
+        "oracles.log('ok=' .. tostring(ok))\n", f);
+  fclose(f);
+
+  // The folder discovery actually scans is a symlink named "evil" (so its folder name passes
+  // mods_id_valid and matches mod.ini's own declared id), pointing at `outside`.
+  snprintf(cmd, sizeof cmd, "ln -s '%s' '%s/evil'", outside, root);
+  ASSERT_EQ(system(cmd), 0);
+
+  ASSERT(mods_init(root, true));
+  ASSERT_EQ(mods_count(), 1);
+  ASSERT(strstr(mods_last_log(), "ok=false") != NULL);   // the write was refused, not silently skipped
+  char store_path[900];
+  snprintf(store_path, sizeof store_path, "%s/store.ini", outside);
+  struct stat st;
+  ASSERT(stat(store_path, &st) != 0);                    // nothing was ever written at the target
+  mods_shutdown();
+  snprintf(cmd, sizeof cmd, "rm -rf '%s'", outside);
+  (void)system(cmd);
+}
+
+// Defense in depth, second layer: even when the mod's own directory is real (not a symlink), a
+// planted "store.ini -> somewhere else" symlink *inside* it -- trivial to put in a downloaded
+// zip, the same way a symlinked archive entry is -- must not be followed for writing either.
+// This is the layer open_store_for_rewrite's O_NOFOLLOW (POSIX) / reparse-point check (Windows)
+// exists for, distinct from mod_dir_is_safe_to_write's directory-level check the test above
+// pins.
+static void a_planted_store_ini_symlink_is_not_written_through(void) {
+  clear_mods();
+  const char *tmp = getenv("TMPDIR");
+  if (!tmp || !*tmp) tmp = "/tmp";
+  char outside[768], cmd[1200];
+  snprintf(outside, sizeof outside, "%s/test_mods_outside_target", tmp);
+  snprintf(cmd, sizeof cmd, "rm -f '%s'; : > '%s'", outside, outside);
+  ASSERT_EQ(system(cmd), 0);
+
+  const char *root = make_mod("plantedlink", "id=plantedlink\napi=1\ngames=ages,seasons\n",
+      "local ok, err = pcall(oracles.store, 'k', 'v')\n"
+      "oracles.log('ok=' .. tostring(ok))\n");
+  char link_path[900];
+  snprintf(link_path, sizeof link_path, "%s/plantedlink/store.ini", root);
+  snprintf(cmd, sizeof cmd, "rm -f '%s'; ln -s '%s' '%s'", link_path, outside, link_path);
+  ASSERT_EQ(system(cmd), 0);
+
+  ASSERT(mods_init(root, true));
+  ASSERT(strstr(mods_last_log(), "ok=false") != NULL);
+  struct stat st;
+  ASSERT(stat(outside, &st) == 0);
+  ASSERT_EQ(st.st_size, 0);                    // the symlink's target was never written to
+  mods_shutdown();
+  snprintf(cmd, sizeof cmd, "rm -f '%s'", outside);
+  (void)system(cmd);
+}
+
+// Correction 9: a stored number must load back as the same Lua *type*, not merely something
+// that tostring()s the same way -- the task's own given test only checks tostring(42) ==
+// tostring(oracles.load('best')), which a bug that stored every number as the string "42" would
+// also pass. math.type() is what actually tells integer, float and "not a number at all" apart.
+static void stored_numbers_round_trip_their_lua_type(void) {
+  clear_mods();
+  const char *root = make_mod("numtypes", "id=numtypes\napi=1\ngames=ages,seasons\n",
+      "oracles.store('i', 42)\n"
+      "oracles.store('f', 3.5)\n"
+      "oracles.store('neg', -7)\n"
+      "oracles.store('big', 9007199254740993)\n"     // 2^53 + 1: loses precision as a double
+      "oracles.log('stored')\n");
+  ASSERT(mods_init(root, true));
+  ASSERT(mods_enabled(0));
+  mods_shutdown();
+
+  make_mod("numtypes", "id=numtypes\napi=1\ngames=ages,seasons\n",
+      "local i, f, neg, big = oracles.load('i'), oracles.load('f'), oracles.load('neg'), oracles.load('big')\n"
+      "oracles.log('i=' .. math.type(i) .. ':' .. tostring(i) ..\n"
+      "  ' f=' .. math.type(f) .. ':' .. tostring(f) ..\n"
+      "  ' neg=' .. math.type(neg) .. ':' .. tostring(neg) ..\n"
+      "  ' big=' .. math.type(big) .. ':' .. tostring(big))\n");
+  ASSERT(mods_init(root, true));
+  ASSERT(mods_enabled(0));
+  ASSERT(strstr(mods_last_log(), "i=integer:42") != NULL);
+  ASSERT(strstr(mods_last_log(), "f=float:3.5") != NULL);
+  ASSERT(strstr(mods_last_log(), "neg=integer:-7") != NULL);
+  // Exact, not merely close: the integer path never goes through a double, so no precision is
+  // lost even past 2^53 -- a naive "format every number as %g" implementation would fail this.
+  ASSERT(strstr(mods_last_log(), "big=integer:9007199254740993") != NULL);
+  mods_shutdown();
+}
+
+// Correction 8: a string value containing a newline must be refused, not written -- unescaped,
+// it would inject a second line into store.ini that could be misread as its own key=value pair
+// on the next load.
+static void a_store_value_with_a_newline_is_refused(void) {
+  clear_mods();
+  const char *root = make_mod("badvalue", "id=badvalue\napi=1\ngames=ages,seasons\n",
+      "local ok, err = pcall(oracles.store, 'k', 'line1\\nline2')\n"
+      "oracles.log('ok=' .. tostring(ok))\n");
+  ASSERT(mods_init(root, true));
+  ASSERT(mods_enabled(0));
+  ASSERT(strstr(mods_last_log(), "ok=false") != NULL);
+  mods_shutdown();
+}
+
+// Correction 8: a key containing an embedded NUL byte -- a Lua string can legally hold one, and
+// Task 4 already found the identical smuggling bug once, in mod.ini's own "id=" parsing -- must
+// be refused by a length-aware check, not silently truncated at the NUL by a strlen()-based one.
+static void a_store_key_with_an_embedded_nul_is_refused(void) {
+  clear_mods();
+  const char *root = make_mod("nulkey", "id=nulkey\napi=1\ngames=ages,seasons\n",
+      "local ok, err = pcall(oracles.store, 'k\\0x', 'v')\n"
+      "oracles.log('ok=' .. tostring(ok))\n");
+  ASSERT(mods_init(root, true));
+  ASSERT(mods_enabled(0));
+  ASSERT(strstr(mods_last_log(), "ok=false") != NULL);
+  mods_shutdown();
+}
+
+// Correction 8: a value past MOD_STORE_STRING_MAX is refused outright, not silently truncated
+// to fit.
+static void an_overlong_store_value_is_refused(void) {
+  clear_mods();
+  const char *root = make_mod("longval", "id=longval\napi=1\ngames=ages,seasons\n",
+      "local ok = pcall(oracles.store, 'k', string.rep('x', 504))\n"
+      "oracles.log('ok=' .. tostring(ok))\n");
+  ASSERT(mods_init(root, true));
+  ASSERT(mods_enabled(0));
+  ASSERT(strstr(mods_last_log(), "ok=false") != NULL);
+  mods_shutdown();
+}
+
+// A value containing '=' is allowed and round-trips whole: store.ini splits a line at only its
+// *first* '=' (the same convention read_ini already uses for mod.ini), so '=' inside a value --
+// unlike inside a key -- is never ambiguous.
+static void a_store_value_containing_equals_signs_round_trips(void) {
+  clear_mods();
+  const char *root = make_mod("eqval", "id=eqval\napi=1\ngames=ages,seasons\n",
+      "oracles.store('k', 'a=b=c')\noracles.log('stored')\n");
+  ASSERT(mods_init(root, true));
+  mods_shutdown();
+  make_mod("eqval", "id=eqval\napi=1\ngames=ages,seasons\n",
+      "oracles.log('v=' .. tostring(oracles.load('k')))\n");
+  ASSERT(mods_init(root, true));
+  ASSERT(strstr(mods_last_log(), "v=a=b=c") != NULL);
+  mods_shutdown();
+}
+
+// Correction 4: `active` (here, active_mod, reused rather than duplicated -- see
+// mods_active_id's own comment) must be scoped correctly per mod even when two different mods
+// both write to the store from their own main.lua, in the same scan -- each must land in its
+// own file, never the other's.
+static void two_mods_store_to_their_own_separate_files(void) {
+  clear_mods();
+  make_mod("fa", "id=fa\napi=1\ngames=ages,seasons\n", "oracles.store('x', 'a')\n");
+  const char *root = make_mod("fb", "id=fb\napi=1\ngames=ages,seasons\n", "oracles.store('x', 'b')\n");
+  ASSERT(mods_init(root, true));
+  ASSERT_EQ(mods_count(), 2);
+  ASSERT(mods_enabled(0));
+  ASSERT(mods_enabled(1));
+  mods_shutdown();
+
+  char path[900], buf[256];
+  mods_store_path("fa", path, sizeof path);
+  FILE *f = fopen(path, "rb");
+  ASSERT(f);
+  memset(buf, 0, sizeof buf);
+  ASSERT(fread(buf, 1, sizeof buf - 1, f) > 0);
+  fclose(f);
+  ASSERT(strstr(buf, "x=s:a") != NULL);
+
+  mods_store_path("fb", path, sizeof path);
+  f = fopen(path, "rb");
+  ASSERT(f);
+  memset(buf, 0, sizeof buf);
+  ASSERT(fread(buf, 1, sizeof buf - 1, f) > 0);
+  fclose(f);
+  ASSERT(strstr(buf, "x=s:b") != NULL);
+}
+
+// The same correction, exercised through call_handler's path (a frame handler) rather than
+// run_main_lua's (main.lua's own top-level body): store and load both see the correct,
+// currently-running mod across repeated per-frame calls.
+static void store_and_load_work_from_inside_a_frame_handler(void) {
+  clear_mods();
+  const char *root = make_mod("framestore", "id=framestore\napi=1\ngames=ages,seasons\n",
+      "oracles.on_frame(function()\n"
+      "  local v = oracles.load('x') or 0\n"
+      "  oracles.store('x', v + 1)\n"
+      "  oracles.log('x=' .. (v + 1))\n"
+      "end)\n");
+  ASSERT(mods_init(root, true));
+  static uint8_t wram[0x1000], hram[127];
+  ModsFrame f = { .wram = wram, .hram = hram, .seasons = true, .width = 160, .room = 0 };
+  mods_frame(&f);
+  ASSERT(strstr(mods_last_log(), "x=1") != NULL);
+  mods_frame(&f);
+  ASSERT(strstr(mods_last_log(), "x=2") != NULL);
+  mods_shutdown();
+}
+
+// mods_active_id() is reset to "" once no mod's Lua is running, the same way last_log/last_room
+// are -- a stale value here would let an oracles.store() reached from somewhere outside any
+// mod's own Lua (should not be reachable, but see mods_active_id's own comment) write into
+// whichever mod happened to run last.
+static void active_id_is_empty_outside_any_mod_call(void) {
+  clear_mods();
+  const char *root = make_mod("idle", "id=idle\napi=1\ngames=ages,seasons\n", "oracles.log('hi')\n");
+  ASSERT(mods_init(root, true));
+  ASSERT_EQ(strcmp(mods_active_id(), ""), 0);
+  mods_shutdown();
+  ASSERT_EQ(strcmp(mods_active_id(), ""), 0);
+}
+
+// Correction 8 / Task 4's own precedent: a FIFO named store.ini must not block fopen() forever
+// waiting for a writer that will never come. Wrapped in a real alarm(), not just an assumption
+// that the stat()-before-fopen guard works, so a regression fails this test (and kills the whole
+// binary promptly) instead of hanging CI indefinitely.
+static bool a_fifo_store_ini_does_not_hang(void) {
+  clear_mods();
+  const char *tmp = getenv("TMPDIR");
+  if (!tmp || !*tmp) tmp = "/tmp";
+  char root[600], dir[700], cmd[900];
+  snprintf(root, sizeof root, "%s/test_mods_root", tmp);
+  snprintf(dir, sizeof dir, "%s/fifostore", root);
+  snprintf(cmd, sizeof cmd, "mkdir -p '%s' && mkfifo '%s/store.ini'", dir, dir);
+  if (system(cmd) != 0) SKIP_TEST("mkfifo not available on this filesystem");
+  char path[800];
+  snprintf(path, sizeof path, "%s/mod.ini", dir);
+  FILE *f = fopen(path, "wb");
+  if (!f) SKIP_TEST("could not write mod.ini");
+  fputs("id=fifostore\napi=1\ngames=ages,seasons\n", f);
+  fclose(f);
+  snprintf(path, sizeof path, "%s/main.lua", dir);
+  f = fopen(path, "wb");
+  if (!f) SKIP_TEST("could not write main.lua");
+  fputs("oracles.log('got=' .. tostring(oracles.load('k')))\n", f);
+  fclose(f);
+  signal(SIGALRM, mods_test_alarm_handler);
+  alarm(5);
+  bool ok = mods_init(root, true);
+  alarm(0);
+  ASSERT(ok);
+  ASSERT_EQ(mods_count(), 1);
+  ASSERT(mods_enabled(0));
+  ASSERT(strstr(mods_last_log(), "got=nil") != NULL);
+  mods_shutdown();
+  return true;
+}
+
+// Correction 8: a store.ini containing an embedded NUL byte is treated as unreadable -- oracles
+// .load() reports "not found" for every key (never a crash, never a partial/corrupted parse),
+// and oracles.store() refuses to touch the file at all rather than risking further corruption of
+// something that already doesn't look like a file this module wrote.
+static void a_nul_byte_in_store_ini_makes_it_unreadable_and_unwritable(void) {
+  clear_mods();
+  const char *root = make_mod("nulstore", "id=nulstore\napi=1\ngames=ages,seasons\n", "\n");
+  char path[900];
+  mods_store_path("nulstore", path, sizeof path);
+  // mods_store_path alone never touches the filesystem (see its own comment), so the mod folder
+  // must actually exist first -- it does, make_mod already created it above.
+  FILE *f = fopen(path, "wb");
+  ASSERT(f);
+  ASSERT_EQ(fwrite("k=s:v\0junk", 1, 10, f), 10u);
+  fclose(f);
+
+  make_mod("nulstore", "id=nulstore\napi=1\ngames=ages,seasons\n",
+      "local ok, err = pcall(oracles.store, 'k2', 'v2')\n"
+      "oracles.log('got=' .. tostring(oracles.load('k')) .. ' ok=' .. tostring(ok))\n");
+  ASSERT(mods_init(root, true));
+  ASSERT(mods_enabled(0));
+  ASSERT(strstr(mods_last_log(), "got=nil") != NULL);    // the NUL made the existing row unreadable
+  ASSERT(strstr(mods_last_log(), "ok=false") != NULL);   // and the write path refused to touch it
+  mods_shutdown();
+}
+
 int main(void) {
   // The alarm handler's _exit(1) skips normal stdio teardown (deliberately: calling atexit
   // handlers or flushing from inside a signal handler is not safe), which means any buffered
@@ -3521,5 +4009,27 @@ int main(void) {
   RUN(a_pcall_wrapped_spinner_inside_on_frame_is_poisoned_promptly);
   RUN(a_coroutine_wrapped_spinner_inside_on_frame_fails_on_the_nil_global);
   RUN(a_pathologically_expensive_on_frame_handler_is_poisoned_after_one_bounded_stall);
+  RUN(a_mod_remembers);
+  RUN(a_mod_adds_a_setting);
+  RUN(a_mod_adds_a_numeric_setting);
+  RUN(a_numeric_setting_with_min_and_max_swapped_is_tolerated);
+  RUN(toggling_a_boolean_setting_flips_it);
+  RUN(toggling_a_numeric_setting_is_a_no_op);
+  RUN(settings_with_the_same_name_in_different_mods_do_not_collide);
+  RUN(registering_past_the_settings_cap_raises_a_lua_error);
+  RUN(an_overlong_setting_name_is_rejected_not_truncated);
+  RUN(setting_accessors_reject_out_of_range_indices);
+  RUN(a_symlinked_mod_folder_does_not_get_its_store_written_through_the_link);
+  RUN(a_planted_store_ini_symlink_is_not_written_through);
+  RUN(stored_numbers_round_trip_their_lua_type);
+  RUN(a_store_value_with_a_newline_is_refused);
+  RUN(a_store_key_with_an_embedded_nul_is_refused);
+  RUN(an_overlong_store_value_is_refused);
+  RUN(a_store_value_containing_equals_signs_round_trips);
+  RUN(two_mods_store_to_their_own_separate_files);
+  RUN(store_and_load_work_from_inside_a_frame_handler);
+  RUN(active_id_is_empty_outside_any_mod_call);
+  RUN_SKIPPABLE(a_fifo_store_ini_does_not_hang);
+  RUN(a_nul_byte_in_store_ini_makes_it_unreadable_and_unwritable);
   return skipped ? 77 : 0;
 }

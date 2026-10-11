@@ -5,11 +5,20 @@
 #include "lauxlib.h"
 #include <dirent.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+// For open_store_for_rewrite/mod_dir_is_safe_to_write below: mingw-w64 has neither O_NOFOLLOW,
+// lstat, nor S_ISLNK (confirmed by trying to compile against it), so the POSIX half of each
+// function uses those and the Windows half uses GetFileAttributesA's reparse-point bit instead.
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <unistd.h>
+#endif
 
 // id doubles as the folder name and, from Task 9 on, a path component for a mod's store file.
 // This is the gate against NAME-based path traversal: no byte this rejects can spell ".." or
@@ -425,6 +434,421 @@ static bool read_ini(const char *path, const char *label, Mod *m) {
   return true;
 }
 
+// ---------------------------------------------------------------------------------------------
+// Task 9: settings rows.
+// ---------------------------------------------------------------------------------------------
+
+typedef struct {
+  char name[32];              // escaped, mod-supplied label (see mods_setting_name's own comment)
+  char mod_id[MOD_FIELD_LEN]; // the owning mod's canonical id -- NOT an index into mods[]. An
+                              // index would be wrong half the time: a setting can be registered
+                              // from main.lua's own top-level body, where active_mod points at
+                              // mods_init's own stack-local `Mod m` (not yet copied into mods[]
+                              // -- see run_main_lua's own comment on exactly this), so
+                              // "active_mod - mods" would be pointer arithmetic on a pointer that
+                              // may not point inside mods[] at all: undefined behaviour, not
+                              // merely a wrong answer. `id` is stable and meaningful in both
+                              // cases (already populated by load_one before run_main_lua ever
+                              // runs), so it is what this is scoped by instead.
+  ModSettingKind kind;
+  bool bvalue;
+  int ivalue, imin, imax;     // meaningful only when kind == MOD_SETTING_NUMBER
+} ModSetting;
+
+static ModSetting settings[MODS_MAX_SETTINGS];
+static int setting_count;
+
+int mods_setting_count(void) { return setting_count; }
+const char *mods_setting_name(int i) { return i >= 0 && i < setting_count ? settings[i].name : ""; }
+const char *mods_setting_mod_id(int i) { return i >= 0 && i < setting_count ? settings[i].mod_id : ""; }
+ModSettingKind mods_setting_kind(int i) { return i >= 0 && i < setting_count ? settings[i].kind : MOD_SETTING_BOOL; }
+bool mods_setting_value(int i) {
+  return i >= 0 && i < setting_count && settings[i].kind == MOD_SETTING_BOOL && settings[i].bvalue;
+}
+int mods_setting_number(int i) {
+  return i >= 0 && i < setting_count && settings[i].kind == MOD_SETTING_NUMBER ? settings[i].ivalue : 0;
+}
+int mods_setting_min(int i) { return i >= 0 && i < setting_count ? settings[i].imin : 0; }
+int mods_setting_max(int i) { return i >= 0 && i < setting_count ? settings[i].imax : 0; }
+void mods_setting_toggle(int i) {
+  if (i >= 0 && i < setting_count && settings[i].kind == MOD_SETTING_BOOL) settings[i].bvalue = !settings[i].bvalue;
+}
+
+// Escapes `name` (exactly `name_len` bytes -- a Lua string may legally contain an embedded NUL,
+// so this is never assumed NUL-terminated going in) into `dst`, REFUSING rather than truncating
+// if the escaped form would not fit: the same truncation class Task 4 closed for a mod's folder
+// id, where two different over-long ids colliding after 31 bytes let one mod silently masquerade
+// as another. `name_len` itself is bounded well below dst_size's capacity before escaping is
+// even attempted, since escaping can only grow a string (every non-printable byte becomes a
+// 4-byte \xHH), so a name that's short enough raw but still too long once escaped is also
+// refused here, not half-escaped into dst and left looking fine until something compares it.
+static bool escape_setting_name(char *dst, size_t dst_size, const char *name, size_t name_len) {
+  if (name_len == 0 || name_len >= dst_size) return false;
+  char scratch[256];
+  mods_escape_into(scratch, sizeof scratch, name, name_len);
+  if (strlen(scratch) >= dst_size) return false;
+  memcpy(dst, scratch, strlen(scratch) + 1);
+  return true;
+}
+
+// Shared by mods_setting_add (BOOL) and mods_setting_add_number (NUMBER): looks a row up by
+// (active mod's id, escaped name) -- not by name alone, which is the bug a pre-dispatch audit
+// found in this task's own planning sketch: two different mods both calling
+// oracles.setting("enabled", true) would otherwise share one row, so toggling one silently
+// toggled the other. Idempotent re-registration (the same mod calling oracles.setting with the
+// same name twice, e.g. because its own main.lua does so conditionally) returns the existing
+// row's index unchanged, keeping whatever kind/value it already has rather than re-initialising
+// it to this call's own arguments.
+static int setting_add_common(const char *name, size_t name_len, ModSettingKind kind, bool bvalue,
+                               int ivalue, int imin, int imax) {
+  if (!active_mod) return -1;         // should not happen: see mods_active_id's own comment
+  char escaped[32];
+  if (!escape_setting_name(escaped, sizeof escaped, name, name_len)) {
+    fprintf(stderr, "mods: '%s' tried to register a setting with an empty, too-long, or "
+                     "unrepresentable name; refusing it\n", active_mod->id);
+    return -1;
+  }
+  for (int i = 0; i < setting_count; i++)
+    if (!strcmp(settings[i].mod_id, active_mod->id) && !strcmp(settings[i].name, escaped)) return i;
+  if (setting_count >= MODS_MAX_SETTINGS) {
+    // Logged here, unconditionally, rather than relying solely on the Lua error api.c raises for
+    // this: a mod can pcall() around oracles.setting (pcall is not withheld -- see sandbox.c),
+    // which would otherwise let this refusal vanish silently from the mod author's point of view.
+    fprintf(stderr, "mods: '%s' tried to register more than %d settings; refusing the extra one\n",
+            active_mod->id, MODS_MAX_SETTINGS);
+    return -1;
+  }
+  ModSetting *s = &settings[setting_count];
+  snprintf(s->name, sizeof s->name, "%s", escaped);
+  snprintf(s->mod_id, sizeof s->mod_id, "%s", active_mod->id);
+  s->kind = kind;
+  s->bvalue = bvalue;
+  s->ivalue = ivalue;
+  s->imin = imin;
+  s->imax = imax;
+  return setting_count++;
+}
+
+int mods_setting_add(const char *name, size_t name_len, bool initial) {
+  return setting_add_common(name, name_len, MOD_SETTING_BOOL, initial, 0, 0, 0);
+}
+
+int mods_setting_add_number(const char *name, size_t name_len, int minv, int maxv, int initial) {
+  if (minv > maxv) { int t = minv; minv = maxv; maxv = t; }   // a typo, not a hostile input: tolerate it
+  if (initial < minv) initial = minv;
+  if (initial > maxv) initial = maxv;
+  return setting_add_common(name, name_len, MOD_SETTING_NUMBER, false, initial, minv, maxv);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Task 9: the per-mod store.
+// ---------------------------------------------------------------------------------------------
+
+// Recorded by mods_init (the one place that actually knows it) so mods_store_path/mods_store_set/
+// mods_store_get can build "<mods_dir>/<id>/store.ini" without every caller threading `dir`
+// through. Always overwritten at the top of the next mods_init before any mod's Lua can possibly
+// run again, so -- unlike last_log/last_room/active_mod -- there is no stale-state hazard in
+// leaving it untouched by mods_shutdown: nothing can reach mods_store_set/get without an
+// active_mod, and active_mod cannot exist without a mods_init that has already set this first.
+static char mods_dir[768];
+
+static bool is_store_byte(unsigned char c) { return c >= 0x20 && c < 0x7f; }
+
+bool mods_store_key_valid(const char *key, size_t key_len) {
+  if (!key || key_len == 0 || key_len > MOD_STORE_KEY_MAX) return false;
+  for (size_t i = 0; i < key_len; i++) {
+    unsigned char c = (unsigned char)key[i];
+    if (!is_store_byte(c) || c == '=') return false;    // '=' is the key/value separator itself
+  }
+  return true;
+}
+
+bool mods_store_string_valid(const char *s, size_t len) {
+  if (!s || len > MOD_STORE_STRING_MAX) return false;
+  for (size_t i = 0; i < len; i++)
+    if (!is_store_byte((unsigned char)s[i])) return false;
+  return true;
+}
+
+void mods_store_path(const char *id, char *out, size_t n) {
+  if (!out || n == 0) return;
+  out[0] = 0;
+  if (!mods_id_valid(id)) return;
+  snprintf(out, n, "%s/%s/store.ini", mods_dir, id);
+}
+
+// True iff `dir_path` exists, is a plain directory, and -- the whole reason this function exists
+// -- is not a symlink (POSIX) or reparse point (Windows) standing in for one. Discovery
+// (load_one, via `stat`, which follows symlinks) deliberately tolerates a mod folder that is
+// itself a symlink, because that's a legitimate way to develop a mod in place without copying it
+// into the mods folder, and because until something writes, following it is harmless. The
+// moment something writes -- this task -- it stops being harmless: a folder with a perfectly
+// valid [a-z0-9-]+ name can point anywhere on disk, and there is no byte in that name for
+// mods_id_valid to have rejected. `lstat`, unlike `stat`, reports the link itself rather than
+// its target, which is exactly what distinguishes "a real directory" from "a symlink that
+// currently resolves to one" -- a distinction mingw-w64 cannot express at all (it has neither
+// lstat nor S_ISLNK), so the Windows half uses GetFileAttributesA's reparse-point bit instead.
+static bool mod_dir_is_safe_to_write(const char *dir_path) {
+#ifdef _WIN32
+  DWORD attr = GetFileAttributesA(dir_path);
+  if (attr == INVALID_FILE_ATTRIBUTES) return false;
+  if (attr & FILE_ATTRIBUTE_REPARSE_POINT) return false;
+  return (attr & FILE_ATTRIBUTE_DIRECTORY) != 0;
+#else
+  struct stat st;
+  if (lstat(dir_path, &st) != 0) return false;
+  if (S_ISLNK(st.st_mode)) return false;
+  return S_ISDIR(st.st_mode);
+#endif
+}
+
+// Opens `path` for a truncating rewrite, refusing if `path` itself (not its parent -- that is
+// mod_dir_is_safe_to_write's job, checked by the caller before this is ever reached) is a
+// symlink/reparse point: a mod's own folder, even once confirmed to be a real directory and not
+// itself a symlink, could still contain a planted "store.ini -> /somewhere/else" symlink (trivial
+// to put in a zip -- see the follow-up plan's installer, which must refuse symlink archive
+// entries outright for the identical reason). On POSIX, O_NOFOLLOW makes open() fail outright
+// (ELOOP) if the final path component is a symlink, with no separate lstat-then-open race.
+// mingw-w64 has no O_NOFOLLOW (confirmed: it does not compile), so the Windows half instead
+// checks GetFileAttributesA's reparse-point bit just before opening -- a real, if narrow,
+// TOCTOU window remains between that check and fopen() below, accepted here because nothing else
+// in this single-player, single-process app ever races a mod's own store write.
+static FILE *open_store_for_rewrite(const char *path) {
+#ifdef _WIN32
+  DWORD attr = GetFileAttributesA(path);
+  if (attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_REPARSE_POINT)) return NULL;
+  return fopen(path, "wb");
+#else
+  int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, 0600);
+  if (fd < 0) return NULL;
+  FILE *f = fdopen(fd, "wb");
+  if (!f) close(fd);
+  return f;
+#endif
+}
+
+// Parses one store.ini value, exactly as mods_store_set below writes it: "b:0"/"b:1" for a
+// boolean, "n:i:<decimal>" for an integer, "n:f:<%.17g>" for a float, "s:<text>" for a string --
+// the explicit "i"/"f" tag (not just whichever %g a naive formatter would pick) is what lets
+// oracles.load() hand back the same Lua *type* that was stored, not merely a value that
+// tostring()s the same way: store(42) must load back as the integer 42, not the float 42.0.
+// Returns false (leaving *out untouched) for anything that doesn't match one of these four
+// shapes -- a hand-edited or corrupted store.ini line is "not found" for that key, not a crash.
+static bool decode_store_value(const char *text, ModValue *out) {
+  if (!strncmp(text, "b:", 2)) {
+    out->kind = MOD_VALUE_BOOL;
+    out->b = text[2] == '1';
+    return true;
+  }
+  if (!strncmp(text, "n:i:", 4)) {
+    errno = 0;
+    char *end;
+    long long v = strtoll(text + 4, &end, 10);
+    if (end == text + 4 || *end != 0 || errno == ERANGE) return false;
+    out->kind = MOD_VALUE_INT;
+    out->i = v;
+    return true;
+  }
+  if (!strncmp(text, "n:f:", 4)) {
+    char *end;
+    double v = strtod(text + 4, &end);
+    if (end == text + 4 || *end != 0) return false;
+    out->kind = MOD_VALUE_FLOAT;
+    out->f = v;
+    return true;
+  }
+  if (!strncmp(text, "s:", 2)) {
+    size_t len = strlen(text + 2);
+    if (!mods_store_string_valid(text + 2, len)) return false;
+    snprintf(out->s, sizeof out->s, "%s", text + 2);
+    out->kind = MOD_VALUE_STRING;
+    return true;
+  }
+  return false;
+}
+
+// Total size store.ini is allowed to reach, enforced on both the read path (a file bigger than
+// this is treated as unreadable -- "not found", never partially parsed) and the write path (a
+// rewrite that would grow past this is refused rather than silently truncating some other key's
+// row). Generous for even a few hundred ordinary keys while keeping the in-memory rewrite buffer
+// below mods_store_set a fixed, small heap allocation rather than something a hostile or merely
+// enthusiastic mod could grow without bound by calling oracles.store with ever more distinct keys.
+#define MOD_STORE_FILE_MAX ((size_t)16384)
+
+// Copies every "key=value" line of `in` except the one for `key` into `keep` (size `keep_size`,
+// always left NUL-terminated), re-using read_logical_line/trim exactly as read_ini already does
+// for mod.ini, rather than writing a second line-reader. A comment or blank line in an existing
+// store.ini is dropped, not preserved -- store.ini is a file this module alone reads and writes,
+// never meant for hand-editing, so there is no round-trip-formatting promise being broken.
+// Returns false (refusing the whole rewrite) if the surviving content would not fit in
+// `keep_size`, rather than silently dropping whichever keys ran out of room.
+static bool rewrite_store_without_key(FILE *in, const char *key, char *keep, size_t keep_size) {
+  keep[0] = 0;
+  char line[MOD_STORE_KEY_MAX + 16 + MOD_STORE_STRING_MAX];
+  while (read_logical_line(in, line, sizeof line)) {
+    char *p = line;
+    while (*p == ' ' || *p == '\t') p++;
+    if (*p == '#' || *p == 0) continue;
+    char *eq = strchr(p, '=');
+    if (!eq) continue;
+    *eq = 0;
+    char *k = p;
+    trim(k);
+    if (!strcmp(k, key)) continue;              // dropped: the caller is about to replace it
+    *eq = '=';                                   // restore for verbatim re-emission below
+    size_t cur = strlen(keep);
+    size_t add = strlen(p);
+    if (cur + add + 2 > keep_size) return false; // +2: the '\n' this loop appends, and the NUL
+    memcpy(keep + cur, p, add);
+    keep[cur + add] = '\n';
+    keep[cur + add + 1] = 0;
+  }
+  return true;
+}
+
+bool mods_store_set(const char *key, size_t key_len, const ModValue *value) {
+  if (!active_mod) return false;
+  if (!mods_store_key_valid(key, key_len)) return false;
+  char keybuf[MOD_STORE_KEY_MAX + 1];
+  memcpy(keybuf, key, key_len);
+  keybuf[key_len] = 0;
+
+  char valtext[MOD_STORE_STRING_MAX + 16];
+  switch (value->kind) {
+  case MOD_VALUE_BOOL: snprintf(valtext, sizeof valtext, "b:%d", value->b ? 1 : 0); break;
+  case MOD_VALUE_INT: snprintf(valtext, sizeof valtext, "n:i:%lld", value->i); break;
+  case MOD_VALUE_FLOAT: snprintf(valtext, sizeof valtext, "n:f:%.17g", value->f); break;
+  case MOD_VALUE_STRING:
+    if (!mods_store_string_valid(value->s, strlen(value->s))) return false;
+    snprintf(valtext, sizeof valtext, "s:%s", value->s);
+    break;
+  default: return false;
+  }
+
+  const char *id = active_mod->id;
+  char dir_path[896];
+  int n1 = snprintf(dir_path, sizeof dir_path, "%s/%s", mods_dir, id);
+  if (n1 < 0 || (size_t)n1 >= sizeof dir_path) return false;
+  if (!mod_dir_is_safe_to_write(dir_path)) {
+    fprintf(stderr, "mods: '%s' is a symlinked (or otherwise unsafe) mod directory; "
+                     "refusing to write its store\n", id);
+    return false;
+  }
+  char file_path[1024];
+  mods_store_path(id, file_path, sizeof file_path);
+  if (!file_path[0]) return false;
+
+  char *keep = malloc(MOD_STORE_FILE_MAX);
+  if (!keep) return false;
+  keep[0] = 0;
+
+  struct stat st;
+  if (stat(file_path, &st) == 0) {
+    if (!S_ISREG(st.st_mode)) {
+      fprintf(stderr, "mods: '%s/store.ini' is not a regular file; refusing to write to it\n", id);
+      free(keep);
+      return false;
+    }
+    if ((size_t)st.st_size > MOD_STORE_FILE_MAX) {
+      fprintf(stderr, "mods: '%s/store.ini' is larger than this host will rewrite; refusing\n", id);
+      free(keep);
+      return false;
+    }
+    FILE *in = fopen(file_path, "rb");
+    if (in) {
+      if (contains_nul(in)) {
+        fclose(in);
+        fprintf(stderr, "mods: '%s/store.ini' contains a NUL byte; refusing to touch it\n", id);
+        free(keep);
+        return false;
+      }
+      rewind(in);
+      bool ok = rewrite_store_without_key(in, keybuf, keep, MOD_STORE_FILE_MAX);
+      fclose(in);
+      if (!ok) {
+        fprintf(stderr, "mods: '%s/store.ini' is too large to add another key; refusing\n", id);
+        free(keep);
+        return false;
+      }
+    }
+  }
+
+  size_t cur = strlen(keep);
+  int added = snprintf(keep + cur, MOD_STORE_FILE_MAX - cur, "%s=%s\n", keybuf, valtext);
+  if (added < 0 || (size_t)added >= MOD_STORE_FILE_MAX - cur) {
+    fprintf(stderr, "mods: '%s' store would grow past the size limit; refusing\n", id);
+    free(keep);
+    return false;
+  }
+
+  FILE *out = open_store_for_rewrite(file_path);
+  if (!out) {
+    fprintf(stderr, "mods: could not write '%s/store.ini' (symlinked path, or another error)\n", id);
+    free(keep);
+    return false;
+  }
+  size_t total = strlen(keep);
+  size_t wrote = fwrite(keep, 1, total, out);
+  fclose(out);
+  free(keep);
+  return wrote == total;
+}
+
+bool mods_store_get(const char *key, size_t key_len, ModValue *out) {
+  if (!active_mod) return false;
+  if (!mods_store_key_valid(key, key_len)) return false;
+  char keybuf[MOD_STORE_KEY_MAX + 1];
+  memcpy(keybuf, key, key_len);
+  keybuf[key_len] = 0;
+
+  const char *id = active_mod->id;
+  char file_path[1024];
+  mods_store_path(id, file_path, sizeof file_path);
+  if (!file_path[0]) return false;
+
+  // Deliberately NOT mod_dir_is_safe_to_write here -- see mods_store_get's own comment in
+  // mods.h for why reading through a symlinked mod directory stays allowed.
+  struct stat st;
+  if (stat(file_path, &st) != 0) return false;       // no store yet: not found, not an error
+  if (!S_ISREG(st.st_mode)) {
+    fprintf(stderr, "mods: '%s/store.ini' is not a regular file; ignoring it\n", id);
+    return false;
+  }
+  if ((size_t)st.st_size > MOD_STORE_FILE_MAX) {
+    fprintf(stderr, "mods: '%s/store.ini' is larger than this host will read; ignoring it\n", id);
+    return false;
+  }
+
+  FILE *f = fopen(file_path, "rb");
+  if (!f) return false;
+  if (contains_nul(f)) {
+    fclose(f);
+    fprintf(stderr, "mods: '%s/store.ini' contains a NUL byte; ignoring it\n", id);
+    return false;
+  }
+  rewind(f);
+
+  char line[MOD_STORE_KEY_MAX + 16 + MOD_STORE_STRING_MAX];
+  bool found = false;
+  while (read_logical_line(f, line, sizeof line)) {
+    char *p = line;
+    while (*p == ' ' || *p == '\t') p++;
+    if (*p == '#' || *p == 0) continue;
+    char *eq = strchr(p, '=');
+    if (!eq) continue;
+    *eq = 0;
+    char *k = p, *v = eq + 1;
+    trim(k);
+    if (strcmp(k, keybuf) != 0) continue;
+    found = decode_store_value(v, out);
+    break;
+  }
+  fclose(f);
+  return found;
+}
+
+const char *mods_active_id(void) { return active_mod ? active_mod->id : ""; }
+
 // Validates and fully populates *m for the mod folder `name` directly under `dir`: charset and
 // length of the id, that it's actually a directory, that its mod.ini is a regular file (not a
 // FIFO, a symlink to a character device, or anything else that could block or loop forever in
@@ -770,6 +1194,11 @@ bool mods_init(const char *dir, bool seasons) {
     fprintf(stderr, "mods: no mods directory given\n");
     return false;
   }
+  // Recorded now, with `dir` already confirmed non-NULL/non-empty: mods_store_path/
+  // mods_store_set/mods_store_get all build "<mods_dir>/<id>/store.ini" from this rather than
+  // threading `dir` through every call, and none of them can run before this line has set it,
+  // since all three require an active_mod, and no mod's Lua runs before this point.
+  snprintf(mods_dir, sizeof mods_dir, "%s", dir);
 
   errno = 0;
   DIR *d = opendir(dir);
@@ -881,6 +1310,12 @@ void mods_shutdown(void) {
   // insurance against ever leaving it pointing at a Mod slot that mods[] is about to reuse.
   last_room = -1;
   active_mod = NULL;
+  // Task 9: settings rows are session-only by deliberate decision (see mods_setting_count's own
+  // comment in mods.h), so they must not outlive the session that registered them either -- the
+  // same stale-state class as last_log/last_room above, now a third instance, closed the same
+  // way: cleared here, which mods_init's own leading mods_shutdown() call also covers.
+  setting_count = 0;
+  memset(settings, 0, sizeof settings);
 }
 
 int mods_count(void) { return count; }

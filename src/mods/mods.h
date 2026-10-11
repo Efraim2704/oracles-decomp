@@ -193,3 +193,166 @@ ModOverlay *mods_overlay_mut(void);
 // twice from its own top-level body dereferences a NULL lua_State on the second call otherwise.
 void mods_set_on_frame_ref(struct lua_State *L, int ref);
 void mods_set_on_room_change_ref(struct lua_State *L, int ref);
+
+// ---------------------------------------------------------------------------------------------
+// Task 9: settings and the per-mod store.
+// ---------------------------------------------------------------------------------------------
+
+// The hard cap on how many settings rows exist across every mod at once -- a fixed-size array,
+// the same shape as MODS_MAX, so a single pathological or buggy mod cannot grow this table
+// without bound. api.c's oracles.setting() raises a Lua error (and this file logs to stderr
+// unconditionally, so the failure is visible even if the mod wraps the call in pcall) once this
+// is reached; it does not refuse the mod outright.
+#define MODS_MAX_SETTINGS 32
+
+// A settings row is either an ON/OFF toggle or a bounded integer -- "the two shapes the settings
+// menu already draws", per the spec. oracles.setting(name, true/false) makes a BOOL row;
+// oracles.setting(name, {min, max, default}) makes a NUMBER row. Nothing about the *kind* a mod
+// asked for can be inferred from its default value alone (both shapes start somewhere), so a
+// host UI must call mods_setting_kind() before deciding whether to draw a toggle or a stepper.
+typedef enum { MOD_SETTING_BOOL, MOD_SETTING_NUMBER } ModSettingKind;
+
+// Session-only, by deliberate decision, not an oversight: nothing here persists a setting's
+// *value* to disk, so every row returns to the mod's own declared default each time mods_init
+// runs. This mirrors the precedent Task 6 already set for a mod's enabled/disabled state --
+// "full enable/disable persistence... is deliberately not in this plan; it belongs to the
+// follow-up plan with the manager UI and zip install" -- and a setting's value is the same kind
+// of host-UI state as that, not the kind of mod-owned data oracles.store()/oracles.load() exist
+// for. Implementing persistence now would mean inventing a storage location Plan 2's manager UI
+// might not actually want (the spec's mods.ini, which also owns load order and enabled state, is
+// squarely that plan's file to design): the two given tests for this task don't exercise setting
+// persistence across a reload either, only store/load does. Task 11's MODDING.md must say this
+// plainly, not leave a mod author to discover it by losing a user's toggle.
+//
+// The rows themselves (how many exist, and which mod and name each one is for) also do not
+// survive a reload -- mods_shutdown clears the whole table -- which is correct given the above:
+// a session-only value in a table that *did* survive a reload would be actively misleading (a
+// row with no value behind it).
+int mods_setting_count(void);
+// The mod-supplied label, already passed through mods_escape_into (so no raw control byte or
+// invalid-UTF-8 sequence can reach a terminal or a future settings-menu UI the way an unescaped
+// mod.ini field or oracles.log() string could) and never truncated: mods_setting_add/
+// mods_setting_add_number refuse (do not register) a name whose escaped form would not fit
+// in full, rather than silently cutting two different over-long names down to the same
+// 31-byte prefix the way a bare snprintf truncation would -- the same collision class Task 4
+// closed for a mod's own folder id. "" for `i` outside [0, mods_setting_count()).
+const char *mods_setting_name(int i);
+// Which mod (by its canonical id -- the validated folder name, the same string mods_id()
+// returns for that mod's own slot) registered the row at `i`, or "" if `i` is out of range. A
+// settings menu is expected to combine this with the row's name to label two different mods'
+// identically-named rows distinguishably (e.g. "Opt: Show" vs "Other: Show") -- deliberately not
+// baked into mods_setting_name() itself, since that is what the existing fixed test
+// (a_mod_adds_a_setting) asserts returns exactly the mod's own unprefixed label.
+const char *mods_setting_mod_id(int i);
+ModSettingKind mods_setting_kind(int i);
+// True iff `i` is in range, the row at `i` is a BOOL row, and its current value is true. False
+// for a NUMBER row at `i`, not an error -- a host UI that confuses the two kinds gets a
+// consistently-false read, never a read of the wrong row's data.
+bool mods_setting_value(int i);
+// The current value of a NUMBER row at `i`, already clamped into [min, max]; 0 for a BOOL row,
+// or for `i` out of range.
+int mods_setting_number(int i);
+int mods_setting_min(int i);
+int mods_setting_max(int i);
+// Flips a BOOL row's value. A no-op for a NUMBER row, or for `i` out of range -- not a crash and
+// not a silent reinterpretation of imin/imax/ivalue as if they were a bool.
+void mods_setting_toggle(int i);
+
+// Called from api.c's oracles.setting(name, true/false): registers (or, for a second call from
+// the same mod with the same name, simply finds) a BOOL row, scoped by (the currently active
+// mod's id, name) -- not by `name` alone, which is what let two different mods' same-named
+// settings share one row before this task closed it. Returns the row's index, or -1 if there is
+// no active mod (should not happen -- see mods_active_id()'s own comment), `name` is empty,
+// longer than this function tolerates, or its escaped form would not fit in
+// mods_setting_name()'s 32-byte field (mods.c logs this refusal to stderr itself, unconditionally,
+// before returning -1, since api.c's caller may raise a Lua error the mod itself goes on to
+// pcall and swallow), or MODS_MAX_SETTINGS rows already exist (same unconditional stderr log).
+int mods_setting_add(const char *name, size_t name_len, bool initial);
+// Called from oracles.setting(name, {min, max, default}): the NUMBER-row equivalent of
+// mods_setting_add above, with the identical scoping, refusal and logging behaviour. `minv` and
+// `maxv` are tolerated in either order (swapped if minv > maxv, rather than raising an error over
+// what is almost certainly a mod author's typo, not a hostile input); `initial` is clamped into
+// the resulting [min, max] range.
+int mods_setting_add_number(const char *name, size_t name_len, int minv, int maxv, int initial);
+
+// The id of the mod whose Lua is currently running -- main.lua's own top-level body
+// (run_main_lua), or a frame handler (call_handler) -- reusing the exact same notion Task 8
+// already built for mods_set_on_frame_ref/mods_set_on_room_change_ref (active_mod) rather than
+// adding a second "which mod is active" mechanism: this task's own planning sketch proposed a
+// separate `active` index for this purpose, which the pre-dispatch review flagged as both
+// redundant with active_mod and, unlike active_mod, never reset after use, so whichever mod last
+// touched the store would silently keep "owning" every later load/store/setting call reached
+// from outside any mod's own Lua. Returns "" if no mod's Lua is currently running.
+const char *mods_active_id(void);
+
+// Builds the path to `id`'s per-mod store file into `out` (size `n`), or leaves `out` as an
+// empty string if `id` fails mods_id_valid or `out`/`n` cannot hold the result. For display and
+// test inspection; mods_store_set/mods_store_get do not trust a path built elsewhere -- each
+// re-derives and re-validates its own, including the symlinked-directory and symlinked-file
+// checks that writing (and only writing) needs. Never creates or opens anything itself.
+void mods_store_path(const char *id, char *out, size_t n);
+
+// Limits enforced on every oracles.store() key and string value -- refused outright, never
+// mangled or silently truncated, if exceeded. A key may not contain '=' (the key/value
+// separator) or any byte outside printable ASCII (0x20..0x7e, which also excludes NUL, CR and
+// LF -- the exact bytes that could otherwise inject a second key=value line or corrupt the
+// store's one-line-per-key shape); a string value may contain '=' freely (a line is split at
+// only its *first* '=', the same convention mod.ini's own reader already uses) but is held to
+// the same printable-ASCII, no-control-byte rule. Both bounds are deliberately generous for an
+// ordinary settings/save-state value while keeping store.ini a small, bounded text file rather
+// than something a hostile or buggy mod could grow without limit.
+#define MOD_STORE_KEY_MAX 63
+#define MOD_STORE_STRING_MAX 503
+
+// A value oracles.store()/oracles.load() can carry -- exactly the three Lua types the spec
+// grants ("strings, numbers and booleans"), plus the int/float split Lua 5.4 itself makes
+// between an integer-subtype number and a float-subtype one, which the store's own on-disk
+// format tags explicitly (see mods.c) so oracles.load() hands back the same Lua type that was
+// stored rather than merely the same tostring() rendering -- store(42) must load back as the
+// integer 42, not the float 42.0, even though tostring() cannot tell those apart in a test
+// assertion.
+typedef enum { MOD_VALUE_BOOL, MOD_VALUE_INT, MOD_VALUE_FLOAT, MOD_VALUE_STRING } ModValueKind;
+typedef struct {
+  ModValueKind kind;
+  bool b;
+  long long i;
+  double f;
+  char s[MOD_STORE_STRING_MAX + 1];
+} ModValue;
+
+// Byte-for-byte validity checks api.c's bindings run before ever handing a key or string value
+// to mods_store_set -- exposed so api.c can refuse with a clear Lua error itself rather than
+// only learning indirectly from a false return out of mods_store_set. Both take an explicit
+// length rather than trusting strlen(): a Lua string may legally contain an embedded NUL, and
+// trusting strlen() on one is exactly the NUL-smuggling class Task 4 already found and fixed
+// once, in mod.ini's own parsing -- a length-taking check closes it here the same way, since any
+// embedded NUL simply fails the printable-ASCII byte test at its own index rather than silently
+// truncating the string being validated.
+bool mods_store_key_valid(const char *key, size_t key_len);
+bool mods_store_string_valid(const char *s, size_t len);
+
+// Saves `value` under `key` in the currently active mod's own store.ini, replacing any existing
+// row for that key and leaving every other key untouched. Returns false, writing nothing, if:
+// there is no active mod; `key` fails mods_store_key_valid; a string `value` fails
+// mods_store_string_valid; the active mod's directory is itself a symlink (or, on Windows, a
+// reparse point) -- discovery already follows a symlinked mod *directory* deliberately (it is
+// read-only there, and refusing it would break the legitimate workflow of symlinking a
+// mod-in-development into the mods folder), but writing through one would let a validly-named
+// mod redirect this write anywhere on disk, which is exactly the hazard this function exists to
+// close; store.ini itself is a symlink (opened with O_NOFOLLOW on POSIX, or refused via a
+// reparse-point check on Windows, where neither O_NOFOLLOW nor lstat/realpath exist); the
+// existing store.ini is not a regular file, is larger than this host will rewrite, or contains an
+// embedded NUL byte (refused rather than risking further corruption of a file that already
+// doesn't look like one this function wrote); or rewriting it would grow past the same bound.
+bool mods_store_set(const char *key, size_t key_len, const ModValue *value);
+// Reads `key` from the currently active mod's own store.ini into *out, leaving *out untouched
+// and returning false if there is no active mod, `key` is invalid, no row for it exists, or the
+// store file is anything this function cannot safely make sense of (absent, a directory, a
+// FIFO or other non-regular file, larger than this host will read, containing an embedded NUL,
+// or holding a value with a type tag this build does not recognise) -- every one of those is
+// "not found", not an error, since a mod asking for a value back is not asking to be crashed by
+// whatever is wrong with the file on disk. Deliberately does NOT apply the write path's
+// symlinked-directory refusal: discovery already follows a symlinked mod directory for reading,
+// and refusing a read here would break that same legitimate mod-in-development workflow for no
+// safety benefit, since nothing is written on this path.
+bool mods_store_get(const char *key, size_t key_len, ModValue *out);
