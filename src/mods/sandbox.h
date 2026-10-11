@@ -36,7 +36,7 @@ void *mod_lua_alloc(void *ud, void *ptr, size_t osize, size_t nsize);
 // and nothing else -- io, os, require/package, load/loadfile/dofile, string.dump, print/warn and
 // utf8 are all withheld; setmetatable is wrapped, not withheld, to additionally reject a __gc
 // metatable field. See sandbox.c for exactly which names and why each one is gone.
-void mod_open_libs_hardened(struct lua_State *L);
+void mod_open_libs_hardened(struct lua_State *lua_vm);
 
 // The shared instruction total and wall-clock deadline mod_resume_budgeted enforces by default
 // for a mod's one-shot main.lua load. See sandbox.c for how each number was chosen. A later

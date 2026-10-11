@@ -6,7 +6,7 @@
 struct lua_State;
 
 // Puts the `oracles` table into the given state.
-void mods_api_open(struct lua_State *L);
+void mods_api_open(struct lua_State *lua_vm);
 
 // The registry, for the documentation check.
 int mods_api_count(void);
