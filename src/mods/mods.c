@@ -249,7 +249,10 @@ static void call_handler(Mod *m, int ref, bool has_arg, int arg) {
       snprintf(reason, sizeof reason, "a frame handler errored: %s", escaped);
     }
     fprintf(stderr, "mods: '%s' %s; disabling it for this session\n", m->id, reason);
-    snprintf(m->error, sizeof m->error, "%s", reason);
+    // Deliberately truncating: `reason` is the full stderr text, m->error is the short
+    // status-line copy. The explicit precision says so to the compiler, which otherwise
+    // warns about the truncation on the MinGW target and buries real warnings in noise.
+    snprintf(m->error, sizeof m->error, "%.*s", (int)(sizeof m->error - 1), reason);
     m->enabled = false;
     void *ud = NULL;
     lua_getallocf(m->L, &ud);
@@ -1176,7 +1179,10 @@ static bool run_main_lua(const char *dir, const char *name, Mod *m) {
     // short copy is for mods_error()'s status-line use, a different audience with a different
     // length budget.
     fprintf(stderr, "mods: '%s' failed to run main.lua: %s\n", name, reason);
-    snprintf(m->error, sizeof m->error, "%s", reason);
+    // Deliberately truncating: `reason` is the full stderr text, m->error is the short
+    // status-line copy. The explicit precision says so to the compiler, which otherwise
+    // warns about the truncation on the MinGW target and buries real warnings in noise.
+    snprintf(m->error, sizeof m->error, "%.*s", (int)(sizeof m->error - 1), reason);
     lua_close(L);
     free(a);
     return false;
