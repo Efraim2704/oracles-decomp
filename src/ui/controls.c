@@ -112,33 +112,3 @@ void controls_capture_pad(ControlsMenu *m, Bindings *b, int button) {
   m->pad_page = true;
   m->waiting = false;
 }
-
-#define VISIBLE 6
-
-void controls_draw(const ControlsMenu *m, const Bindings *b, const UiFont *font, const UiTheme *t, const uint8_t *game_rgb,
-                   const char *(*key_name)(int), const char *(*pad_name)(int), UiCanvas *c) {
-  static const char *const labels[CTRL_ROWS] = {"UP", "DOWN", "LEFT", "RIGHT", "A", "B", "START", "SELECT", "PAUSE", "FAST", "SWAP", "ITEM X", "ITEM Y", "RESET"};
-  if (game_rgb) ui_dim_rgb(c, game_rgb);
-  else ui_clear(c, t->bg);
-  ui_box(c, 0, 0, UI_W, UI_H, t->border, t->panel);
-  ui_text(c, font, 4, 0, m->pad_page ? "GAMEPAD" : "KEYBOARD", t->highlight);
-  ui_text(c, font, UI_W - 4 - ui_text_width("<>"), 0, "<>", t->dim);
-  int first = m->sel - VISIBLE / 2;
-  if (first > CTRL_ROWS - VISIBLE) first = CTRL_ROWS - VISIBLE;
-  if (first < 0) first = 0;
-  for (int i = first; i < first + VISIBLE && i < CTRL_ROWS; i++) {
-    int y = 18 + (i - first) * 17;
-    bool on = m->sel == i;
-    UiColor fg = on ? t->highlight : t->text;
-    if (on) ui_glyph(c, font, 2, y, '>', t->highlight);
-    ui_text(c, font, 10, y, labels[i], fg);
-    if (i == CTRL_RESET) continue;
-    char v[24];
-    if (on && m->waiting) snprintf(v, sizeof v, "PRESS...");
-    else if (m->pad_page) snprintf(v, sizeof v, "%s", b->pad[i] == NO_BINDING ? "-" : pad_name(b->pad[i]));
-    else snprintf(v, sizeof v, "%s", b->key[i][0] == NO_BINDING ? "-" : key_name(b->key[i][0]));
-    v[10] = 0;
-    ui_text(c, font, UI_W - 4 - ui_text_width(v), y, v, fg);
-  }
-  ui_text(c, font, 4, 124, m->waiting ? "PRESS A KEY" : "A:SET B:BACK", t->dim);
-}

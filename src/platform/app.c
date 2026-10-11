@@ -271,7 +271,6 @@ static bool slot_load(GB *gb, const char *dir, int slot) {
 }
 
 static void slots_scan(SlotsMenu *m, const char *dir) {
-  static const char *const months[12] = {"JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"};
   for (int i = 0; i < UI_SLOTS; i++) {
     UiSlot *s = &m->slots[i];
     char path[1300];
@@ -280,10 +279,6 @@ static void slots_scan(SlotsMenu *m, const char *dir) {
     s->used = SDL_GetPathInfo(path, &info);
     s->time = s->used ? info.modify_time : 0;
     if (!s->used) continue;
-    SDL_DateTime dt;
-    if (SDL_TimeToDateTime(info.modify_time, &dt, true))
-      snprintf(s->when, sizeof s->when, "%s%02d %02d:%02d", months[(dt.month - 1) % 12], dt.day, dt.hour, dt.minute);
-    else snprintf(s->when, sizeof s->when, "SAVED");
     memset(s->thumb, 0, sizeof s->thumb);
     slot_path(path, sizeof path, dir, i, ".thumb");
     size_t n;
@@ -341,6 +336,9 @@ static void show_status(const char *msg) {
   toast_until = SDL_GetTicks() + 2000;
   toast_undo = undo_tapped = false;
 }
+
+// While set, the wait shown over everything (a sync the player has to wait for); it replaces the message.
+static const char *waiting;
 
 // A message with an Undo to tap, shown a little longer.
 static void show_undoable(const char *msg) {
@@ -582,12 +580,13 @@ static void present_frame(SDL_Renderer *ren, const uint8_t *rgb, int pic_w) {
     SDL_RenderTexture(ren, over, NULL, &(SDL_FRect){0, 0, (float)(layout.w * layout.scale), (float)(layout.h * layout.scale)});
   }
   bool toast_on = toast[0] && SDL_GetTicks() < toast_until;
-  if (ui_layer || toast_on) {
+  if (ui_layer || toast_on || waiting) {
     GuiFrame f = {{(float)layout.game_px.x, (float)layout.game_px.y, (float)layout.game_px.w, (float)layout.game_px.h},
                   {(float)safe.x, (float)safe.y, (float)safe.w, (float)safe.h}, (float)w, (float)h, !touch_on};
     if (ui_layer) ui_layer(&f);
     else gui_begin(gui_display_scale());
-    if (toast_on && gui_toast(toast, toast_undo, &gui_t, &f)) undo_tapped = true;
+    if (waiting) gui_wait(waiting, SDL_GetTicks(), &gui_t, &f);
+    else if (toast_on && gui_toast(toast, toast_undo, &gui_t, &f)) undo_tapped = true;
     gui_end();
   }
   shot_if_due(ren);
@@ -625,13 +624,11 @@ static void present(SDL_Renderer *ren, SDL_Texture *tex, const uint8_t *rgb) {
 }
 
 // A modal settings screen; returns false when the window is closed. Changes apply as they are made.
-static bool run_settings(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, const UiFont *font, const UiTheme *theme, const uint8_t *game_rgb, SDL_AudioStream *audio);
+static bool run_settings(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, const uint8_t *game_rgb, SDL_AudioStream *audio);
 
-// Installed games, their save files and save state, each game's colours, and the font from whichever
-// ROM image is cached.
-static void launcher_load(Launcher *l, UiFont *font, const char *cache) {
+// Installed games, their save files and save state, and each game's colours.
+static void launcher_load(Launcher *l, const char *cache) {
   memset(l->games, 0, sizeof l->games);
-  font->loaded = false;
   for (int g = 0; g < UI_GAMES; g++) {
     LauncherGame *lg = &l->games[g];
     ui_theme_default(&lg->theme, g == UI_GAME_AGES);
@@ -648,16 +645,11 @@ static void launcher_load(Launcher *l, UiFont *font, const char *cache) {
     migrate_state(dir);
     slot_path(path, sizeof path, dir, SLOT_AUTO, "");
     lg->has_resume = file_exists(path);
-    lg->has_slots = any_slot(dir);
     snprintf(path, sizeof path, "%s%s/rom.bin", cache, game_ids[g]);
     uint8_t *rom = oracles_read_file(path, &n);
     ui_theme_load(&lg->theme, rom, rom ? n : 0, g == UI_GAME_AGES);
-    if (!font->loaded) ui_font_load(font, rom, rom ? n : 0);
     free(rom);
   }
-  // With no game installed there is no ROM to take the font from, and the launcher still has to draw
-  // its "ADD ROM" screen.
-  if (!font->loaded) ui_font_builtin(font);
 }
 
 // Test hook: ORACLES_TEST_KEYS="120:Escape,130:Down,140:X" presses each key at that loop tick (every
@@ -815,8 +807,7 @@ static int pick_slot_page(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, 
 }
 
 // A modal slot list; returns the slot, -1 for back, or -2 when the window is closed.
-static int pick_slot(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, SlotsMenu *m, const UiFont *font, const UiTheme *theme, const uint8_t *game_rgb) {
-  (void)font; (void)theme;
+static int pick_slot(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, SlotsMenu *m, const uint8_t *game_rgb) {
   UiScope was = ui_enter(slots_layer, true);
   int slot = pick_slot_page(win, ren, tex, m, game_rgb);
   ui_leave(was);
@@ -862,15 +853,14 @@ static bool run_controls_page(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *t
   }
 }
 
-static bool run_controls(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, const UiFont *font, const UiTheme *theme, const uint8_t *game_rgb) {
-  (void)font; (void)theme;
+static bool run_controls(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, const uint8_t *game_rgb) {
   UiScope was = ui_enter(controls_layer, true);
   bool r = run_controls_page(win, ren, tex, game_rgb);
   ui_leave(was);
   return r;
 }
 
-static bool run_sync_page(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, const UiFont *font, const UiTheme *theme, const uint8_t *game_rgb);
+static bool run_sync(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, const uint8_t *game_rgb);
 
 static struct { SettingsMenu *menu; GuiSettingsTap tap; bool back; } settings_ui;
 static void settings_layer(const GuiFrame *f) { settings_ui.back = gui_settings(settings_ui.menu, &settings, settings.sync_label, &gui_t, f, &settings_ui.tap); }
@@ -881,7 +871,7 @@ static void push_settings_tap(const GuiSettingsTap *tap) {
   else if (tap->row >= 0) push_button(tap->button);
 }
 
-static bool run_settings_page(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, const UiFont *font, const UiTheme *theme, const uint8_t *game_rgb, SDL_AudioStream *audio) {
+static bool run_settings_page(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, const uint8_t *game_rgb, SDL_AudioStream *audio) {
   SettingsMenu m;
   settings_menu_open(&m);
   settings_ui.menu = &m;
@@ -897,8 +887,8 @@ static bool run_settings_page(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *t
       bool was_full = settings.fullscreen, was_wide = settings.widescreen;
       MenuAction a = settings_press(&m, &settings, b, &row);
       if (a == MENU_BACK) { settings_store(); return true; }
-      if (a == MENU_PICK && row == SET_CONTROLS && !run_controls(win, ren, tex, font, theme, game_rgb)) return false;
-      if (a == MENU_PICK && row == SET_SYNC && !run_sync_page(win, ren, tex, font, theme, game_rgb)) return false;
+      if (a == MENU_PICK && row == SET_CONTROLS && !run_controls(win, ren, tex, game_rgb)) return false;
+      if (a == MENU_PICK && row == SET_SYNC && !run_sync(win, ren, tex, game_rgb)) return false;
       if (settings.fullscreen != was_full) apply_window_settings(win);
       if (settings.widescreen != was_wide) fit_window_to_picture(win);
       if (audio) SDL_SetAudioStreamGain(audio, volume_gain(false));
@@ -914,9 +904,9 @@ static bool run_settings_page(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *t
   }
 }
 
-static bool run_settings(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, const UiFont *font, const UiTheme *theme, const uint8_t *game_rgb, SDL_AudioStream *audio) {
+static bool run_settings(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, const uint8_t *game_rgb, SDL_AudioStream *audio) {
   UiScope was = ui_enter(settings_layer, true);
-  bool ok = run_settings_page(win, ren, tex, font, theme, game_rgb, audio);
+  bool ok = run_settings_page(win, ren, tex, game_rgb, audio);
   ui_leave(was);
   return ok;
 }
@@ -945,35 +935,36 @@ static void settings_reload(SDL_Window *win) {
   apply_game_settings();
 }
 
-// Shows `rgb` with a SYNCING message until the sync thread has finished one sync of `game`.
-static bool sync_blocking_canvas(SDL_Renderer *ren, SDL_Texture *tex, const uint8_t *rgb, const char *game, SyncResult *r) {
+// One frame of the wait over what is on screen, before a call that blocks (it stays up through it).
+static void wait_shown(SDL_Renderer *ren, SDL_Texture *tex, const uint8_t *rgb, const char *msg) {
+  waiting = msg;
+  present(ren, tex, rgb);
+}
+
+// One frame of a sync wait: input is dropped, but closing the window is kept for after.
+static void wait_tick(SDL_Renderer *ren, SDL_Texture *tex, const uint8_t *rgb, bool *quit) {
+  test_keys();
+  SDL_Event ev;
+  while (poll_event(&ev))
+    if (ev.type == SDL_EVENT_QUIT) *quit = true;
+  present(ren, tex, rgb);
+  SDL_Delay(16);
+}
+
+// Waits over the open page until the sync thread has finished one sync of `game` (HTTP gives up
+// after 30 seconds).
+static bool sync_blocking(SDL_Renderer *ren, SDL_Texture *tex, const uint8_t *rgb, const char *game, SyncResult *r) {
   if (!sync_cfg.code[0]) return false;
   SyncResult earlier;
-  while (sync_busy()) { show_status("Syncing..."); present(ren, tex, rgb); SDL_Delay(16); SDL_PumpEvents(); }
+  bool quit = false;
+  waiting = "Syncing";
+  while (sync_busy()) wait_tick(ren, tex, rgb, &quit);
   sync_poll(&earlier);
-  if (!sync_start(&sync_cfg, app_cache, game)) return false;
-  while (!sync_poll(r)) {
-    SDL_Event ev;
-    while (poll_event(&ev)) {}
-    show_status("Syncing...");
-    present(ren, tex, rgb);
-    SDL_Delay(16);
-  }
-  toast_until = 0;
-  return true;
-}
-
-static bool sync_blocking(SDL_Renderer *ren, SDL_Texture *tex, const uint8_t *rgb, const char *game, SyncResult *r) {
-  UiScope was = ui_enter(NULL, false);
-  bool ok = sync_blocking_canvas(ren, tex, rgb, game, r);
-  ui_leave(was);
-  return ok;
-}
-
-static void side_when(ConflictSide *side, int64_t seconds) {
-  SDL_DateTime dt;
-  if (SDL_TimeToDateTime((SDL_Time)seconds * SDL_NS_PER_SECOND, &dt, true))
-    snprintf(side->when, sizeof side->when, "%02d %02d:%02d", dt.day, dt.hour, dt.minute);
+  bool started = sync_start(&sync_cfg, app_cache, game);
+  while (started && !sync_poll(r)) wait_tick(ren, tex, rgb, &quit);
+  waiting = NULL;
+  if (quit) SDL_PushEvent(&(SDL_Event){.type = SDL_EVENT_QUIT});
+  return started;
 }
 
 static void side_fill(ConflictSide *side, const char *label, const char *game, const char *name, const uint8_t *data, size_t n, const uint8_t *thumb, size_t tn) {
@@ -1006,9 +997,9 @@ static bool run_conflicts_page(SDL_Renderer *ren, SDL_Texture *tex, const SyncRe
     if (what) snprintf(v.what, sizeof v.what, "%s %s", !strcmp(ch->game, "ages") ? "Ages" : "Seasons", what);
     else snprintf(v.what, sizeof v.what, "%s slot %c", !strcmp(ch->game, "ages") ? "Ages" : "Seasons", ch->name[6]);
     side_fill(&v.side[0], "This device", ch->game, ch->name, mine, n, mine_thumb, tn);
-    side_when(&v.side[0], ch->local_mtime);
+    v.side[0].time = (int64_t)ch->local_mtime * SDL_NS_PER_SECOND;
     side_fill(&v.side[1], ch->remote.device[0] ? ch->remote.device : "Other device", ch->game, ch->name, theirs, rn, theirs_thumb, rtn);
-    side_when(&v.side[1], ch->remote.updated);
+    v.side[1].time = (int64_t)ch->remote.updated * SDL_NS_PER_SECOND;
     free(mine); free(mine_thumb); free(theirs); free(theirs_thumb);
     test_mark("conflict");
     for (bool decided = false; !decided;) {
@@ -1021,9 +1012,10 @@ static bool run_conflicts_page(SDL_Renderer *ren, SDL_Texture *tex, const SyncRe
         MenuAction a = conflict_press(&v, b);
         if (a == MENU_BACK) decided = true;
         if (a == MENU_PICK) {
-          show_status("Syncing...");
-          present(ren, tex, page_black);
-          show_status(sync_resolve(&sync_cfg, app_cache, ch, v.sel == 0) ? "Kept" : "Sync failed");
+          wait_shown(ren, tex, page_black, "Syncing");
+          bool kept = sync_resolve(&sync_cfg, app_cache, ch, v.sel == 0);
+          waiting = NULL;
+          show_status(kept ? "Kept" : "Sync failed");
           decided = true;
         }
       }
@@ -1036,8 +1028,7 @@ static bool run_conflicts_page(SDL_Renderer *ren, SDL_Texture *tex, const SyncRe
   return true;
 }
 
-static bool run_conflicts(SDL_Renderer *ren, SDL_Texture *tex, const UiFont *font, const UiTheme *theme, const SyncResult *r) {
-  (void)font; (void)theme;
+static bool run_conflicts(SDL_Renderer *ren, SDL_Texture *tex, const SyncResult *r) {
   UiScope was = ui_enter(conflict_layer, true);
   bool ok = run_conflicts_page(ren, tex, r);
   ui_leave(was);
@@ -1045,22 +1036,22 @@ static bool run_conflicts(SDL_Renderer *ren, SDL_Texture *tex, const UiFont *fon
 }
 
 // Toasts the outcome, loads settings that came from elsewhere, and asks about conflicts.
-static bool sync_finished(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, const UiFont *font, const UiTheme *theme, const SyncResult *r) {
+static bool sync_finished(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, const SyncResult *r) {
   if (r->settings_changed) settings_reload(win);
   SDL_DateTime dt;
   SDL_Time now;
   bool clock = SDL_GetCurrentTime(&now) && SDL_TimeToDateTime(now, &dt, true);
   if (!r->ok) {
     fprintf(stderr, "sync failed: %s\n", r->error);
-    snprintf(sync_status_line, sizeof sync_status_line, "SYNC FAILED");
+    snprintf(sync_status_line, sizeof sync_status_line, "Sync failed");
     if (sync_failures() == 1) show_status("Sync failed");         // not again for every retry
     return true;
   }
   if (r->error[0]) fprintf(stderr, "sync: %s\n", r->error);
   else test_mark("synced");
-  if (clock) snprintf(sync_status_line, sizeof sync_status_line, "SYNCED %02d:%02d", dt.hour, dt.minute);
+  if (clock) snprintf(sync_status_line, sizeof sync_status_line, "Synced at %02d:%02d", dt.hour, dt.minute);
   if (r->uploaded || r->downloaded) show_status("Synced");
-  return !r->choices || run_conflicts(ren, tex, font, theme, r);
+  return !r->choices || run_conflicts(ren, tex, r);
 }
 
 // The sync page: the code, a new account, entering a code from another device, sync now, off.
@@ -1070,7 +1061,7 @@ static void sync_layer(const GuiFrame *f) {
   else sync_ui.tap = gui_sync(sync_ui.menu, &gui_t, f, &sync_ui.reveal);
 }
 
-static bool run_sync_page_gui(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, const UiFont *font, const UiTheme *theme, const uint8_t *game_rgb) {
+static bool run_sync_page(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, const uint8_t *game_rgb) {
   SyncMenu m;
   sync_ui.menu = &m;
   sync_ui.code = NULL;
@@ -1097,9 +1088,10 @@ static bool run_sync_page_gui(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *t
       bool new_code = false;
       if (row == SYNCROW_CREATE) {
         char nc[17], err[128];
-        show_status("Creating...");
-        present(ren, tex, game_rgb);
-        if (sync_create_account(sync_cfg.url, nc, err, sizeof err)) { memcpy(sync_cfg.code, nc, 17); new_code = true; }
+        wait_shown(ren, tex, game_rgb, "Creating a code");
+        bool made = sync_create_account(sync_cfg.url, nc, err, sizeof err);
+        waiting = NULL;
+        if (made) { memcpy(sync_cfg.code, nc, 17); new_code = true; }
         else { fprintf(stderr, "sync: %s\n", err); show_status("Couldn't create a code"); }
       } else if (row == SYNCROW_ENTER) {
         CodeEntry e;
@@ -1141,7 +1133,7 @@ static bool run_sync_page_gui(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *t
       if (new_code) { sync_config_store(&sync_cfg, app_cache); sync_label_update(); }
       if (row == SYNCROW_NOW || new_code) {
         SyncResult r;
-        if (sync_blocking(ren, tex, game_rgb, scope, &r) && !sync_finished(win, ren, tex, font, theme, &r)) return false;
+        if (sync_blocking(ren, tex, game_rgb, scope, &r) && !sync_finished(win, ren, tex, &r)) return false;
       }
       REOPEN();
     }
@@ -1153,16 +1145,16 @@ static bool run_sync_page_gui(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *t
 #undef REOPEN
 }
 
-static bool run_sync_page(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, const UiFont *font, const UiTheme *theme, const uint8_t *game_rgb) {
+static bool run_sync(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, const uint8_t *game_rgb) {
   UiScope was = ui_enter(sync_layer, true);
-  bool r = run_sync_page_gui(win, ren, tex, font, theme, game_rgb);
+  bool r = run_sync_page(win, ren, tex, game_rgb);
   ui_leave(was);
   return r;
 }
 
 // The main menu's slot times: each game's four state files.
-static void home_scan(Home *h, UiFont *font, const char *cache) {
-  launcher_load(&h->l, font, cache);
+static void home_scan(Home *h, const char *cache) {
+  launcher_load(&h->l, cache);
   for (int g = 0; g < UI_GAMES; g++)
     for (int i = 0; i < HOME_SLOTS; i++) {
       char dir[1100], path[1300];
@@ -1184,11 +1176,10 @@ static void home_layer(const GuiFrame *f) {
 // Runs the main menu until a game is chosen (true) or the player quits (false).
 static bool run_home(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, const char *cache, char *game_out, int *file_out, bool *file_used, int *slot_out) {
   static Home h;
-  static UiFont font;
   static uint8_t rgb[UI_W * UI_H * 3];          // under the page; also what the sync wait shows
   // No ROM yet is not a special case: the menu opens as usual and its Add ROM row asks for one,
   // rather than a file dialog appearing over nothing on first launch.
-  home_scan(&h, &font, cache);
+  home_scan(&h, cache);
   home_init(&h, UI_GAME_SEASONS);
   static SettingsMenu settings_menu;
   settings_menu_open(&settings_menu);
@@ -1199,8 +1190,8 @@ static bool run_home(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, const
     test_keys();
     SyncResult synced;
     if (sync_poll(&synced)) {
-      if (!sync_finished(win, ren, tex, &font, &h.l.games[h.l.game].theme, &synced)) return false;
-      home_scan(&h, &font, cache);
+      if (!sync_finished(win, ren, tex, &synced)) return false;
+      home_scan(&h, cache);
     }
     if (sync_cfg.code[0] && sync_should_retry()) sync_start(&sync_cfg, cache, SYNC_ALL_GAMES);
     SDL_Event ev;
@@ -1216,10 +1207,10 @@ static bool run_home(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, const
         SettingsRow row;
         bool was_full = settings.fullscreen, was_wide = settings.widescreen;
         MenuAction sa = settings_press(&settings_menu, &settings, r.button, &row);
-        if (sa == MENU_PICK && row == SET_CONTROLS && !run_controls(win, ren, tex, &font, &h.l.games[h.l.game].theme, NULL)) return false;
+        if (sa == MENU_PICK && row == SET_CONTROLS && !run_controls(win, ren, tex, NULL)) return false;
         if (sa == MENU_PICK && row == SET_SYNC) {
-          if (!run_sync_page(win, ren, tex, &font, &h.l.games[h.l.game].theme, NULL)) return false;
-          home_scan(&h, &font, cache);
+          if (!run_sync(win, ren, tex, NULL)) return false;
+          home_scan(&h, cache);
         }
         if (settings.fullscreen != was_full) apply_window_settings(win);
         if (settings.widescreen != was_wide) fit_window_to_picture(win);
@@ -1228,7 +1219,7 @@ static bool run_home(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, const
       }
       if (r.action == LAUNCH_ADD_ROM) {
         char game[16];
-        if (pick_rom(game, cache)) { UiGame g = h.l.game; home_scan(&h, &font, cache); home_init(&h, g); }
+        if (pick_rom(game, cache)) { UiGame g = h.l.game; home_scan(&h, cache); home_init(&h, g); }
       }
       if (r.action == LAUNCH_PLAY && r.file == LAUNCH_SLOTS) {
         if (r.slot < 0) continue;
@@ -1236,8 +1227,8 @@ static bool run_home(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, const
       }
       if (r.action == LAUNCH_PLAY && sync_cfg.code[0]) {
         SyncResult pre;
-        if (sync_blocking(ren, tex, rgb, game_ids[r.game], &pre) && !sync_finished(win, ren, tex, &font, &h.l.games[r.game].theme, &pre)) return false;
-        home_scan(&h, &font, cache);
+        if (sync_blocking(ren, tex, rgb, game_ids[r.game], &pre) && !sync_finished(win, ren, tex, &pre)) return false;
+        home_scan(&h, cache);
       }
       if (r.action == LAUNCH_PLAY) {
         strcpy(game_out, game_ids[r.game]);
@@ -1246,7 +1237,7 @@ static bool run_home(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, const
         return true;
       }
     }
-    overlay_style(&font, &h.l.games[h.l.game].theme);
+    overlay_style(NULL, &h.l.games[h.l.game].theme);      // the overlay is hidden on full pages: no labels
     gui_theme(&gui_t, h.l.game == UI_GAME_AGES);
     home_ui.button = GUI_NONE;
     home_ui.tap.row = home_ui.tap.volume = GUI_NONE;
@@ -1476,7 +1467,7 @@ static GameEnd run_game(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, co
         } else if (a == MENU_PICK && (item == PAUSE_SAVE || item == PAUSE_LOAD)) {
           slots_scan(&slots, dir);
           slots_open(&slots, item == PAUSE_SAVE);
-          int slot = pick_slot(win, ren, tex, &slots, &font, &theme, paused_rgb);
+          int slot = pick_slot(win, ren, tex, &slots, paused_rgb);
           if (slot == -2) { end = GAME_QUIT; running = false; if (parked) slot_save(gb, dir, SLOT_AUTO, paused_rgb); }
           else if (slot >= 0 && item == PAUSE_SAVE) {
             bool ok = slot_save(gb, dir, slot, paused_rgb);
@@ -1492,7 +1483,7 @@ static GameEnd run_game(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, co
             if (ok) { mode = MODE_PLAY; if (audio) SDL_ResumeAudioStreamDevice(audio); }
           }
         } else if (a == MENU_PICK && item == PAUSE_SETTINGS) {
-          if (!run_settings(win, ren, tex, &font, &theme, paused_rgb, NULL)) { end = GAME_QUIT; running = false; if (parked) slot_save(gb, dir, SLOT_AUTO, paused_rgb); }
+          if (!run_settings(win, ren, tex, paused_rgb, NULL)) { end = GAME_QUIT; running = false; if (parked) slot_save(gb, dir, SLOT_AUTO, paused_rgb); }
           if (audio) SDL_SetAudioStreamGain(audio, volume_gain(muted));
         } else if (a == MENU_PICK && item == PAUSE_QUIT) {
           if (parked) slot_save(gb, dir, SLOT_AUTO, paused_rgb);
@@ -1719,8 +1710,7 @@ int main(int argc, char **argv) {
     direct = true;
     if (file_arg >= 0 && file_arg < UI_FILES) {
       static Launcher probe;
-      static UiFont font;
-      launcher_load(&probe, &font, cache);
+      launcher_load(&probe, cache);
       gs.start_file = file_arg;
       gs.open_file = probe.games[strcmp(game, "ages") == 0 ? UI_GAME_AGES : UI_GAME_SEASONS].files[file_arg].valid;
     }

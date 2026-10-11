@@ -110,7 +110,7 @@ if(ORACLES_SDL)
   endif()
 endif()
 
-add_library(oraclesui STATIC src/ui/ui.c src/ui/font_builtin.c src/ui/savefile.c src/ui/launcher.c src/ui/menu.c src/ui/settings.c src/ui/filter.c src/ui/controls.c src/ui/touch.c src/ui/syncui.c src/ui/home.c
+add_library(oraclesui STATIC src/ui/ui.c src/ui/savefile.c src/ui/menu.c src/ui/settings.c src/ui/filter.c src/ui/controls.c src/ui/touch.c src/ui/syncui.c src/ui/home.c
   src/ui/upscale.cpp third_party/xbrz/xbrz.cpp third_party/hqx/hq2x.c third_party/hqx/hq3x.c)
 target_include_directories(oraclesui PUBLIC src PRIVATE third_party/xbrz third_party/hqx)
 # oraclesui carries C++ objects, so anything linking it links with the C++ driver.
@@ -140,7 +140,8 @@ if(ORACLES_SDL OR ANDROID)
   add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/gui_vt323.c
     COMMAND ${CMAKE_COMMAND} -DIN=${ORACLES_FONT} -DOUT=${CMAKE_BINARY_DIR}/gui_vt323.c -DNAME=gui_vt323 -P ${CMAKE_SOURCE_DIR}/cmake/embed.cmake
     DEPENDS ${ORACLES_FONT} ${CMAKE_SOURCE_DIR}/cmake/embed.cmake)
-  add_library(oraclesgui STATIC src/gui/gui.c src/gui/screens.c src/gui/vendor.c ${CMAKE_BINARY_DIR}/gui_vt323.c)
+  add_library(oraclesgui STATIC src/gui/gui.c src/gui/widgets.c src/gui/pause.c src/gui/slots.c src/gui/settings.c
+    src/gui/home.c src/gui/controls.c src/gui/sync.c src/gui/vendor.c ${CMAKE_BINARY_DIR}/gui_vt323.c)
   target_include_directories(oraclesgui PUBLIC src third_party/clay PRIVATE third_party/stb)
   set_source_files_properties(src/gui/vendor.c PROPERTIES COMPILE_OPTIONS "-w")
   # Clay's macros build its structs from partial initializers on purpose

@@ -3,7 +3,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-static const char *const filter_names[FILTERS] = {"SHARP", "LINES", "LCD", "CRT", "XBRZ", "HQX"};
 static const char *const filter_keys[FILTERS] = {"sharp", "scanlines", "lcd", "crt", "xbrz", "hqx"};
 
 void settings_default(Settings *s) {
@@ -85,44 +84,4 @@ MenuAction settings_press(SettingsMenu *m, Settings *s, UiButton b, SettingsRow 
   default: break;
   }
   return MENU_NONE;
-}
-
-void settings_draw_list(const SettingsMenu *m, const Settings *s, const UiFont *font, const UiTheme *t, int y0, int visible, bool focused, UiCanvas *c) {
-  static const char *const labels[SET_ROWS] = {"VOLUME", "SCREEN", "SCALE", "WIDESCREEN", "DIM SIDES", "COLOURS", "FULLSCREEN", "FAST TEXT", "FAST MENUS", "QUICK SWAP", "4 SLOTS", "CONTROLS", "SYNC"};
-  int first = (int)m->sel - visible / 2;
-  if (first > SET_ROWS - visible) first = SET_ROWS - visible;
-  if (first < 0) first = 0;
-  for (int i = first; i < first + visible && i < SET_ROWS; i++) {
-    int y = y0 + (i - first) * 17;
-    bool on = focused && (int)m->sel == i;
-    UiColor fg = on ? t->highlight : t->text;
-    if (on) ui_glyph(c, font, 2, y, '>', t->highlight);
-    ui_text(c, font, 10, y, labels[i], fg);
-    char v[16] = "";
-    switch ((SettingsRow)i) {
-    case SET_VOLUME: snprintf(v, sizeof v, "%d", s->volume); break;
-    case SET_SCREEN: snprintf(v, sizeof v, "%s", filter_names[s->filter]); break;
-    case SET_SCALE: snprintf(v, sizeof v, "%s", s->fill ? "FILL" : "PIXEL"); break;
-    case SET_WIDESCREEN: snprintf(v, sizeof v, "%s", s->widescreen ? "ON" : "OFF"); break;
-    case SET_DIM_SIDES: snprintf(v, sizeof v, "%s", s->dim_sides ? "ON" : "OFF"); break;
-    case SET_COLOURS: snprintf(v, sizeof v, "%s", s->gbc_colours ? "GBC" : "VIVID"); break;
-    case SET_FULLSCREEN: snprintf(v, sizeof v, "%s", s->fullscreen ? "ON" : "OFF"); break;
-    case SET_FAST_TEXT: snprintf(v, sizeof v, "%s", s->fast_text ? "ON" : "OFF"); break;
-    case SET_FAST_MENUS: snprintf(v, sizeof v, "%s", s->fast_menus ? "ON" : "OFF"); break;
-    case SET_QUICK_SWAP: snprintf(v, sizeof v, "%s", s->quick_swap ? "ON" : "OFF"); break;
-    case SET_FOUR_SLOTS: snprintf(v, sizeof v, "%s", s->four_slots ? "ON" : "OFF"); break;
-    case SET_SYNC: snprintf(v, sizeof v, "%s", s->sync_label[0] ? s->sync_label : "OFF"); break;
-    default: break;
-    }
-    if (*v) ui_text(c, font, UI_W - 4 - ui_text_width(v), y, v, fg);
-  }
-}
-
-void settings_draw(const SettingsMenu *m, const Settings *s, const UiFont *font, const UiTheme *t, const uint8_t *game_rgb, UiCanvas *c) {
-  if (game_rgb) ui_dim_rgb(c, game_rgb);
-  else ui_clear(c, t->bg);
-  ui_box(c, 0, 0, UI_W, UI_H, t->border, t->panel);
-  ui_text(c, font, 4, 0, "SETTINGS", t->highlight);
-  settings_draw_list(m, s, font, t, 18, 6, true, c);
-  ui_text(c, font, 4, 124, "<>:CHANGE B:BACK", t->dim);
 }

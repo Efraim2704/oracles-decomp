@@ -22,19 +22,6 @@ static void font_loads_from_the_rom_offset(void) {
   ASSERT_EQ(font.glyph['A'][3], 0x7e);
 }
 
-static void text_draws_glyph_pixels(void) {
-  UiFont font;
-  ASSERT(ui_font_load(&font, rom, sizeof rom));
-  static UiCanvas c;
-  ui_clear(&c, UI_BLACK);
-  ASSERT_EQ(ui_text(&c, &font, 10, 20, "AA", UI_WHITE), 16);
-  ASSERT_EQ(c.px[23][10][0], UI_WHITE.r);
-  ASSERT_EQ(c.px[23][17][0], UI_WHITE.r);
-  ASSERT_EQ(c.px[23][11][0], 0);
-  ASSERT_EQ(c.px[23][18][0], UI_WHITE.r);
-  ui_text(&c, &font, UI_W - 4, UI_H - 4, "A", UI_WHITE);   // clipped, no crash
-}
-
 static void make_file(uint8_t *file, bool ages, const char *name, int max_health, uint8_t essences) {
   memset(file, 0, 0x550);
   memcpy(file + 2, ages ? "Z21216-0" : "Z11216-0", 8);
@@ -63,47 +50,6 @@ static void save_files_are_read_and_verified(void) {
   ASSERT_EQ(ui_read_files(sram, sizeof sram, false, f), 1);
   ASSERT(!f[0].valid);
   ASSERT_EQ(ui_read_files(NULL, 0, false, f), 0);
-}
-
-static void launcher_navigates_and_starts(void) {
-  Launcher l;
-  memset(&l, 0, sizeof l);
-  l.games[UI_GAME_SEASONS].installed = true;
-  l.games[UI_GAME_SEASONS].files[1].valid = true;
-  launcher_init(&l, UI_GAME_AGES);
-  ASSERT_EQ(l.game, UI_GAME_SEASONS);                   // Ages isn't installed
-  ASSERT_EQ(l.row, 1);                                  // first file with data
-  LaunchResult r = launcher_press(&l, UI_ACCEPT);
-  ASSERT_EQ(r.action, LAUNCH_PLAY);
-  ASSERT_EQ(r.game, UI_GAME_SEASONS);
-  ASSERT_EQ(r.file, 1);
-  launcher_press(&l, UI_DOWN); launcher_press(&l, UI_DOWN);
-  ASSERT_EQ(launcher_press(&l, UI_ACCEPT).file, -1);    // the title-screen row
-  launcher_press(&l, UI_DOWN);
-  ASSERT_EQ(l.row, 0);                                  // wraps
-  launcher_press(&l, UI_RIGHT);                         // Seasons -> the settings tab
-  ASSERT(l.settings_tab && !l.settings_list);
-  ASSERT_EQ(l.game, UI_GAME_SEASONS);                   // keeps Seasons' colours
-  ASSERT_EQ(launcher_press(&l, UI_DOWN).action, LAUNCH_NONE);   // into the list
-  ASSERT(l.settings_list);
-  LaunchResult sr = launcher_press(&l, UI_LEFT);        // left/right now belong to the list
-  ASSERT_EQ(sr.action, LAUNCH_SETTINGS);
-  ASSERT_EQ(sr.button, UI_LEFT);
-  ASSERT(l.settings_tab);
-  launcher_press(&l, UI_BACK);                          // back to the tab row
-  ASSERT(!l.settings_list);
-  launcher_press(&l, UI_RIGHT);                         // wraps to Ages
-  ASSERT(!l.settings_tab);
-  ASSERT_EQ(l.game, UI_GAME_AGES);
-  ASSERT_EQ(launcher_press(&l, UI_ACCEPT).action, LAUNCH_ADD_ROM);
-  ASSERT_EQ(launcher_press(&l, UI_BACK).action, LAUNCH_QUIT);
-  static UiCanvas c;
-  UiFont font;
-  ui_font_load(&font, rom, sizeof rom);
-  launcher_draw(&l, &font, &c);                         // draws without the game art too
-  launcher_press(&l, UI_LEFT);
-  ASSERT(l.settings_tab);
-  launcher_draw(&l, &font, &c);
 }
 
 static void home_leads_with_resume_and_slots(void) {
@@ -161,24 +107,6 @@ static void home_tabs_reach_settings_and_add_rom(void) {
   ASSERT_EQ(home_press(&h, UI_ACCEPT).action, LAUNCH_ADD_ROM);
 }
 
-static void launcher_offers_resume_and_slots(void) {
-  Launcher l;
-  memset(&l, 0, sizeof l);
-  l.games[UI_GAME_AGES].installed = true;
-  l.games[UI_GAME_AGES].has_resume = true;
-  l.games[UI_GAME_AGES].has_slots = true;
-  launcher_init(&l, UI_GAME_AGES);
-  ASSERT_EQ(l.row, ROW_RESUME);
-  ASSERT_EQ(launcher_press(&l, UI_ACCEPT).file, LAUNCH_RESUME);
-  launcher_press(&l, UI_DOWN);
-  ASSERT_EQ(launcher_press(&l, UI_ACCEPT).file, LAUNCH_SLOTS);
-  launcher_press(&l, UI_DOWN);
-  ASSERT_EQ(l.row, ROW_TITLE);
-  l.games[UI_GAME_AGES].has_resume = l.games[UI_GAME_AGES].has_slots = false;
-  launcher_press(&l, UI_UP);
-  ASSERT_EQ(l.row, ROW_FILE3);                          // hidden rows are skipped
-}
-
 static void pause_menu_skips_disabled_items(void) {
   PauseMenu m;
   pause_open(&m, false, false);
@@ -209,14 +137,6 @@ static void slots_load_only_used_slots(void) {
   ASSERT_EQ(m.sel, 0);
   slots_press(&m, UI_UP, &slot);
   ASSERT_EQ(m.sel, 3);                                  // saving: every slot, wrapping
-  static uint8_t rgb[UI_W * UI_H * 3];
-  static UiCanvas c;
-  UiFont font;
-  UiTheme t;
-  ui_font_load(&font, rom, sizeof rom);
-  ui_theme_default(&t, true);
-  slots_draw(&m, &font, &t, rgb, &c);
-  slots_draw(&m, &font, &t, NULL, &c);
 }
 
 static void themes_come_from_the_title_palettes(void) {
@@ -403,31 +323,6 @@ static void touch_layout_fits_screens(void) {
   ASSERT_EQ(touch_hit(&l, 100, 300), 0);
 }
 
-static void toast_boxes_a_message_near_the_bottom(void) {
-  UiFont font;
-  ASSERT(ui_font_load(&font, rom, sizeof rom));
-  UiTheme t;
-  ui_theme_default(&t, true);
-  static UiCanvas c;
-  ui_clear(&c, UI_BLACK);
-  ui_toast(&c, &font, &t, "STATE SAVED");
-  int top, bottom;
-  ASSERT(ui_text_ink(&font, "STATE SAVED", &top, &bottom));
-  int w = 11 * UI_GLYPH_W + 10, h = bottom - top + 5, x = (UI_W - w) / 2, y = UI_H - h;
-  ASSERT_EQ(c.px[y][x][0], t.border.r);
-  ASSERT_EQ(c.px[y + 1][x + 1][0], t.panel.r);
-  ASSERT_EQ(c.px[y - 1][x][0], 0);
-  PauseMenu pm;
-  pause_open(&pm, true, true);
-  static UiCanvas pc;
-  static uint8_t grey[UI_W * UI_H * 3];
-  pause_draw(&pm, &font, &t, grey, &pc);
-  int box_bottom = 0;                                  // the pause box stays visible above it
-  for (int yy = 0; yy < UI_H; yy++) if (!memcmp(pc.px[yy][UI_W / 2], &t.border, 3)) box_bottom = yy;
-  ASSERT(y > box_bottom);
-  ui_toast(&c, &font, &t, "A VERY LONG MESSAGE THAT DOES NOT FIT");   // clipped to the screen
-}
-
 static void touch_fill_scales_past_whole_pixels(void) {
   TouchLayout l;
   touch_layout(&l, 1080, 2400, (UiRect){78, 164, 924, 2152}, true, false, true, UI_W);   // Pixel 8 portrait
@@ -546,7 +441,7 @@ static void sync_page_shows_the_rows_for_its_state(void) {
   ASSERT_EQ(m.sel, SYNCROW_ENTER);
   syncmenu_press(&m, UI_DOWN, &row);
   ASSERT_EQ(m.sel, SYNCROW_CREATE);                     // off: only create and enter
-  syncmenu_open(&m, true, "4827-1930-5561-0284", "SYNCED 17:32");
+  syncmenu_open(&m, true, "4827-1930-5561-0284", "Synced at 17:32");
   ASSERT_EQ(m.sel, SYNCROW_NOW);
   syncmenu_press(&m, UI_DOWN, &row);
   ASSERT_EQ(m.sel, SYNCROW_ENTER);                      // on: no create
@@ -554,12 +449,6 @@ static void sync_page_shows_the_rows_for_its_state(void) {
   ASSERT_EQ(syncmenu_press(&m, UI_ACCEPT, &row), MENU_PICK);
   ASSERT_EQ(row, SYNCROW_OFF);
   ASSERT_EQ(syncmenu_press(&m, UI_BACK, &row), MENU_BACK);
-  UiFont font;
-  ui_font_load(&font, rom, sizeof rom);
-  UiTheme t;
-  ui_theme_default(&t, false);
-  static UiCanvas c;
-  syncmenu_draw(&m, &font, &t, NULL, &c);
 }
 
 static void code_entry_edits_each_digit(void) {
@@ -582,7 +471,7 @@ static void code_entry_edits_each_digit(void) {
 static void conflict_picks_a_side(void) {
   static ConflictView v;
   memset(&v, 0, sizeof v);
-  snprintf(v.what, sizeof v.what, "SEASONS SAVE");
+  snprintf(v.what, sizeof v.what, "Seasons save files");
   v.side[0].has_files = true;
   v.side[0].files[0].valid = true;
   snprintf(v.side[0].files[0].name, sizeof v.side[0].files[0].name, "LINK");
@@ -595,56 +484,6 @@ static void conflict_picks_a_side(void) {
   ASSERT_EQ(conflict_press(&v, UI_ACCEPT), MENU_PICK);
   ASSERT_EQ(v.sel, 0);
   ASSERT_EQ(conflict_press(&v, UI_BACK), MENU_BACK);
-  UiFont font;
-  ui_font_load(&font, rom, sizeof rom);
-  UiTheme t;
-  ui_theme_default(&t, true);
-  static UiCanvas c;
-  conflict_draw(&v, &font, &t, &c);
-  ASSERT_EQ(c.px[34][0][0], t.highlight.r);            // the chosen side's box is lit
-  ASSERT_EQ(c.px[34][80][0], t.dim.r);
-}
-
-// The launcher draws its ADD ROM screen before a ROM exists, so the built-in font has to stand in
-// for the one in the ROM.
-static void builtin_font_covers_the_launcher_text(void) {
-  UiFont font;
-  memset(&font, 0, sizeof font);
-  ui_font_builtin(&font);
-  ASSERT(font.loaded);
-  int top, bottom;
-  // Everything the no-ROM launcher puts on screen has to be drawable.
-  ASSERT(ui_text_ink(&font, "ADD ROM...", &top, &bottom));
-  ASSERT(ui_text_ink(&font, "NOT INSTALLED", &top, &bottom));
-  ASSERT(ui_text_ink(&font, "AGES", &top, &bottom));
-  ASSERT(ui_text_ink(&font, "SEASONS", &top, &bottom));
-  ASSERT(ui_text_ink(&font, "A:PLAY  B:QUIT", &top, &bottom));
-  ASSERT(ui_text_ink(&font, "<>:CHANGE B:BACK", &top, &bottom));
-  // A space is blank, and every printable ASCII glyph but space carries ink.
-  ASSERT(!ui_text_ink(&font, " ", &top, &bottom));
-  for (char ch = '!'; ch <= '~'; ch++) {
-    const char one[2] = {ch, 0};
-    ASSERT(ui_text_ink(&font, one, &top, &bottom));
-  }
-  // The two non-ASCII glyphs the file rows use.
-  const char heart[2] = {UI_CH_HEART, 0}, cursor[2] = {UI_CH_CURSOR, 0};
-  ASSERT(ui_text_ink(&font, heart, &top, &bottom));
-  ASSERT(ui_text_ink(&font, cursor, &top, &bottom));
-}
-
-static void builtin_font_draws_at_the_normal_pitch(void) {
-  UiFont font;
-  ui_font_builtin(&font);
-  static UiCanvas c;
-  ui_clear(&c, UI_BLACK);
-  ASSERT_EQ(ui_text(&c, &font, 0, 0, "AB", UI_WHITE), 16);
-  // 'A' has its apex at column 2 of the first drawn row, 'B' a stem at column 0 of the same row.
-  ASSERT_EQ(c.px[4][2][0], UI_WHITE.r);
-  ASSERT_EQ(c.px[4][8][0], UI_WHITE.r);
-  // Glyphs stay inside their 8-pixel cell.
-  ui_clear(&c, UI_BLACK);
-  ui_text(&c, &font, 0, 0, "W", UI_WHITE);
-  for (int y = 0; y < UI_H; y++) ASSERT_EQ(c.px[y][7][0], UI_BLACK.r);
 }
 
 // The scalers enlarge by 3x themselves and repeat whole pixels the rest of the way, so the picture
@@ -779,12 +618,7 @@ static void upscale_factor_is_capped_at_the_window_scale(void) {
 
 int main(void) {
   RUN(font_loads_from_the_rom_offset);
-  RUN(builtin_font_covers_the_launcher_text);
-  RUN(builtin_font_draws_at_the_normal_pitch);
-  RUN(text_draws_glyph_pixels);
   RUN(save_files_are_read_and_verified);
-  RUN(launcher_navigates_and_starts);
-  RUN(launcher_offers_resume_and_slots);
   RUN(home_leads_with_resume_and_slots);
   RUN(home_tabs_reach_settings_and_add_rom);
   RUN(pause_menu_skips_disabled_items);
@@ -802,7 +636,6 @@ int main(void) {
   RUN(upscale_factor_is_capped_at_the_window_scale);
   RUN(bindings_remap_and_persist);
   RUN(touch_layout_fits_screens);
-  RUN(toast_boxes_a_message_near_the_bottom);
   RUN(sync_page_shows_the_rows_for_its_state);
   RUN(code_entry_edits_each_digit);
   RUN(conflict_picks_a_side);

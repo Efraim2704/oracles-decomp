@@ -1,7 +1,8 @@
 #pragma once
-// The menu screens. Each begins a gui frame at the scale that fits it and declares its elements;
-// the caller may add the toast and then ends the frame (gui_end draws it). Keys and buttons still
-// go through the src/ui state machines; these return what was tapped.
+// The menu screens, one file each in src/gui (built from src/gui/widgets.h). Each begins a gui
+// frame at the scale that fits it and declares its elements; the caller may add the toast or the
+// wait and then ends the frame (gui_end draws it). Keys and buttons still go through the src/ui
+// state machines; these return what was tapped.
 #include "gui/gui.h"
 #include "ui/home.h"
 #include "ui/menu.h"
@@ -47,5 +48,8 @@ int gui_code(CodeEntry *e, const GuiTheme *t, const GuiFrame *f);
 int gui_conflict(ConflictView *v, const GuiTheme *t, const GuiFrame *f);
 // The message near the bottom of the game picture; true when its Undo was tapped.
 bool gui_toast(const char *msg, bool undo, const GuiTheme *t, const GuiFrame *f);
+// Something the player has to wait for (a sync), over everything: a dimmed screen, the message,
+// and three squares lit in turn by ticks (milliseconds). Taps and hover don't reach what is under it.
+void gui_wait(const char *msg, uint64_t ticks, const GuiTheme *t, const GuiFrame *f);
 // "Today 14:02:37", "Yesterday 09:15:12", "Tue 21:40:05", "Sep 26 21:40".
 void gui_when(int64_t time, int64_t now, char *out, size_t size);

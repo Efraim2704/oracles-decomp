@@ -1,5 +1,5 @@
 #pragma once
-// Button bindings (keyboard: two keys per action, gamepad: one button) and the remap screen.
+// Button bindings (keyboard: two keys per action, gamepad: one button) and the remap screen's state.
 // Key codes are SDL scancodes (USB HID usage ids) and pad codes SDL gamepad buttons; the library
 // only stores and compares them, the app names them.
 #include "ui/ui.h"
@@ -38,5 +38,3 @@ void controls_open(ControlsMenu *m);
 MenuAction controls_press(ControlsMenu *m, Bindings *b, UiButton button);
 void controls_capture_key(ControlsMenu *m, Bindings *b, int key);
 void controls_capture_pad(ControlsMenu *m, Bindings *b, int button);
-void controls_draw(const ControlsMenu *m, const Bindings *b, const UiFont *font, const UiTheme *t, const uint8_t *game_rgb,
-                   const char *(*key_name)(int), const char *(*pad_name)(int), UiCanvas *c);
