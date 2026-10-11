@@ -12,16 +12,6 @@
 
 static uint8_t rom[0x80000];
 
-static void font_loads_from_the_rom_offset(void) {
-  UiFont font;
-  ASSERT(!ui_font_load(&font, rom, 0x1000));
-  size_t off = 0x1c * 0x4000 + 0x0720;
-  memset(rom + off, 0xff, 128 * 16);                   // every glyph blank: set bits are paper
-  rom[off + 'A' * 16 + 3] = 0x7e;
-  ASSERT(ui_font_load(&font, rom, sizeof rom));
-  ASSERT_EQ(font.glyph['A'][3], 0x7e);
-}
-
 static void make_file(uint8_t *file, bool ages, const char *name, int max_health, uint8_t essences) {
   memset(file, 0, 0x550);
   memcpy(file + 2, ages ? "Z21216-0" : "Z11216-0", 8);
@@ -56,8 +46,8 @@ static void home_leads_with_resume_and_slots(void) {
   static Home h;
   memset(&h, 0, sizeof h);
   h.l.games[UI_GAME_SEASONS].installed = true;
-  h.slots[UI_GAME_SEASONS][1] = (HomeSlot){true, 200};
-  h.slots[UI_GAME_SEASONS][3] = (HomeSlot){true, 100};
+  h.slots[UI_GAME_SEASONS][1] = (UiSlot){.used = true, .time = 200};
+  h.slots[UI_GAME_SEASONS][3] = (UiSlot){.used = true, .time = 100};
   home_init(&h, UI_GAME_AGES);
   ASSERT_EQ(h.l.game, UI_GAME_SEASONS);                 // Ages isn't installed
   ASSERT_EQ(home_latest(&h), 1);
@@ -389,49 +379,6 @@ static void touch_hits_each_control(void) {
   ASSERT(!touch_point(&l, ACT_ITEM_X, &x, &y));
 }
 
-static void touch_draw_lights_held_buttons(void) {
-  TouchLayout l;
-  touch_layout(&l, 2400, 1080, (UiRect){0, 0, 2400, 1080}, true, false, false, UI_W);
-  UiTheme t;
-  ui_theme_default(&t, true);
-  uint8_t *img = malloc((size_t)l.w * l.h * 4);
-  const UiRect *a = &l.button[ACT_A];
-  int px = a->x + 3, py = a->y + a->h / 2;             // inside the ring, clear of the label
-  touch_draw(&l, NULL, &t, 0, img);
-  uint8_t *p = img + ((size_t)py * l.w + px) * 4;
-  ASSERT_EQ(p[0], t.panel.r);
-  ASSERT(p[3] > 0 && p[3] < 255);                      // landscape: translucent over the sides
-  ASSERT_EQ(img[((size_t)(l.game.y + 72) * l.w + l.game.x + 80) * 4 + 3], 0);
-  touch_draw(&l, NULL, &t, 1u << ACT_A, img);
-  ASSERT_EQ(p[0], t.highlight.r);
-  ASSERT_EQ(p[1], t.highlight.g);
-  free(img);
-}
-
-static void touch_labels_centre_on_their_ink(void) {
-  static UiFont font;
-  memset(font.glyph, 0xff, sizeof font.glyph);
-  for (const char *p = "START"; *p; p++)
-    for (int r = 7; r <= 14; r++) font.glyph[(uint8_t)*p][r] = 0x81;   // ink rows 7-14, low in the cell
-  font.loaded = true;
-  TouchLayout l;
-  touch_layout(&l, 1080, 2400, (UiRect){0, 0, 1080, 2400}, true, false, false, UI_W);
-  UiTheme t;
-  ui_theme_default(&t, false);
-  uint8_t *img = malloc((size_t)l.w * l.h * 4);
-  touch_draw(&l, &font, &t, 0, img);
-  const UiRect *b = &l.button[ACT_START];
-  int first = -1, last = -1, x = b->x + b->w / 2 - 20 + 1;           // a pixel column of the first letter
-  for (int y = b->y + 1; y < b->y + b->h - 1; y++) {
-    uint8_t *p = img + ((size_t)y * l.w + x) * 4;
-    if (p[0] == t.text.r && p[1] == t.text.g && p[2] == t.text.b) { if (first < 0) first = y; last = y; }
-  }
-  ASSERT_EQ(last - first, 7);
-  int above = first - b->y, below = b->y + b->h - 1 - last;
-  ASSERT(above - below <= 1 && below - above <= 1);
-  free(img);
-}
-
 static void sync_page_shows_the_rows_for_its_state(void) {
   SyncMenu m;
   SyncRow row;
@@ -617,7 +564,6 @@ static void upscale_factor_is_capped_at_the_window_scale(void) {
 }
 
 int main(void) {
-  RUN(font_loads_from_the_rom_offset);
   RUN(save_files_are_read_and_verified);
   RUN(home_leads_with_resume_and_slots);
   RUN(home_tabs_reach_settings_and_add_rom);
@@ -642,7 +588,5 @@ int main(void) {
   RUN(touch_fill_scales_past_whole_pixels);
   RUN(touch_layout_takes_the_wide_picture);
   RUN(touch_hits_each_control);
-  RUN(touch_draw_lights_held_buttons);
-  RUN(touch_labels_centre_on_their_ink);
   return 0;
 }

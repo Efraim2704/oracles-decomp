@@ -12,7 +12,7 @@ bool home_row_enabled(const Home *h, HomeRow r) {
 int home_latest(const Home *h) {
   int best = -1;
   for (int i = 0; i < HOME_SLOTS; i++) {
-    const HomeSlot *s = &h->slots[h->l.game][i];
+    const UiSlot *s = &h->slots[h->l.game][i];
     if (s->used && (best < 0 || s->time > h->slots[h->l.game][best].time)) best = i;
   }
   return best;

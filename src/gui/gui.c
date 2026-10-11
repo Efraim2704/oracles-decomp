@@ -146,6 +146,32 @@ static void draw_text(const Clay_RenderCommand *cmd) {
   }
 }
 
+void gui_label(const char *s, float cx, float cy, float size, UiColor c, uint8_t alpha) {
+  Face *f = face((int)roundf(size));
+  SDL_Texture *tex = face_texture(f);
+  if (!tex) return;
+  int32_t len = (int32_t)strlen(s);
+  Clay_Dimensions d = measure((Clay_StringSlice){.length = len, .chars = s}, &(Clay_TextElementConfig){.fontSize = (uint16_t)f->size}, NULL);
+  SDL_SetTextureColorMod(tex, c.r, c.g, c.b);
+  SDL_SetTextureAlphaMod(tex, alpha);
+  // the capitals, not the line, are centred: half the height of H below cy is the baseline
+  int x0, y0, x1, y1;
+  stbtt_GetCodepointBox(&font, 'H', &x0, &y0, &x1, &y1);
+  float cap = (y1 - y0) * stbtt_ScaleForMappingEmToPixels(&font, (float)f->size);
+  float x = roundf(cx - d.width / 2), y = roundf(cy + cap / 2);
+  for (int32_t i = 0; i < len;) {
+    int n, g = glyph(s + i, len - i, &n);
+    stbtt_aligned_quad q;
+    stbtt_GetPackedQuad(f->chars, ATLAS_W, f->atlas_h, g, &x, &y, &q, 1);
+    SDL_FRect src = {q.s0 * ATLAS_W, q.t0 * f->atlas_h, (q.s1 - q.s0) * ATLAS_W, (q.t1 - q.t0) * f->atlas_h};
+    SDL_FRect dst = {q.x0, q.y0, q.x1 - q.x0, q.y1 - q.y0};
+    if (dst.w > 0) SDL_RenderTexture(ren, tex, &src, &dst);
+    i += n;
+  }
+}
+
+SDL_Renderer *gui_renderer(void) { return ren; }
+
 // ---- Clay ----
 
 static void on_error(Clay_ErrorData e) { fprintf(stderr, "gui: %.*s\n", (int)e.errorText.length, e.errorText.chars); }
@@ -376,7 +402,7 @@ void gui_end(void) {
 
 // ---- images ----
 
-#define IMAGES 8
+#define IMAGES 16
 static struct { SDL_Texture *tex; uint32_t stamp; int w, h; SDL_Renderer *ren; } images[IMAGES];
 
 SDL_Texture *gui_image(int key, const uint8_t *rgb, int w, int h, uint32_t stamp) {

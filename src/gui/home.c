@@ -44,33 +44,39 @@ static const char *section_before(int r) {
   }
 }
 
-// What a row shows at the right, and its tag.
-static Clay_String value_of(const Home *h, int r, int64_t now, Clay_String *tg) {
-  const LauncherGame *g = &h->l.games[h->l.game];
-  if (r >= HOME_SLOT1 && r <= HOME_SLOT4) {
-    const HomeSlot *sl = &h->slots[h->l.game][r - HOME_SLOT1];
-    if (r - HOME_SLOT1 == home_latest(h)) *tg = CLAY_STRING("Latest");
-    return sl->used ? when_str(sl->time, now) : CLAY_STRING("Empty");
+// Resume or a slot: its picture, name and time. Keys 6.. of gui_image (the slots page has 0..5).
+static bool state_row(Home *h, const GuiTheme *t, int r, int *sel, int64_t now) {
+  const UiSlot *st = r == HOME_RESUME ? &h->resume[h->l.game] : &h->slots[h->l.game][r - HOME_SLOT1];
+  Clay_ElementId id = CLAY_IDI("Home", r);
+  bool on = home_row_enabled(h, (HomeRow)r), tapped = pick(id, on, sel, r), selected = *sel == r;
+  SDL_Texture *tex = st->used ? gui_image(6 + r, &st->thumb[0][0][0], UI_W, UI_H, h->stamp * UI_GAMES + h->l.game) : NULL;
+  PICTURE_ROW(t, id, selected) {
+    state_info(t, tex, SMALL_THUMB_W, gui_str("%s", home_labels[r]), r != HOME_RESUME && r - HOME_SLOT1 == home_latest(h),
+               st->used ? when_str(st->time, now) : CLAY_STRING("Empty"), selected, on);
   }
-  if (r == HOME_RESUME && h->resume_time[h->l.game]) return when_str(h->resume_time[h->l.game], now);
-  if (r == HOME_FILES) {
-    int used = 0;
-    for (int k = 0; k < UI_FILES; k++) used += g->files[k].valid;
-    return gui_str("%d of %d  >", used, UI_FILES);
-  }
-  return (Clay_String){0};
+  return tapped;
 }
 
 static void game_rows(Home *h, const GuiTheme *t, int *button) {
+  const LauncherGame *g = &h->l.games[h->l.game];
   int64_t now = now_time();
   int sel = (int)h->row;
   for (int r = 0; r < HOME_ROWS; r++) {
-    if (r == HOME_RESUME && !h->l.games[h->l.game].has_resume) continue;
+    if (r == HOME_RESUME && !g->has_resume) continue;
     const char *sec = section_before(r);
     if (sec) section(t, sec);
-    Clay_String tg = {0}, value = value_of(h, r, now, &tg);
-    Row row = {.id = CLAY_IDI("Home", r), .label = gui_str("%s", home_labels[r]), .value = value, .tag = tg, .enabled = home_row_enabled(h, (HomeRow)r)};
-    if (list_row(t, row, &sel, r)) *button = UI_ACCEPT;
+    if (r <= HOME_SLOT4) {
+      if (state_row(h, t, r, &sel, now)) *button = UI_ACCEPT;
+      continue;
+    }
+    Clay_String value = {0};
+    if (r == HOME_FILES) {
+      int used = 0;
+      for (int k = 0; k < UI_FILES; k++) used += g->files[k].valid;
+      value = gui_str("%d of %d  >", used, UI_FILES);
+    }
+    if (list_row(t, (Row){.id = CLAY_IDI("Home", r), .label = gui_str("%s", home_labels[r]), .value = value, .enabled = true}, &sel, r))
+      *button = UI_ACCEPT;
   }
   h->row = (HomeRow)sel;
 }

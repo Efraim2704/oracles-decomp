@@ -37,14 +37,8 @@ int gui_slots(SlotsMenu *m, const GuiTheme *t, const GuiFrame *f, uint32_t stamp
         if (pick(id, on, &m->sel, i)) tapped = i;
         bool sel = m->sel == i;
         TALL_ROW(t, id, sel) {
-          thumb(t, sl->used ? gui_image(i, &sl->thumb[0][0][0], UI_W, UI_H, stamp) : NULL, sel);
-          CLAY({.layout = {.layoutDirection = CLAY_TOP_TO_BOTTOM, .childGap = gui_px(2)}}) {
-            CLAY({.layout = {.childGap = gui_px(10), .childAlignment = {.y = CLAY_ALIGN_Y_CENTER}}}) {
-              CLAY_TEXT(gui_str("Slot %d", i + 1), text_line(TEXT, row_fg(t, sel, on)));
-              if (i == latest) tag(CLAY_STRING("Latest"), sel ? t->on_hi : t->accent);
-            }
-            CLAY_TEXT(sl->used ? when_str(sl->time, now) : CLAY_STRING("Empty"), text_line(SMALL, row_dim(t, sel)));
-          }
+          state_info(t, sl->used ? gui_image(i, &sl->thumb[0][0][0], UI_W, UI_H, stamp) : NULL, THUMB_W, gui_str("Slot %d", i + 1), i == latest,
+                     sl->used ? when_str(sl->time, now) : CLAY_STRING("Empty"), sel, on);
         }
       }
     }

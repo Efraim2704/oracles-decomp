@@ -4,20 +4,17 @@
 // own) and the title screen. Pure state machine; src/gui draws it and turns taps into rows.
 #include <stdint.h>
 #include "ui/launcher.h"
+#include "ui/menu.h"
 
-#define HOME_SLOTS 4
+#define HOME_SLOTS UI_SLOTS
 
 typedef enum { HOME_RESUME, HOME_SLOT1, HOME_SLOT4 = HOME_SLOT1 + HOME_SLOTS - 1, HOME_FILES, HOME_TITLE, HOME_ROWS } HomeRow;
 
 typedef struct {
-  bool used;
-  int64_t time;                 // SDL_Time of the state file; 0 when unknown
-} HomeSlot;
-
-typedef struct {
   Launcher l;                   // the games, their files and themes; l.game is the tab shown
-  HomeSlot slots[UI_GAMES][HOME_SLOTS];
-  int64_t resume_time[UI_GAMES];  // SDL_Time of the state written when the game was last quit
+  UiSlot slots[UI_GAMES][HOME_SLOTS];
+  UiSlot resume[UI_GAMES];    // the state written when the game was last quit
+  uint32_t stamp;               // changes whenever the slots are read again (their pictures may have)
   HomeRow row;
   bool files_page;              // the save files page is open
   int file;                     // its row

@@ -141,7 +141,7 @@ if(ORACLES_SDL OR ANDROID)
     COMMAND ${CMAKE_COMMAND} -DIN=${ORACLES_FONT} -DOUT=${CMAKE_BINARY_DIR}/gui_vt323.c -DNAME=gui_vt323 -P ${CMAKE_SOURCE_DIR}/cmake/embed.cmake
     DEPENDS ${ORACLES_FONT} ${CMAKE_SOURCE_DIR}/cmake/embed.cmake)
   add_library(oraclesgui STATIC src/gui/gui.c src/gui/widgets.c src/gui/pause.c src/gui/slots.c src/gui/settings.c
-    src/gui/home.c src/gui/controls.c src/gui/sync.c src/gui/vendor.c ${CMAKE_BINARY_DIR}/gui_vt323.c)
+    src/gui/home.c src/gui/controls.c src/gui/sync.c src/gui/pad.c src/gui/vendor.c ${CMAKE_BINARY_DIR}/gui_vt323.c)
   target_include_directories(oraclesgui PUBLIC src third_party/clay PRIVATE third_party/stb)
   set_source_files_properties(src/gui/vendor.c PROPERTIES COMPILE_OPTIONS "-w")
   # Clay's macros build its structs from partial initializers on purpose

@@ -54,5 +54,8 @@ Clay_String gui_str(const char *fmt, ...) SDL_PRINTF_VARARG_FUNC(1);
 Clay_Color gui_rgb(UiColor c);
 Clay_Color gui_rgba(UiColor c, uint8_t alpha);
 Clay_TextElementConfig *gui_text(float points, UiColor c);
+// Drawn at once, outside any frame: text centred on (cx, cy) by its capitals, size in pixels.
+void gui_label(const char *s, float cx, float cy, float size, UiColor c, uint8_t alpha);
+SDL_Renderer *gui_renderer(void);
 // key: a small slot number for the cache; stamp changes when the pixels do
 SDL_Texture *gui_image(int key, const uint8_t *rgb, int w, int h, uint32_t stamp);

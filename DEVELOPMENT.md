@@ -247,13 +247,13 @@ warning, when they are missing).
 - `src/platform/`: the SDL apps and the headless runner; `archive.c` reads the ROM, unpacking a zip
   or gz with its own inflate so the apps need no compression library.
 - `src/ui/`: the menus' state machines (`home.c` is the main menu, `menu.c` pause and slots,
-  `settings.c`, `controls.c`, `syncui.c`), the touch overlay drawn in game pixels with the ROM's own
-  font (its only use of the ROM's font now), and the screen filters. Keys, pads and taps all go through the same `*_press` functions.
+  `settings.c`, `controls.c`, `syncui.c`), the touch controls' layout and hit areas (`touch.c`, in
+  game pixels), and the screen filters. Keys, pads and taps all go through the same `*_press` functions.
 - `src/gui/`: the menus drawn at the screen's resolution, over the game: Clay lays them out, SDL
   draws them in VT323 (`gui.c`). `widgets.c` holds the shared pieces (rows, headers, tabs, pages,
   lists); each screen has its own file (`pause.c` also has the message and the sync wait,
-  `home.c`, `slots.c`, `settings.c`, `controls.c`, `sync.c`), and `screens.h` is what the app
-  calls. A tap moves the selection and becomes the same button a key would give. Tests tap rows
+  `home.c`, `slots.c`, `settings.c`, `controls.c`, `sync.c`), `pad.c` draws the touch controls,
+  and `screens.h` is what the app calls. A tap moves the selection and becomes the same button a key would give. Tests tap rows
   with `^Element.index` in `ORACLES_TEST_KEYS`.
 - `src/wide/`: the widescreen renderer, the ROM room decoder, and `item.c`, which decodes an
   item's status-bar icon from the ROM so the X and Y slots can be shown beside the bar.

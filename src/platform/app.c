@@ -270,22 +270,24 @@ static bool slot_load(GB *gb, const char *dir, int slot) {
   return true;
 }
 
+// A state file's time and thumbnail (black when it has none).
+static void slot_read(UiSlot *s, const char *dir, int slot) {
+  char path[1300];
+  SDL_PathInfo info;
+  slot_path(path, sizeof path, dir, slot, "");
+  s->used = SDL_GetPathInfo(path, &info) && info.type == SDL_PATHTYPE_FILE;
+  s->time = s->used ? info.modify_time : 0;
+  memset(s->thumb, 0, sizeof s->thumb);
+  if (!s->used) return;
+  slot_path(path, sizeof path, dir, slot, ".thumb");
+  size_t n;
+  uint8_t *img = oracles_read_file(path, &n);
+  if (img && n == sizeof s->thumb) memcpy(s->thumb, img, n);
+  free(img);
+}
+
 static void slots_scan(SlotsMenu *m, const char *dir) {
-  for (int i = 0; i < UI_SLOTS; i++) {
-    UiSlot *s = &m->slots[i];
-    char path[1300];
-    SDL_PathInfo info;
-    slot_path(path, sizeof path, dir, i, "");
-    s->used = SDL_GetPathInfo(path, &info);
-    s->time = s->used ? info.modify_time : 0;
-    if (!s->used) continue;
-    memset(s->thumb, 0, sizeof s->thumb);
-    slot_path(path, sizeof path, dir, i, ".thumb");
-    size_t n;
-    uint8_t *img = oracles_read_file(path, &n);
-    if (img && n == sizeof s->thumb) memcpy(s->thumb, img, n);
-    free(img);
-  }
+  for (int i = 0; i < UI_SLOTS; i++) slot_read(&m->slots[i], dir, i);
 }
 
 static bool any_slot(const char *dir) {
@@ -393,10 +395,9 @@ static TouchLayout layout;
 static bool touch_on, touch_mouse;
 static uint32_t touch_held, touch_pressed, touch_released;
 static struct { SDL_FingerID id; uint32_t held; bool down; } fingers[FINGERS];
-static const UiFont *overlay_font;
-static UiTheme overlay_theme;
+static UiTheme overlay_theme;            // the game's title-screen colours, behind widescreen's sides
 
-static void overlay_style(const UiFont *font, const UiTheme *theme) { overlay_font = font; overlay_theme = *theme; }
+static void overlay_style(const UiTheme *theme) { overlay_theme = *theme; }
 
 // The menus at screen resolution (src/gui). ui_layer, when set, declares the open menu into the
 // frame present_frame draws; a full-screen page blocks the touch overlay so taps reach its rows.
@@ -521,9 +522,9 @@ static void shot_if_due(SDL_Renderer *ren) {
 
 // Draws a picture pic_w (160 or WIDE_W) x 144 at the layout's place and scale, then the overlay.
 static void present_frame(SDL_Renderer *ren, const uint8_t *rgb, int pic_w) {
-  static SDL_Texture *direct, *big, *over;
-  static int direct_w, big_scale, big_w, over_w, over_h;
-  static uint8_t *buf, *over_px;
+  static SDL_Texture *direct, *big;
+  static int direct_w, big_scale, big_w;
+  static uint8_t *buf;
   int w = pic_w, h = FB_H;
   SDL_GetCurrentRenderOutputSize(ren, &w, &h);
   SDL_Rect safe = {0, 0, w, h};
@@ -537,7 +538,7 @@ static void present_frame(SDL_Renderer *ren, const uint8_t *rgb, int pic_w) {
   bool fractional = layout.game_px.w % pic_w != 0;
   int scale = SDL_min((layout.game_px.w + pic_w - 1) / pic_w, MAX_FILTER_SCALE);
   SDL_FRect dst = {(float)layout.game_px.x, (float)layout.game_px.y, (float)layout.game_px.w, (float)layout.game_px.h};
-  if (touch_on) SDL_SetRenderDrawColor(ren, overlay_theme.bg.r, overlay_theme.bg.g, overlay_theme.bg.b, 255);
+  if (touch_on) SDL_SetRenderDrawColor(ren, gui_t.ink.r, gui_t.ink.g, gui_t.ink.b, 255);
   SDL_RenderClear(ren);
   SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
   if (touch_on) SDL_RenderFillRect(ren, &dst);
@@ -564,21 +565,7 @@ static void present_frame(SDL_Renderer *ren, const uint8_t *rgb, int pic_w) {
     SDL_UpdateTexture(big, NULL, buf, pic_w * scale * 3);
     SDL_RenderTexture(ren, big, NULL, &dst);
   }
-  if (touch_on && !overlay_blocked) {
-    if (!over || over_w != layout.w || over_h != layout.h) {
-      if (over) SDL_DestroyTexture(over);
-      over = SDL_CreateTexture(ren, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STREAMING, layout.w, layout.h);
-      SDL_SetTextureScaleMode(over, SDL_SCALEMODE_NEAREST);
-      SDL_SetTextureBlendMode(over, SDL_BLENDMODE_BLEND);
-      free(over_px);
-      over_px = malloc((size_t)layout.w * layout.h * 4);
-      over_w = layout.w;
-      over_h = layout.h;
-    }
-    touch_draw(&layout, overlay_font, &overlay_theme, touch_held, over_px);
-    SDL_UpdateTexture(over, NULL, over_px, layout.w * 4);
-    SDL_RenderTexture(ren, over, NULL, &(SDL_FRect){0, 0, (float)(layout.w * layout.scale), (float)(layout.h * layout.scale)});
-  }
+  if (touch_on && !overlay_blocked) gui_pad(&layout, touch_held, &gui_t);
   bool toast_on = toast[0] && SDL_GetTicks() < toast_until;
   if (ui_layer || toast_on || waiting) {
     GuiFrame f = {{(float)layout.game_px.x, (float)layout.game_px.y, (float)layout.game_px.w, (float)layout.game_px.h},
@@ -1152,20 +1139,16 @@ static bool run_sync(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, const
   return r;
 }
 
-// The main menu's slot times: each game's four state files.
+// The main menu's states: each game's four slots and its resume state, with their pictures.
 static void home_scan(Home *h, const char *cache) {
   launcher_load(&h->l, cache);
-  for (int g = 0; g < UI_GAMES; g++)
-    for (int i = 0; i < HOME_SLOTS; i++) {
-      char dir[1100], path[1300];
-      SDL_PathInfo info;
-      snprintf(dir, sizeof dir, "%s%s", cache, game_ids[g]);
-      slot_path(path, sizeof path, dir, i, "");
-      h->slots[g][i].used = SDL_GetPathInfo(path, &info) && info.type == SDL_PATHTYPE_FILE;
-      h->slots[g][i].time = h->slots[g][i].used ? info.modify_time : 0;
-      slot_path(path, sizeof path, dir, SLOT_AUTO, "");
-      h->resume_time[g] = SDL_GetPathInfo(path, &info) ? info.modify_time : 0;
-    }
+  for (int g = 0; g < UI_GAMES; g++) {
+    char dir[1100];
+    snprintf(dir, sizeof dir, "%s%s", cache, game_ids[g]);
+    for (int i = 0; i < HOME_SLOTS; i++) slot_read(&h->slots[g][i], dir, i);
+    slot_read(&h->resume[g], dir, SLOT_AUTO);
+  }
+  h->stamp++;
 }
 
 static struct { Home *home; SettingsMenu *settings; int button; GuiSettingsTap tap; } home_ui;
@@ -1237,7 +1220,7 @@ static bool run_home(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, const
         return true;
       }
     }
-    overlay_style(NULL, &h.l.games[h.l.game].theme);      // the overlay is hidden on full pages: no labels
+    overlay_style(&h.l.games[h.l.game].theme);
     gui_theme(&gui_t, h.l.game == UI_GAME_AGES);
     home_ui.button = GUI_NONE;
     home_ui.tap.row = home_ui.tap.volume = GUI_NONE;
@@ -1391,11 +1374,9 @@ static GameEnd run_game(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, co
   uint8_t *tab = oracles_read_file(path, &tab_size);
   if (!rom || !tab || tab_size != rom_size) { fprintf(stderr, "cache in %s is incomplete; run again with the ROM path\n", dir); return GAME_FAILED; }
   bool ages = strcmp(gs->game, "ages") == 0;
-  static UiFont font;
   UiTheme theme;
-  ui_font_load(&font, rom, rom_size);
   ui_theme_load(&theme, rom, rom_size, ages);
-  overlay_style(&font, &theme);
+  overlay_style(&theme);
   GB *gb = calloc(1, sizeof *gb);
   gb_init(gb);
   if (!gb_load_rom(gb, rom, rom_size)) { fprintf(stderr, "cache in %s is not a ROM image\n", dir); return GAME_FAILED; }

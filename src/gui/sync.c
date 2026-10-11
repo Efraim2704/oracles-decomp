@@ -76,7 +76,7 @@ int gui_code(CodeEntry *e, const GuiTheme *t, const GuiFrame *f) {
 
 static void conflict_side(const ConflictSide *side, int sd, const GuiTheme *t, bool sel, int64_t now) {
   UiColor dim = row_dim(t, sel);
-  if (side->has_thumb) thumb(t, gui_image(4 + sd, side->thumb, UI_W, UI_H, 1), sel);
+  if (side->has_thumb) thumb(t, gui_image(4 + sd, side->thumb, UI_W, UI_H, 1), sel, THUMB_W);
   CLAY({.layout = {.layoutDirection = CLAY_TOP_TO_BOTTOM, .childGap = gui_px(2)}}) {
     label(side->label, TEXT, row_fg(t, sel, true));
     CLAY_TEXT(side->missing ? CLAY_STRING("Not there") : when_str(side->time, now), text_line(SMALL, dim));

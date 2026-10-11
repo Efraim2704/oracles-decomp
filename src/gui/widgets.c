@@ -33,11 +33,22 @@ void mark(bool on, UiColor c) {
         .border = {.color = gui_rgb(c), .width = CLAY_BORDER_OUTSIDE(on ? 0 : gui_px(1.5f))}}) {}
 }
 
-void thumb(const GuiTheme *t, SDL_Texture *tex, bool selected) {
-  CLAY({.layout = {.sizing = {CLAY_SIZING_FIXED(gui_px(80)), CLAY_SIZING_FIXED(gui_px(72))}},
+void thumb(const GuiTheme *t, SDL_Texture *tex, bool selected, float w) {
+  CLAY({.layout = {.sizing = {CLAY_SIZING_FIXED(gui_px(w)), CLAY_SIZING_FIXED(gui_px(w * UI_H / UI_W))}},
         .image = {.imageData = tex},
         .backgroundColor = tex ? gui_clear() : selected ? gui_rgb(t->hi_dim) : gui_rgba(t->paper, 13),
         .border = {.color = gui_rgb(selected ? t->on_hi : t->line_strong), .width = CLAY_BORDER_OUTSIDE(tex ? 0 : 1)}}) {}
+}
+
+void state_info(const GuiTheme *t, SDL_Texture *tex, float thumb_w, Clay_String name, bool latest, Clay_String when, bool selected, bool enabled) {
+  thumb(t, tex, selected, thumb_w);
+  CLAY({.layout = {.layoutDirection = CLAY_TOP_TO_BOTTOM, .childGap = gui_px(2)}}) {
+    CLAY({.layout = {.childGap = gui_px(10), .childAlignment = {.y = CLAY_ALIGN_Y_CENTER}}}) {
+      CLAY_TEXT(name, text_line(TEXT, row_fg(t, selected, enabled)));
+      if (latest) tag(CLAY_STRING("Latest"), selected ? t->on_hi : t->accent);
+    }
+    CLAY_TEXT(when, text_line(SMALL, row_dim(t, selected)));
+  }
 }
 
 Clay_String when_str(int64_t time, int64_t now) {
@@ -57,11 +68,12 @@ Clay_String file_str(const UiFileInfo *fi) {
   return gui_str("%s  %d hearts  %d/8 essences", fi->name[0] ? fi->name : "?", fi->max_health / 4, fi->essence_count);
 }
 
-Clay_ElementDeclaration row_box(const GuiTheme *t, Clay_ElementId id, bool selected, bool tall) {
+Clay_ElementDeclaration row_box(const GuiTheme *t, Clay_ElementId id, bool selected, float min_h) {
+  bool tall = min_h > 0;
   return (Clay_ElementDeclaration){
       .id = id,
-      .layout = {.sizing = {CLAY_SIZING_GROW(0), tall ? CLAY_SIZING_FIT(gui_px(TALL_ROW_H)) : CLAY_SIZING_FIXED(gui_px(ROW_H))},
-                 .padding = {gui_px(tall ? 12 : 14), gui_px(tall ? 12 : 14), gui_px(tall ? 10 : 0), gui_px(tall ? 10 : 0)},
+      .layout = {.sizing = {CLAY_SIZING_GROW(0), tall ? CLAY_SIZING_FIT(gui_px(min_h)) : CLAY_SIZING_FIXED(gui_px(ROW_H))},
+                 .padding = {gui_px(tall ? 12 : 14), gui_px(tall ? 12 : 14), gui_px(tall ? 8 : 0), gui_px(tall ? 8 : 0)},
                  .childGap = gui_px(tall ? 14 : 10), .childAlignment = {.y = CLAY_ALIGN_Y_CENTER}},
       .backgroundColor = selected ? gui_rgb(t->hi) : gui_clear()};
 }

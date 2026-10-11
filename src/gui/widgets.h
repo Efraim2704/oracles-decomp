@@ -5,6 +5,9 @@
 
 #define ROW_H 44                  // every row is at least a 44pt touch target
 #define TALL_ROW_H 104            // a row with a picture: a slot, a side of a conflict
+#define PICTURE_ROW_H 72          // a row with a small picture: the main menu's states
+#define THUMB_W 80                // a state's picture, 160x144 scaled
+#define SMALL_THUMB_W 56
 #define TEXT 24
 #define SMALL 20
 #define TAG 18
@@ -29,8 +32,10 @@ void spacer(void);
 void tag(Clay_String s, UiColor c);
 // The square before On (filled) and Off (outlined), so the state never rests on colour alone.
 void mark(bool on, UiColor c);
-// A state's picture at 80x72, or an empty frame where there is none.
-void thumb(const GuiTheme *t, SDL_Texture *tex, bool selected);
+// A state's picture, w points wide at the game's shape, or an empty frame where there is none.
+void thumb(const GuiTheme *t, SDL_Texture *tex, bool selected, float w);
+// Inside a picture row: a state's picture, its name (with Latest), and when it was saved under it.
+void state_info(const GuiTheme *t, SDL_Texture *tex, float thumb_w, Clay_String name, bool latest, Clay_String when, bool selected, bool enabled);
 // "Today 14:02:37" and the rest of gui_when, as frame text.
 Clay_String when_str(int64_t time, int64_t now);
 int64_t now_time(void);
@@ -39,14 +44,15 @@ Clay_String file_str(const UiFileInfo *fi);
 
 // A list row's box: the selection bar when selected, the cursor drawn first. Use as
 //   ROW(t, id, selected) { label(...); spacer(); ... }
-// TALL_ROW grows to fit a picture and two lines.
-Clay_ElementDeclaration row_box(const GuiTheme *t, Clay_ElementId id, bool selected, bool tall);
+// TALL_ROW and PICTURE_ROW grow from their height to fit a picture and two lines.
+Clay_ElementDeclaration row_box(const GuiTheme *t, Clay_ElementId id, bool selected, float min_h);
 void row_cursor(const GuiTheme *t, bool selected);
-#define ROW_(t, id, sel, tall)                                   \
-  CLAY(row_box((t), (id), (sel), (tall)))                        \
+#define ROW_(t, id, sel, min_h)                                  \
+  CLAY(row_box((t), (id), (sel), (min_h)))                       \
   for (int row_once_ = (row_cursor((t), (sel)), 0); !row_once_; row_once_ = 1)
-#define ROW(t, id, sel) ROW_(t, id, sel, false)
-#define TALL_ROW(t, id, sel) ROW_(t, id, sel, true)
+#define ROW(t, id, sel) ROW_(t, id, sel, 0)
+#define TALL_ROW(t, id, sel) ROW_(t, id, sel, TALL_ROW_H)
+#define PICTURE_ROW(t, id, sel) ROW_(t, id, sel, PICTURE_ROW_H)
 
 // The common row: label, optional tag, an On/Off mark or a value at the right.
 typedef struct {
