@@ -568,6 +568,28 @@ void tokayThiefSubstate0_hook(GB *gb) {
   TAIL(tokayInitHeldItem);
 }
 
+// 09:593f, the `ret nc` after `call interactionRunScript`. The script can return leaving the stack
+// a frame short of where the call left it, so the engine resumes at the address rather than inside
+// this routine's C, and the native build needs a hook there. Reached that way the ret is taken
+// here; on the inline path above the dispatcher takes it, which is the only difference.
+void tokayThiefSubstate0__afterCall593f_hook(GB *gb) {
+  BASE(tokayThiefSubstate0);
+  uint16_t sp0_ = gb->sp; (void)sp0_;
+  if (!(F & FC)) { RET_TAKEN(b_+18); return; } CYC(b_+18, b_+19);
+  CYC(b_+19, b_+21); A = 5;
+  CALL_C(b_+21, interactionSetAnimation_hook, SYM(interactionSetAnimation), b_+24);
+  CALL_C(b_+24, interactionIncSubstate_hook, SYM(interactionIncSubstate), b_+27);
+  CYC(b_+27, b_+29); L = 0x42;
+  CYC(b_+29, b_+30); A = mem_rd(gb, HL);
+  CYC(b_+30, b_+31); B = A;
+  CYC(b_+31, b_+32); alu_or(gb, A);
+  if (F & FZ) { CYC(b_+32, b_+34); CYC(b_+34, b_+36); A = 0x4c; CALL_C(b_+36, playSound_b00_hook, SYM(playSound_b00), b_+39); CYC(b_+39, b_+40); H = D; }
+  else CYCT(b_+32, b_+34);
+  CYC(b_+40, b_+42); L = 0x46;
+  CYC(b_+42, b_+44); mem_wr(gb, HL, 0x5a);
+  TAIL(tokayInitHeldItem);
+}
+
 void tokayInitHeldItem_hook(GB *gb) {
   BASE(tokayInitHeldItem);
   uint16_t sp0_ = gb->sp; (void)sp0_;

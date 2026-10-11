@@ -23,15 +23,15 @@
 #define ROOM_FRAMES 80           // the stops all came within ~25 frames of the warp
 
 // Rooms known to stop the engine, with why. A room listed here that no longer stops fails the
-// test too, so the list cannot rot: fix the bug, drop the line.
+// test too, so the list cannot rot: fix the bug, drop the line. Empty, and meant to stay that way.
 typedef struct { const char *game; int group, room; const char *why; } Known;
 static const Known known[] = {
-  {"ages", 1, 0xaa, "09:593f -- interactionCode48 (tokay) burns 317 cycles where the ROM burns 312, "
-                    "so interactionRunScript returns with a stack CALL_C does not recognise"},
+  {NULL, 0, 0, NULL},   // sentinel; no room is expected to stop the engine
 };
 static const Known *known_at(const char *game, int group, int room) {
   for (size_t i = 0; i < sizeof known / sizeof known[0]; i++)
-    if (!strcmp(known[i].game, game) && known[i].group == group && known[i].room == room) return &known[i];
+    if (known[i].game && !strcmp(known[i].game, game) && known[i].group == group && known[i].room == room)
+      return &known[i];
   return NULL;
 }
 

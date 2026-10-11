@@ -5014,6 +5014,7 @@ void interactionCode48_hook(GB *gb);
 void tokayState1_hook(GB *gb);
 void tokayRunSubid00_hook(GB *gb);
 void tokayThiefSubstate0_hook(GB *gb);
+void tokayThiefSubstate0__afterCall593f_hook(GB *gb);
 void tokayInitHeldItem_hook(GB *gb);
 void tokayInitAccessory_hook(GB *gb);
 void tokayThief_countdownToStealNextItem_hook(GB *gb);
