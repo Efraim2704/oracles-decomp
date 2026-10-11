@@ -243,6 +243,13 @@ if(ORACLES_SDL)
   add_test(NAME sync_flow COMMAND python3 ${CMAKE_SOURCE_DIR}/tests/test_sync_flow.py $<TARGET_FILE:oracles-native>
     "${GAME_ROM_DIR}/Legend of Zelda, The - Oracle of Seasons (USA, Australia).gbc")
   set_tests_properties(sync_flow PROPERTIES SKIP_RETURN_CODE 77 LABELS "rom")
+  # Pins app.c's own rd_room (not linked into test_mods, and never exercised by the TAS replays,
+  # which call through the engine directly rather than through app.c): installs a mod whose
+  # on_room_change logs the room, drives the real app through the start of the known-good Seasons
+  # movie, and asserts the handler actually fired with a room other than the pre-game default.
+  add_test(NAME mods_room COMMAND python3 ${CMAKE_SOURCE_DIR}/tests/test_mods_room.py $<TARGET_FILE:oracles-native>
+    "${GAME_ROM_DIR}/Legend of Zelda, The - Oracle of Seasons (USA, Australia).gbc" "${CMAKE_SOURCE_DIR}/tas/seasons-play.inputs")
+  set_tests_properties(mods_room PROPERTIES SKIP_RETURN_CODE 77 LABELS "rom" TIMEOUT 120)
 endif()
 add_test(NAME native_binary COMMAND python3 ${CMAKE_SOURCE_DIR}/tools/check_native_binary.py $<TARGET_FILE:oraclesnative> ${NATIVE_BINARIES})
 

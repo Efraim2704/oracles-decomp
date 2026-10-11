@@ -513,12 +513,14 @@ static void present(SDL_Renderer *ren, SDL_Texture *tex, const uint8_t *rgb);
 // `w = sample->wram[0]`) -- not a real-looking 4-digit $Cxxx address, but the low 12 bits of one
 // ($C000 + 0xc4c == $CC4C), which is what indexing a bank-0 array that starts at $C000 wants.
 // Kept identical to that convention on purpose: an off-by-a-bank slip here would make
-// mods_frame's on_room_change fire at the wrong moments. There is deliberately no automated
-// regression test pinning this: app.c is not linked into test_mods (the engine stays out of
-// oraclesmods by design), and test_wide/test_room are multi-hour ROM replays out of scope for a
-// routine check here -- so this comment, and matching the two call sites above byte for byte, is
-// the whole of the defence. Confirmed by mutation: swapping the ternary's two branches changes no
-// observable behaviour in ctest's fast suite or in tests/test_app_menus.py, which is the gap.
+// mods_frame's on_room_change fire at the wrong moments. app.c is still not linked into test_mods
+// (the engine stays out of oraclesmods by design) and test_wide/test_room are still multi-hour ROM
+// replays that never call through app.c at all, so neither pins this particular line. The
+// `mods_room` ctest (tests/test_mods_room.py) closes that gap through the real frame path instead:
+// it drives oracles-native through the start of the known-good Seasons movie with a mod watching
+// on_room_change, and asserts the handler fires with a room other than the pre-game default.
+// Confirmed by mutation: swapping the ternary's two branches is caught by that test (it never sees
+// a second, non-zero room) while leaving ctest's fast suite and tests/test_app_menus.py unaffected.
 static int rd_room(const GBSample *sample, bool seasons) {
   return sample->wram[0][seasons ? 0xc4c : 0xc30];
 }

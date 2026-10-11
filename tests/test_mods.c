@@ -397,7 +397,23 @@ static void run_cap_mods_init(void) { cap_result = mods_init(cap_root, cap_seaso
 
 // Forward declaration: defined further down (next to g_real_stderr_fd, which it uses), but a few
 // Task 6 tests just above that point already need to arm a hang-detection alarm.
+//
+// alarm()/SIGALRM are POSIX and MinGW's headers don't provide them (confirmed cross-compiling for
+// Windows, cmake/mingw-w64-x86_64.cmake): TEST_ALARM_ARM/DISARM are a no-op there instead of a
+// build break. This backstop is a test-authoring aid, not the thing under test -- the real,
+// shipped defence against a hung mod is the sandbox's own instruction budget and wall-clock
+// deadline (src/mods/sandbox.c), which is OS-independent -- so losing it only on a platform this
+// suite doesn't otherwise run tests on is an acceptable trade: a regression there would hang the
+// Windows test binary instead of failing it promptly, exactly as it would have before this file
+// existed.
+#ifdef _WIN32
+#define TEST_ALARM_ARM(secs) ((void)0)
+#define TEST_ALARM_DISARM() ((void)0)
+#else
 static void mods_test_alarm_handler(int sig);
+#define TEST_ALARM_ARM(secs) (signal(SIGALRM, mods_test_alarm_handler), alarm(secs))
+#define TEST_ALARM_DISARM() alarm(0)
+#endif
 
 // mods_id_valid is the one gate standing between an attacker-controlled id and a path traversal
 // (correction A), so it gets its own direct, table-driven test rather than relying only on
@@ -499,6 +515,11 @@ static void mods_init_rejects_an_empty_directory_string(void) {
 // way. Skipped when running as root, since permission bits don't block root's own access and
 // the test would otherwise spuriously fail (or, worse, pass for the wrong reason).
 static bool an_unreadable_mods_directory_is_a_failure(void) {
+#ifdef _WIN32
+  // chmod(dir, 0) does not block a directory's own owner on Windows the way it does on POSIX
+  // (no geteuid() either), so this permissions scenario cannot be reproduced the same way there.
+  SKIP_TEST("directory permission bits work differently on Windows");
+#else
   if (geteuid() == 0) SKIP_TEST("running as root; directory permissions don't block access");
   clear_mods();
   const char *tmp = getenv("TMPDIR");
@@ -514,6 +535,7 @@ static bool an_unreadable_mods_directory_is_a_failure(void) {
   ASSERT(!ok);
   mods_shutdown();
   return true;
+#endif
 }
 
 static void a_mod_is_found_and_described(void) {
@@ -580,12 +602,11 @@ static void disabled_treatment_is_uniform_across_failure_kinds(void) {
   cap_root = root;
   cap_seasons = true;
   char out[4096];
-  signal(SIGALRM, mods_test_alarm_handler);
-  alarm(20);
+  TEST_ALARM_ARM(20);
   double t0 = wall_seconds();
   capture_stderr(run_cap_mods_init, out, sizeof out);
   double t1 = wall_seconds();
-  alarm(0);
+  TEST_ALARM_DISARM();
   ASSERT(cap_result);
   ASSERT_PROMPT(t0, t1);
   ASSERT_EQ(mods_count(), 3);
@@ -1311,6 +1332,7 @@ static void the_same_ini_without_a_nul_byte_loads_fine(void) {
   mods_shutdown();
 }
 
+#ifndef _WIN32
 static volatile int mods_test_alarm_fired;
 static void mods_test_alarm_handler(int sig) {
   (void)sig;
@@ -1327,6 +1349,7 @@ static void mods_test_alarm_handler(int sig) {
   write(fd, msg, sizeof msg - 1);
   _exit(1);
 }
+#endif
 
 // A FIFO as mod.ini must not block fopen() forever waiting for a writer that will never come.
 // Wrapped in a real alarm(), not just an assumption that the fix works, so a regression actually
@@ -1340,10 +1363,9 @@ static bool a_fifo_mod_ini_does_not_hang(void) {
   snprintf(dir, sizeof dir, "%s/fifomod", root);
   snprintf(cmd, sizeof cmd, "mkdir -p '%s' && mkfifo '%s/mod.ini'", dir, dir);
   if (system(cmd) != 0) SKIP_TEST("mkfifo not available on this filesystem");
-  signal(SIGALRM, mods_test_alarm_handler);
-  alarm(5);
+  TEST_ALARM_ARM(5);
   bool ok = mods_init(root, true);
-  alarm(0);
+  TEST_ALARM_DISARM();
   ASSERT(ok);
   ASSERT_EQ(mods_count(), 0);
   mods_shutdown();
@@ -1363,10 +1385,9 @@ static bool a_symlink_to_a_character_device_does_not_hang(void) {
   snprintf(dir, sizeof dir, "%s/zeromod", root);
   snprintf(cmd, sizeof cmd, "mkdir -p '%s' && ln -sf /dev/zero '%s/mod.ini'", dir, dir);
   if (system(cmd) != 0) SKIP_TEST("/dev/zero not available on this machine");
-  signal(SIGALRM, mods_test_alarm_handler);
-  alarm(5);
+  TEST_ALARM_ARM(5);
   bool ok = mods_init(root, true);
-  alarm(0);
+  TEST_ALARM_DISARM();
   ASSERT(ok);
   ASSERT_EQ(mods_count(), 0);
   mods_shutdown();
@@ -1469,12 +1490,11 @@ static void a_hanging_mod_is_disabled_and_other_mods_still_load(void) {
   // and loudly (killing the whole binary with a clear message), never wedge CI for the ctest
   // default 1500s timeout -- unconditional regardless of MODS_TEST_TIMING, since this is what
   // actually catches a hang rather than merely a slow pass.
-  signal(SIGALRM, mods_test_alarm_handler);
-  alarm(20);
+  TEST_ALARM_ARM(20);
   double t0 = wall_seconds();
   capture_stderr(run_cap_mods_init, out, sizeof out);
   double t1 = wall_seconds();
-  alarm(0);
+  TEST_ALARM_DISARM();
   ASSERT(cap_result);
   ASSERT_PROMPT(t0, t1);
   ASSERT_EQ(mods_count(), 3);
@@ -1521,12 +1541,11 @@ static void an_unbounded_allocation_mod_is_disabled_and_other_mods_still_load(vo
   cap_root = root;
   cap_seasons = true;
   char out[4096];
-  signal(SIGALRM, mods_test_alarm_handler);
-  alarm(20);
+  TEST_ALARM_ARM(20);
   double t0 = wall_seconds();
   capture_stderr(run_cap_mods_init, out, sizeof out);
   double t1 = wall_seconds();
-  alarm(0);
+  TEST_ALARM_DISARM();
   ASSERT(cap_result);
   ASSERT_PROMPT(t0, t1);
   ASSERT_EQ(mods_count(), 3);
@@ -1587,10 +1606,9 @@ static bool a_fifo_main_lua_does_not_hang(void) {
       "mkdir -p '%s' && printf 'id=fifolua\\napi=1\\ngames=ages,seasons\\n' > '%s/mod.ini' && mkfifo '%s/main.lua'",
       dir, dir, dir);
   if (system(cmd) != 0) SKIP_TEST("mkfifo not available on this filesystem");
-  signal(SIGALRM, mods_test_alarm_handler);
-  alarm(5);
+  TEST_ALARM_ARM(5);
   bool ok = mods_init(root, true);
-  alarm(0);
+  TEST_ALARM_DISARM();
   ASSERT(ok);
   // Task 6: a real, validly-declared mod whose main.lua just happens to be a FIFO is listed
   // disabled, not dropped -- the hang-prevention this test exists for is unaffected either way,
@@ -1614,10 +1632,9 @@ static bool a_symlink_main_lua_to_a_character_device_does_not_hang(void) {
       "mkdir -p '%s' && printf 'id=zerolua\\napi=1\\ngames=ages,seasons\\n' > '%s/mod.ini' && ln -sf /dev/zero '%s/main.lua'",
       dir, dir, dir);
   if (system(cmd) != 0) SKIP_TEST("/dev/zero not available on this machine");
-  signal(SIGALRM, mods_test_alarm_handler);
-  alarm(5);
+  TEST_ALARM_ARM(5);
   bool ok = mods_init(root, true);
-  alarm(0);
+  TEST_ALARM_DISARM();
   ASSERT(ok);
   ASSERT_EQ(mods_count(), 1);
   ASSERT(!mods_enabled(0));
@@ -1687,12 +1704,11 @@ static void a_mod_cannot_disarm_its_own_instruction_budget_via_debug_sethook(voi
   cap_root = root;
   cap_seasons = true;
   char out[4096];
-  signal(SIGALRM, mods_test_alarm_handler);
-  alarm(20);
+  TEST_ALARM_ARM(20);
   double t0 = wall_seconds();
   capture_stderr(run_cap_mods_init, out, sizeof out);
   double t1 = wall_seconds();
-  alarm(0);
+  TEST_ALARM_DISARM();
   ASSERT(cap_result);
   ASSERT_PROMPT(t0, t1);
   ASSERT_EQ(mods_count(), 3);
@@ -1743,12 +1759,11 @@ static void a_pcall_wrapped_spinner_is_refused_promptly(void) {
   cap_root = root;
   cap_seasons = true;
   char out[4096];
-  signal(SIGALRM, mods_test_alarm_handler);
-  alarm(20);
+  TEST_ALARM_ARM(20);
   double t0 = wall_seconds();
   capture_stderr(run_cap_mods_init, out, sizeof out);
   double t1 = wall_seconds();
-  alarm(0);
+  TEST_ALARM_DISARM();
   ASSERT(cap_result);
   ASSERT_PROMPT(t0, t1);
   ASSERT_EQ(mods_count(), 3);
@@ -1791,12 +1806,11 @@ static void a_coroutine_resume_wrapped_spinner_is_refused_promptly(void) {
   cap_root = root;
   cap_seasons = true;
   char out[4096];
-  signal(SIGALRM, mods_test_alarm_handler);
-  alarm(20);
+  TEST_ALARM_ARM(20);
   double t0 = wall_seconds();
   capture_stderr(run_cap_mods_init, out, sizeof out);
   double t1 = wall_seconds();
-  alarm(0);
+  TEST_ALARM_DISARM();
   ASSERT(cap_result);
   ASSERT_PROMPT(t0, t1);
   ASSERT_EQ(mods_count(), 3);
@@ -1824,12 +1838,11 @@ static void a_coroutine_resumed_only_once_still_counts_as_exhausted(void) {
   cap_root = root;
   cap_seasons = true;
   char out[4096];
-  signal(SIGALRM, mods_test_alarm_handler);
-  alarm(20);
+  TEST_ALARM_ARM(20);
   double t0 = wall_seconds();
   capture_stderr(run_cap_mods_init, out, sizeof out);
   double t1 = wall_seconds();
-  alarm(0);
+  TEST_ALARM_DISARM();
   ASSERT(cap_result);
   ASSERT_PROMPT(t0, t1);
   ASSERT_EQ(mods_count(), 1);
@@ -1862,12 +1875,11 @@ static void a_fresh_coroutine_per_iteration_is_refused_promptly(void) {
   cap_root = root;
   cap_seasons = true;
   char out[4096];
-  signal(SIGALRM, mods_test_alarm_handler);
-  alarm(20);
+  TEST_ALARM_ARM(20);
   double t0 = wall_seconds();
   capture_stderr(run_cap_mods_init, out, sizeof out);
   double t1 = wall_seconds();
-  alarm(0);
+  TEST_ALARM_DISARM();
   ASSERT(cap_result);
   ASSERT_PROMPT(t0, t1);
   ASSERT_EQ(mods_count(), 3);
@@ -1901,12 +1913,11 @@ static void many_fresh_coroutines_per_iteration_are_refused_promptly(void) {
   cap_root = root;
   cap_seasons = true;
   char out[4096];
-  signal(SIGALRM, mods_test_alarm_handler);
-  alarm(20);
+  TEST_ALARM_ARM(20);
   double t0 = wall_seconds();
   capture_stderr(run_cap_mods_init, out, sizeof out);
   double t1 = wall_seconds();
-  alarm(0);
+  TEST_ALARM_DISARM();
   ASSERT(cap_result);
   ASSERT_PROMPT(t0, t1);
   ASSERT_EQ(mods_count(), 3);
@@ -1950,12 +1961,11 @@ static void a_pcall_wrapped_coroutine_wrap_spinner_is_refused_promptly(void) {
   cap_root = root;
   cap_seasons = true;
   char out[4096];
-  signal(SIGALRM, mods_test_alarm_handler);
-  alarm(20);
+  TEST_ALARM_ARM(20);
   double t0 = wall_seconds();
   capture_stderr(run_cap_mods_init, out, sizeof out);
   double t1 = wall_seconds();
-  alarm(0);
+  TEST_ALARM_DISARM();
   ASSERT(cap_result);
   ASSERT_PROMPT(t0, t1);
   ASSERT_EQ(mods_count(), 3);
@@ -2229,10 +2239,9 @@ static void a_gc_finalizer_cannot_be_armed_at_load_time(void) {
   cap_root = root;
   cap_seasons = true;
   char out[4096];
-  signal(SIGALRM, mods_test_alarm_handler);
-  alarm(10);
+  TEST_ALARM_ARM(10);
   capture_stderr(run_cap_mods_init, out, sizeof out);
-  alarm(0);
+  TEST_ALARM_DISARM();
   ASSERT(cap_result);
   ASSERT_EQ(mods_count(), 1);                  // Task 6: listed, disabled, not dropped
   ASSERT(!mods_enabled(0));
@@ -2255,10 +2264,9 @@ static void a_gc_finalizer_cannot_be_armed_before_a_refusal(void) {
   cap_root = root;
   cap_seasons = true;
   char out[4096];
-  signal(SIGALRM, mods_test_alarm_handler);
-  alarm(10);
+  TEST_ALARM_ARM(10);
   capture_stderr(run_cap_mods_init, out, sizeof out);
-  alarm(0);
+  TEST_ALARM_DISARM();
   ASSERT(cap_result);
   ASSERT_EQ(mods_count(), 1);                  // Task 6: listed, disabled, not dropped
   ASSERT(!mods_enabled(0));
@@ -2283,10 +2291,9 @@ static void a_gc_finalizer_cannot_be_armed_mid_run(void) {
   cap_root = root;
   cap_seasons = true;
   char out[4096];
-  signal(SIGALRM, mods_test_alarm_handler);
-  alarm(10);
+  TEST_ALARM_ARM(10);
   capture_stderr(run_cap_mods_init, out, sizeof out);
-  alarm(0);
+  TEST_ALARM_DISARM();
   ASSERT(cap_result);
   ASSERT_EQ(mods_count(), 1);
   ASSERT(mods_last_log());
@@ -2573,10 +2580,9 @@ static void a_binary_main_lua_is_refused_safely(void) {
   cap_root = root;
   cap_seasons = true;
   char out[4096];
-  signal(SIGALRM, mods_test_alarm_handler);
-  alarm(10);
+  TEST_ALARM_ARM(10);
   capture_stderr(run_cap_mods_init, out, sizeof out);
-  alarm(0);
+  TEST_ALARM_DISARM();
   ASSERT(cap_result);
   ASSERT_EQ(mods_count(), 1);                  // Task 6: listed, disabled, not dropped
   ASSERT(!mods_enabled(0));
@@ -2620,12 +2626,11 @@ static void a_cheap_infinite_loop_is_caught_by_the_instruction_budget_specifical
   cap_root = root;
   cap_seasons = true;
   char out[4096];
-  signal(SIGALRM, mods_test_alarm_handler);
-  alarm(20);
+  TEST_ALARM_ARM(20);
   double t0 = wall_seconds();
   capture_stderr(run_cap_mods_init, out, sizeof out);
   double t1 = wall_seconds();
-  alarm(0);
+  TEST_ALARM_DISARM();
   ASSERT(cap_result);
   ASSERT_PROMPT(t0, t1);
   ASSERT_EQ(mods_count(), 1);                  // Task 6: listed, disabled, not dropped
@@ -2829,10 +2834,9 @@ static void a_hostile_tostring_metamethod_does_not_hang_error_reporting(void) {
   cap_root = root;
   cap_seasons = true;
   char out[4096];
-  signal(SIGALRM, mods_test_alarm_handler);
-  alarm(15);
+  TEST_ALARM_ARM(15);
   capture_stderr(run_cap_mods_init, out, sizeof out);
-  alarm(0);
+  TEST_ALARM_DISARM();
   ASSERT(cap_result);
   ASSERT_EQ(mods_count(), 1);                  // Task 6: listed, disabled, not dropped
   ASSERT(!mods_enabled(0));
@@ -2855,12 +2859,11 @@ static void array_growth_is_refused_via_the_realloc_path(void) {
   cap_root = root;
   cap_seasons = true;
   char out[4096];
-  signal(SIGALRM, mods_test_alarm_handler);
-  alarm(20);
+  TEST_ALARM_ARM(20);
   double t0 = wall_seconds();
   capture_stderr(run_cap_mods_init, out, sizeof out);
   double t1 = wall_seconds();
-  alarm(0);
+  TEST_ALARM_DISARM();
   ASSERT(cap_result);
   ASSERT_PROMPT(t0, t1);
   ASSERT_EQ(mods_count(), 1);                  // Task 6: listed, disabled, not dropped
@@ -2891,12 +2894,11 @@ static void a_catastrophic_find_pattern_is_refused_by_the_matcher_itself(void) {
   cap_root = root;
   cap_seasons = true;
   char out[4096];
-  signal(SIGALRM, mods_test_alarm_handler);
-  alarm(20);
+  TEST_ALARM_ARM(20);
   double t0 = wall_seconds();
   capture_stderr(run_cap_mods_init, out, sizeof out);
   double t1 = wall_seconds();
-  alarm(0);
+  TEST_ALARM_DISARM();
   ASSERT(cap_result);
   ASSERT_PROMPT(t0, t1);
   ASSERT_EQ(mods_count(), 1);
@@ -2917,12 +2919,11 @@ static void a_catastrophic_gsub_pattern_is_refused_by_the_matcher_itself(void) {
   cap_root = root;
   cap_seasons = true;
   char out[4096];
-  signal(SIGALRM, mods_test_alarm_handler);
-  alarm(20);
+  TEST_ALARM_ARM(20);
   double t0 = wall_seconds();
   capture_stderr(run_cap_mods_init, out, sizeof out);
   double t1 = wall_seconds();
-  alarm(0);
+  TEST_ALARM_DISARM();
   ASSERT(cap_result);
   ASSERT_PROMPT(t0, t1);
   ASSERT_EQ(mods_count(), 1);
@@ -2944,12 +2945,11 @@ static void a_legitimately_heavy_pattern_still_loads(void) {
   cap_root = root;
   cap_seasons = true;
   char out[4096];
-  signal(SIGALRM, mods_test_alarm_handler);
-  alarm(20);
+  TEST_ALARM_ARM(20);
   double t0 = wall_seconds();
   capture_stderr(run_cap_mods_init, out, sizeof out);
   double t1 = wall_seconds();
-  alarm(0);
+  TEST_ALARM_DISARM();
   ASSERT(cap_result);
   ASSERT_PROMPT(t0, t1);
   ASSERT_EQ(mods_count(), 1);
@@ -3289,12 +3289,11 @@ static void a_pcall_wrapped_spinner_inside_on_frame_is_poisoned_promptly(void) {
   static uint8_t wram[0x1000], hram[127];
   ModsFrame f = { .wram = wram, .hram = hram, .seasons = true, .width = 160, .room = 1 };
 
-  signal(SIGALRM, mods_test_alarm_handler);
-  alarm(20);
+  TEST_ALARM_ARM(20);
   double t0 = wall_seconds();
   mods_frame(&f);
   double t1 = wall_seconds();
-  alarm(0);
+  TEST_ALARM_DISARM();
   ASSERT_PROMPT(t0, t1);
   ASSERT(mods_enabled(0));
   ASSERT(!mods_enabled(1));                             // poisoned, not merely yielded
@@ -3334,10 +3333,9 @@ static void a_coroutine_wrapped_spinner_inside_on_frame_fails_on_the_nil_global(
   ASSERT(mods_init(root, true));
   static uint8_t wram[0x1000], hram[127];
   ModsFrame f = { .wram = wram, .hram = hram, .seasons = true, .width = 160, .room = 1 };
-  signal(SIGALRM, mods_test_alarm_handler);
-  alarm(10);
+  TEST_ALARM_ARM(10);
   mods_frame(&f);
-  alarm(0);
+  TEST_ALARM_DISARM();
   ASSERT(mods_enabled(0));                        // the handler's own pcall caught the error --
                                                     // it never even reached the frame budget
   ASSERT(mods_last_log());
@@ -3372,12 +3370,11 @@ static void a_pathologically_expensive_on_frame_handler_is_poisoned_after_one_bo
   ASSERT(mods_init(root, true));
   static uint8_t wram[0x1000], hram[127];
   ModsFrame f = { .wram = wram, .hram = hram, .seasons = true, .width = 160, .room = 1 };
-  signal(SIGALRM, mods_test_alarm_handler);
-  alarm(15);
+  TEST_ALARM_ARM(15);
   double t0 = wall_seconds();
   mods_frame(&f);
   double t1 = wall_seconds();
-  alarm(0);
+  TEST_ALARM_DISARM();
   ASSERT(!mods_enabled(0));
   ASSERT((t1 - t0) < 0.05);          // bounded and tight (measured ~0.0042s on this machine) --
                                       // not merely "not a hang" (see this function's own comment)
@@ -3861,10 +3858,9 @@ static bool a_fifo_store_ini_does_not_hang(void) {
   if (!f) SKIP_TEST("could not write main.lua");
   fputs("oracles.log('got=' .. tostring(oracles.load('k')))\n", f);
   fclose(f);
-  signal(SIGALRM, mods_test_alarm_handler);
-  alarm(5);
+  TEST_ALARM_ARM(5);
   bool ok = mods_init(root, true);
-  alarm(0);
+  TEST_ALARM_DISARM();
   ASSERT(ok);
   ASSERT_EQ(mods_count(), 1);
   ASSERT(mods_enabled(0));
