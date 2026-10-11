@@ -160,6 +160,9 @@ when 4 slots is on. They hide when you use a controller or keyboard and come bac
 The back button pauses, and goes back in menus. In the menus, tap a row to choose it and drag a long
 list to scroll it; while a menu fills the screen the on-screen controls step aside.
 
+Pressing a control or tapping a menu gives a short tick, the same one as the keyboard, and follows
+your phone's touch feedback setting. **Settings → Vibration** (Android only) turns it off for the game.
+
 Leaving the app saves the game and a Resume state; coming back opens the pause menu.
 
 ## Where your files are

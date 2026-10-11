@@ -17,6 +17,7 @@ void settings_default(Settings *s) {
   s->quick_swap = false;
   s->fast_menus = false;
   s->four_slots = false;
+  s->haptics = true;
   bindings_default(&s->bindings);
 }
 
@@ -38,6 +39,7 @@ void settings_parse(Settings *s, const char *text) {
       else if (!strcmp(key, "quick_swap")) s->quick_swap = !strcmp(value, "on");
       else if (!strcmp(key, "fast_menus")) s->fast_menus = !strcmp(value, "on");
       else if (!strcmp(key, "four_slots")) s->four_slots = !strcmp(value, "on");
+      else if (!strcmp(key, "haptics")) s->haptics = !strcmp(value, "on");
       else if (!strcmp(key, "filter")) {
         for (int i = 0; i < FILTERS; i++) if (!strcmp(value, filter_keys[i])) s->filter = (ScreenFilter)i;
       }
@@ -48,20 +50,31 @@ void settings_parse(Settings *s, const char *text) {
 }
 
 int settings_format(const Settings *s, char *out, size_t size) {
-  int n = snprintf(out, size, "volume=%d\nfullscreen=%s\nfilter=%s\nscale=%s\nwidescreen=%s\ndim_sides=%s\ngbc_colours=%s\nfast_text=%s\nfast_menus=%s\nquick_swap=%s\nfour_slots=%s\n",
+  int n = snprintf(out, size, "volume=%d\nfullscreen=%s\nfilter=%s\nscale=%s\nwidescreen=%s\ndim_sides=%s\ngbc_colours=%s\nfast_text=%s\nfast_menus=%s\nquick_swap=%s\nfour_slots=%s\nhaptics=%s\n",
                    s->volume, s->fullscreen ? "on" : "off", filter_keys[s->filter], s->fill ? "fill" : "pixel", s->widescreen ? "on" : "off", s->dim_sides ? "on" : "off", s->gbc_colours ? "on" : "off",
-                   s->fast_text ? "on" : "off", s->fast_menus ? "on" : "off", s->quick_swap ? "on" : "off", s->four_slots ? "on" : "off");
+                   s->fast_text ? "on" : "off", s->fast_menus ? "on" : "off", s->quick_swap ? "on" : "off", s->four_slots ? "on" : "off",
+                   s->haptics ? "on" : "off");
   if (n < (int)size) n += bindings_format(&s->bindings, out + n, size - n);
   return n;
 }
 
-void settings_menu_open(SettingsMenu *m) { m->sel = SET_VOLUME; }
+void settings_menu_open(SettingsMenu *m, bool haptics_row) {
+  m->sel = SET_VOLUME;
+  m->haptics_row = haptics_row;
+}
+
+bool settings_row_shown(const SettingsMenu *m, SettingsRow r) { return r != SET_HAPTICS || m->haptics_row; }
+
+static void step(SettingsMenu *m, int dir) {
+  do m->sel = (SettingsRow)((m->sel + dir + SET_ROWS) % SET_ROWS);
+  while (!settings_row_shown(m, m->sel));
+}
 
 MenuAction settings_press(SettingsMenu *m, Settings *s, UiButton b, SettingsRow *picked) {
   int dir = b == UI_LEFT ? -1 : b == UI_RIGHT ? 1 : 0;
   switch (b) {
-  case UI_UP: m->sel = (SettingsRow)((m->sel + SET_ROWS - 1) % SET_ROWS); return MENU_NONE;
-  case UI_DOWN: m->sel = (SettingsRow)((m->sel + 1) % SET_ROWS); return MENU_NONE;
+  case UI_UP: step(m, -1); return MENU_NONE;
+  case UI_DOWN: step(m, 1); return MENU_NONE;
   case UI_BACK: return MENU_BACK;
   case UI_ACCEPT:
     if (m->sel == SET_CONTROLS || m->sel == SET_SYNC) { *picked = m->sel; return MENU_PICK; }
@@ -81,6 +94,7 @@ MenuAction settings_press(SettingsMenu *m, Settings *s, UiButton b, SettingsRow 
   case SET_FAST_MENUS: if (dir) s->fast_menus = !s->fast_menus; break;
   case SET_QUICK_SWAP: if (dir) s->quick_swap = !s->quick_swap; break;
   case SET_FOUR_SLOTS: if (dir) s->four_slots = !s->four_slots; break;
+  case SET_HAPTICS: if (dir) s->haptics = !s->haptics; break;
   default: break;
   }
   return MENU_NONE;

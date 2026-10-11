@@ -3,7 +3,7 @@
 
 static const char *const filter_labels[FILTERS] = {"Sharp", "Lines", "LCD", "CRT", "xBRZ", "HQX"};
 static const char *const setting_labels[SET_ROWS] = {"Volume", "Screen", "Scale", "Widescreen", "Dim sides", "Colours", "Fullscreen",
-                                                     "Fast text", "Fast menus", "Quick swap", "Item X/Y buttons", "Controls", "Save sync"};
+                                                     "Fast text", "Fast menus", "Quick swap", "Item X/Y buttons", "Vibration", "Controls", "Save sync"};
 
 static const char *section_before(int r) {
   switch (r) {
@@ -26,6 +26,7 @@ static int toggle_of(const Settings *s, int r) {
   case SET_FAST_MENUS: v = s->fast_menus; break;
   case SET_QUICK_SWAP: v = s->quick_swap; break;
   case SET_FOUR_SLOTS: v = s->four_slots; break;
+  case SET_HAPTICS: v = s->haptics; break;
   default: return 0;
   }
   return v ? 1 : 2;
@@ -68,6 +69,7 @@ void settings_rows(SettingsMenu *m, const Settings *s, const char *sync_label, c
   tap->volume = -1;
   int sel = (int)m->sel;
   for (int r = 0; r < SET_ROWS; r++) {
+    if (!settings_row_shown(m, (SettingsRow)r)) continue;
     const char *sec = section_before(r);
     if (sec) section(t, sec);
     Clay_ElementId id = CLAY_IDI("Setting", r);

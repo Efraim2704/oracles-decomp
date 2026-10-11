@@ -44,6 +44,8 @@ float gui_display_scale(void);
 
 // A tap or click that pressed and released on this element (and did not drag).
 bool gui_tapped(Clay_ElementId id);
+// Some element was tapped since the last call (for the tap's haptic tick).
+bool gui_take_tap(void);
 // The last frame drawn offered this element for tapping (tests tap only what is on screen).
 bool gui_tappable(Clay_ElementId id);
 // The mouse moved onto this element this frame.

@@ -148,13 +148,15 @@ static void settings_round_trip(void) {
   ASSERT_EQ(s.volume, 10);
   s.volume = 3; s.filter = FILTER_CRT; s.gbc_colours = true; s.fullscreen = true; s.fill = true;
   s.widescreen = true; s.dim_sides = false;
+  ASSERT(s.haptics);                                    // on until the player turns it off
+  s.haptics = false;
   char buf[1024];
   settings_format(&s, buf, sizeof buf);
   settings_default(&back);
   settings_parse(&back, buf);
   ASSERT_EQ(back.volume, 3);
   ASSERT_EQ(back.filter, FILTER_CRT);
-  ASSERT(back.gbc_colours && back.fullscreen && back.fill && back.widescreen && !back.dim_sides);
+  ASSERT(back.gbc_colours && back.fullscreen && back.fill && back.widescreen && !back.dim_sides && !back.haptics);
   settings_parse(&back, "volume=99\nfilter=weird\nunknown=1\n  volume = 7\n");
   ASSERT_EQ(back.volume, 7);                            // 99 rejected, spaced line accepted
   ASSERT_EQ(back.filter, FILTER_CRT);
@@ -164,7 +166,7 @@ static void settings_menu_changes_values(void) {
   Settings s;
   SettingsMenu m;
   settings_default(&s);
-  settings_menu_open(&m);
+  settings_menu_open(&m, false);                        // no Vibration row: keys step past it
   SettingsRow row;
   settings_press(&m, &s, UI_RIGHT, &row);
   ASSERT_EQ(s.volume, 10);                              // capped
@@ -203,6 +205,29 @@ static void settings_menu_changes_values(void) {
   ASSERT_EQ(settings_press(&m, &s, UI_ACCEPT, &row), MENU_PICK);
   ASSERT_EQ(row, SET_CONTROLS);
   ASSERT_EQ(settings_press(&m, &s, UI_BACK, &row), MENU_BACK);
+}
+
+static void settings_vibration_row_only_where_it_vibrates(void) {
+  Settings s;
+  SettingsMenu m;
+  SettingsRow row;
+  settings_default(&s);
+  settings_menu_open(&m, false);
+  ASSERT(!settings_row_shown(&m, SET_HAPTICS));
+  m.sel = SET_FOUR_SLOTS;
+  settings_press(&m, &s, UI_DOWN, &row);
+  ASSERT_EQ(m.sel, SET_CONTROLS);
+  settings_menu_open(&m, true);                         // a phone
+  ASSERT(settings_row_shown(&m, SET_HAPTICS));
+  m.sel = SET_FOUR_SLOTS;
+  settings_press(&m, &s, UI_DOWN, &row);
+  ASSERT_EQ(m.sel, SET_HAPTICS);
+  settings_press(&m, &s, UI_ACCEPT, &row);
+  ASSERT(!s.haptics);
+  settings_press(&m, &s, UI_RIGHT, &row);
+  ASSERT(s.haptics);
+  settings_press(&m, &s, UI_UP, &row);
+  ASSERT_EQ(m.sel, SET_FOUR_SLOTS);
 }
 
 static void filters_keep_pixel_alignment(void) {
@@ -572,6 +597,7 @@ int main(void) {
   RUN(themes_come_from_the_title_palettes);
   RUN(settings_round_trip);
   RUN(settings_menu_changes_values);
+  RUN(settings_vibration_row_only_where_it_vibrates);
   RUN(filters_keep_pixel_alignment);
   RUN(upscalers_fill_the_whole_picture);
   RUN(upscalers_smooth_a_diagonal);

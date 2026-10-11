@@ -32,6 +32,7 @@
 #include "ui/home.h"
 #include "gui/screens.h"
 #include "platform/sync_client.h"
+#include "platform/haptic.h"
 #include "wide/wide.h"
 #include <stdio.h>
 #include <time.h>
@@ -465,6 +466,8 @@ static void touch_event(const SDL_Event *ev) {
   touch_pressed = held & ~touch_held;
   touch_released = touch_held & ~held;
   touch_held = held;
+  // a tick for each control a finger comes onto, sliding across the D-pad included
+  if (touch_pressed && settings.haptics) haptic_tick();
 }
 
 // Every loop polls through here, so the touch state sees each event once.
@@ -575,6 +578,7 @@ static void present_frame(SDL_Renderer *ren, const uint8_t *rgb, int pic_w) {
     if (waiting) gui_wait(waiting, SDL_GetTicks(), &gui_t, &f);
     else if (toast_on && gui_toast(toast, toast_undo, &gui_t, &f)) undo_tapped = true;
     gui_end();
+    if (gui_take_tap() && settings.haptics) haptic_tick();
   }
   shot_if_due(ren);
   SDL_RenderPresent(ren);
@@ -860,7 +864,7 @@ static void push_settings_tap(const GuiSettingsTap *tap) {
 
 static bool run_settings_page(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, const uint8_t *game_rgb, SDL_AudioStream *audio) {
   SettingsMenu m;
-  settings_menu_open(&m);
+  settings_menu_open(&m, HAS_HAPTICS);
   settings_ui.menu = &m;
   for (;;) {
     test_keys();
@@ -1165,7 +1169,7 @@ static bool run_home(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, const
   home_scan(&h, cache);
   home_init(&h, UI_GAME_SEASONS);
   static SettingsMenu settings_menu;
-  settings_menu_open(&settings_menu);
+  settings_menu_open(&settings_menu, HAS_HAPTICS);
   home_ui.home = &h;
   home_ui.settings = &settings_menu;
   if (sync_cfg.code[0] && !sync_busy()) sync_start(&sync_cfg, cache, SYNC_ALL_GAMES);

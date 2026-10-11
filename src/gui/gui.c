@@ -287,11 +287,20 @@ bool gui_event(const SDL_Event *ev, bool mouse_is_finger) {
 
 bool gui_mouse_hovering(void) { return ptr.mouse; }
 
+static bool tap_landed;
+
 bool gui_tapped(Clay_ElementId id) {
   if (n_tappable[0] < TAPPABLE) tappable[0][n_tappable[0]++] = id.id;
   if (!ptr.released || ptr.dragged || !Clay_PointerOver(id)) return false;
-  for (int i = 0; i < ptr.n_press; i++) if (ptr.press_ids[i] == id.id) return true;
+  for (int i = 0; i < ptr.n_press; i++)
+    if (ptr.press_ids[i] == id.id) return tap_landed = true;
   return false;
+}
+
+bool gui_take_tap(void) {
+  bool t = tap_landed;
+  tap_landed = false;
+  return t;
 }
 
 bool gui_hovered(Clay_ElementId id) { return ptr.mouse && ptr.moved && Clay_PointerOver(id); }

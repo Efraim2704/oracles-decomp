@@ -130,7 +130,8 @@ oracles-native [ROM] [--game ages|seasons [--file 1-3]] [--cache DIR] [--frames 
 testing a first launch), and `--frames N` exits after N frames. Tests drive the app under
 `SDL_VIDEO_DRIVER=dummy` with `ORACLES_TEST_KEYS` for scripted input and `ORACLES_SHOT="tick:path.png"`
 for screenshots. `ORACLES_TOUCH=1 ./build/oracles-native` shows the phone's touch controls on the
-desktop, with the mouse as a finger.
+desktop, with the mouse as a finger, and `ORACLES_TEST_HAPTICS=1` prints `haptic` to stderr for
+each tick a phone would vibrate.
 
 ## Verification
 
