@@ -39,7 +39,7 @@ static void switch_tab(Launcher *l, int dir) {
 }
 
 LaunchResult launcher_press(Launcher *l, UiButton b) {
-  LaunchResult r = {LAUNCH_NONE, l->game, LAUNCH_TITLE, b};
+  LaunchResult r = {LAUNCH_NONE, l->game, LAUNCH_TITLE, b, -1};
   if (l->settings_tab && l->settings_list) {
     if (b == UI_BACK) l->settings_list = false;
     else r.action = LAUNCH_SETTINGS;

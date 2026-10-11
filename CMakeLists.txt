@@ -87,7 +87,7 @@ if(ORACLES_SDL)
   add_executable(oracles src/platform/sdl_main.c src/platform/window.c)
   target_link_libraries(oracles oraclescore ${ORACLES_SDL_TARGET})
   add_executable(oracles-native src/platform/app.c src/platform/window.c src/platform/sync_client.c)
-  target_link_libraries(oracles-native oraclesnative oraclesui oraclessync oracleswide ${ORACLES_SDL_TARGET})
+  target_link_libraries(oracles-native oraclesnative oraclesgui oraclesui oraclessync oracleswide ${ORACLES_SDL_TARGET})
   target_compile_definitions(oracles-native PRIVATE ORACLES_NATIVE=1 ORACLES_SYNC_URL="${ORACLES_SYNC_URL}")
   if(WIN32)
     enable_language(RC)
@@ -98,7 +98,7 @@ if(ORACLES_SDL)
     set(ORACLES_ICNS ${CMAKE_SOURCE_DIR}/icon/Oracles.icns)
     set_source_files_properties(${ORACLES_ICNS} PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
     add_executable(oracles-native-app MACOSX_BUNDLE src/platform/app.c src/platform/window.c src/platform/sync_client.c ${ORACLES_ICNS})
-    target_link_libraries(oracles-native-app oraclesnative oraclesui oraclessync oracleswide ${ORACLES_SDL_TARGET})
+    target_link_libraries(oracles-native-app oraclesnative oraclesgui oraclesui oraclessync oracleswide ${ORACLES_SDL_TARGET})
     target_compile_definitions(oracles-native-app PRIVATE ORACLES_NATIVE=1 ORACLES_SYNC_URL="${ORACLES_SYNC_URL}")
     set_target_properties(oracles-native-app PROPERTIES
       OUTPUT_NAME "Oracles"
@@ -110,7 +110,7 @@ if(ORACLES_SDL)
   endif()
 endif()
 
-add_library(oraclesui STATIC src/ui/ui.c src/ui/font_builtin.c src/ui/savefile.c src/ui/launcher.c src/ui/menu.c src/ui/settings.c src/ui/filter.c src/ui/controls.c src/ui/touch.c src/ui/syncui.c
+add_library(oraclesui STATIC src/ui/ui.c src/ui/font_builtin.c src/ui/savefile.c src/ui/launcher.c src/ui/menu.c src/ui/settings.c src/ui/filter.c src/ui/controls.c src/ui/touch.c src/ui/syncui.c src/ui/home.c
   src/ui/upscale.cpp third_party/xbrz/xbrz.cpp third_party/hqx/hq2x.c third_party/hqx/hq3x.c)
 target_include_directories(oraclesui PUBLIC src PRIVATE third_party/xbrz third_party/hqx)
 # oraclesui carries C++ objects, so anything linking it links with the C++ driver.
@@ -132,13 +132,33 @@ if(NOT WIN32)
   target_link_libraries(oraclesui PUBLIC m)
 endif()
 
+# The menus at screen resolution (src/gui): Clay lays them out, SDL draws them, in VT323 (OFL),
+# which is embedded in the binary. Only the app links it; the engine libraries and headless
+# runners never see SDL or the font.
+if(ORACLES_SDL OR ANDROID)
+  set(ORACLES_FONT ${CMAKE_SOURCE_DIR}/third_party/fonts/VT323-Regular.ttf)
+  add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/gui_vt323.c
+    COMMAND ${CMAKE_COMMAND} -DIN=${ORACLES_FONT} -DOUT=${CMAKE_BINARY_DIR}/gui_vt323.c -DNAME=gui_vt323 -P ${CMAKE_SOURCE_DIR}/cmake/embed.cmake
+    DEPENDS ${ORACLES_FONT} ${CMAKE_SOURCE_DIR}/cmake/embed.cmake)
+  add_library(oraclesgui STATIC src/gui/gui.c src/gui/screens.c src/gui/vendor.c ${CMAKE_BINARY_DIR}/gui_vt323.c)
+  target_include_directories(oraclesgui PUBLIC src third_party/clay PRIVATE third_party/stb)
+  set_source_files_properties(src/gui/vendor.c PROPERTIES COMPILE_OPTIONS "-w")
+  # Clay's macros build its structs from partial initializers on purpose
+  target_compile_options(oraclesgui PRIVATE -Wno-missing-field-initializers)
+  target_link_libraries(oraclesgui PUBLIC oraclesui)
+  if(ORACLES_SDL)
+    target_link_libraries(oraclesgui PUBLIC ${ORACLES_SDL_TARGET})
+  endif()
+endif()
+
 # The Android app: SDL3 from source, linked statically into libmain.so with the engine and the UI.
 if(ANDROID)
   enable_language(CXX)   # SDL's Android HIDAPI is C++, so libmain links the C++ runtime
   oracles_fetch_sdl()
   add_library(main SHARED src/platform/app.c src/platform/window.c src/platform/sync_client.c)
   target_link_libraries(oraclessync PUBLIC ${ORACLES_SDL_TARGET})
-  target_link_libraries(main oraclesnative oraclesui oraclessync oracleswide ${ORACLES_SDL_TARGET} log)
+  target_link_libraries(oraclesgui PUBLIC ${ORACLES_SDL_TARGET})
+  target_link_libraries(main oraclesnative oraclesgui oraclesui oraclessync oracleswide ${ORACLES_SDL_TARGET} log)
   target_compile_definitions(main PRIVATE ORACLES_NATIVE=1 ORACLES_SYNC_URL="${ORACLES_SYNC_URL}")
   set_target_properties(main PROPERTIES LINKER_LANGUAGE CXX)
   return()

@@ -97,7 +97,7 @@ wine build-win/test_native_tas.exe
 Same game, two frontends:
 
 - **`oracles-native`** — the real port, and what ships. No CPU emulator. On first launch it reads a
-  ROM (argument, or the launcher's ADD ROM dialog), checks its SHA1 against the two known games,
+  ROM (argument, or the main menu's Add ROM row), checks its SHA1 against the two known games,
   builds the cycle table from the original bytes, zeroes the code bytes and writes the result to the
   per-user cache; later launches load the cache and never see the ROM again.
 
@@ -246,13 +246,20 @@ warning, when they are missing).
 - `src/rt/`: the native runtime (no interpreter).
 - `src/platform/`: the SDL apps and the headless runner; `archive.c` reads the ROM, unpacking a zip
   or gz with its own inflate so the apps need no compression library.
-- `src/ui/`: the launcher, menus and overlays, drawn with the ROM's own font -- plus a small
-  built-in one (`font_builtin.c`) for the launcher before any ROM is installed.
+- `src/ui/`: the menus' state machines (`home.c` is the main menu, `menu.c` pause and slots,
+  `settings.c`, `controls.c`, `syncui.c`), the touch overlay drawn in game pixels with the ROM's own
+  font, and the screen filters. Keys, pads and taps all go through the same `*_press` functions.
+- `src/gui/`: the menus drawn at the screen's resolution, over the game: Clay lays them out
+  (`screens.c`), SDL draws them in VT323 (`gui.c`). A tap moves the selection and becomes the same
+  button a key would give. Tests tap rows with `^Element.index` in `ORACLES_TEST_KEYS`.
 - `src/wide/`: the widescreen renderer, the ROM room decoder, and `item.c`, which decodes an
   item's status-bar icon from the ROM so the X and Y slots can be shown beside the bar.
 - `src/sync/`: the save-sync client.
 - `third_party/xbrz/`, `third_party/hqx/`: the two pixel-art scalers (GPLv3 and LGPL 2.1) behind
-  the XBRZ and HQX screen filters, wrapped by `src/ui/upscale.cpp`. Each folder's `README.md`
+  the XBRZ and HQX screen filters, wrapped by `src/ui/upscale.cpp`.
+- `third_party/clay/`, `third_party/stb/`, `third_party/fonts/`: the layout library (zlib), the
+  font rasteriser (public domain) and VT323 (OFL) behind `src/gui/`; the font is embedded at build
+  time by `cmake/embed.cmake`. Each folder's `README.md`
   lists what was changed locally.
 - `tools/`: generators and the audits run on every change.
 - `tas/`: input movies and reference hashes.

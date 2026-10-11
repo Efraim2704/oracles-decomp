@@ -36,6 +36,7 @@ typedef struct {
   UiGame game;
   int file;                     // 0..2, LAUNCH_TITLE, LAUNCH_RESUME or LAUNCH_SLOTS
   UiButton button;              // with LAUNCH_SETTINGS
+  int slot;                     // with LAUNCH_SLOTS from the main menu: the slot chosen (0..3)
 } LaunchResult;
 
 void launcher_init(Launcher *l, UiGame initial);

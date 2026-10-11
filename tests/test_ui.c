@@ -2,6 +2,7 @@
 #include "ui/ui.h"
 #include "ui/savefile.h"
 #include "ui/launcher.h"
+#include "ui/home.h"
 #include "ui/menu.h"
 #include "ui/settings.h"
 #include "ui/filter.h"
@@ -103,6 +104,61 @@ static void launcher_navigates_and_starts(void) {
   launcher_press(&l, UI_LEFT);
   ASSERT(l.settings_tab);
   launcher_draw(&l, &font, &c);
+}
+
+static void home_leads_with_resume_and_slots(void) {
+  static Home h;
+  memset(&h, 0, sizeof h);
+  h.l.games[UI_GAME_SEASONS].installed = true;
+  h.slots[UI_GAME_SEASONS][1] = (HomeSlot){true, 200};
+  h.slots[UI_GAME_SEASONS][3] = (HomeSlot){true, 100};
+  home_init(&h, UI_GAME_AGES);
+  ASSERT_EQ(h.l.game, UI_GAME_SEASONS);                 // Ages isn't installed
+  ASSERT_EQ(home_latest(&h), 1);
+  ASSERT_EQ(h.row, HOME_SLOT1 + 1);                     // no resume state: the newest slot
+  LaunchResult r = home_press(&h, UI_ACCEPT);
+  ASSERT_EQ(r.action, LAUNCH_PLAY);
+  ASSERT_EQ(r.file, LAUNCH_SLOTS);
+  ASSERT_EQ(r.slot, 1);
+  home_press(&h, UI_DOWN);
+  ASSERT_EQ(h.row, HOME_SLOT4);                         // empty slot 3 is skipped
+  home_press(&h, UI_DOWN);
+  ASSERT_EQ(h.row, HOME_FILES);
+  ASSERT_EQ(home_press(&h, UI_ACCEPT).action, LAUNCH_NONE);   // opens the files page
+  ASSERT(h.files_page);
+  home_press(&h, UI_DOWN);
+  r = home_press(&h, UI_ACCEPT);
+  ASSERT_EQ(r.action, LAUNCH_PLAY);
+  ASSERT_EQ(r.file, 1);
+  ASSERT_EQ(home_press(&h, UI_BACK).action, LAUNCH_NONE);     // leaves the files page, not the menu
+  ASSERT(!h.files_page);
+  home_press(&h, UI_DOWN);
+  ASSERT_EQ(home_press(&h, UI_ACCEPT).file, LAUNCH_TITLE);
+  home_press(&h, UI_DOWN);
+  ASSERT_EQ(h.row, HOME_SLOT1 + 1);                     // wraps past Resume (none) and slot 1 (empty)
+  h.l.games[UI_GAME_SEASONS].has_resume = true;
+  home_tap_tab(&h, UI_GAME_SEASONS);
+  ASSERT_EQ(h.row, HOME_RESUME);
+  ASSERT_EQ(home_press(&h, UI_ACCEPT).file, LAUNCH_RESUME);
+  ASSERT_EQ(home_press(&h, UI_BACK).action, LAUNCH_QUIT);
+}
+
+static void home_tabs_reach_settings_and_add_rom(void) {
+  static Home h;
+  memset(&h, 0, sizeof h);
+  h.l.games[UI_GAME_SEASONS].installed = true;
+  home_init(&h, UI_GAME_SEASONS);
+  ASSERT_EQ(h.row, HOME_FILES);                         // nothing to continue: the save files
+  home_press(&h, UI_RIGHT);
+  ASSERT(h.l.settings_tab);
+  ASSERT_EQ(home_press(&h, UI_DOWN).action, LAUNCH_NONE);
+  LaunchResult r = home_press(&h, UI_LEFT);
+  ASSERT_EQ(r.action, LAUNCH_SETTINGS);
+  ASSERT_EQ(r.button, UI_LEFT);
+  home_press(&h, UI_BACK);
+  home_press(&h, UI_RIGHT);                             // wraps to Ages, not installed
+  ASSERT_EQ(h.l.game, UI_GAME_AGES);
+  ASSERT_EQ(home_press(&h, UI_ACCEPT).action, LAUNCH_ADD_ROM);
 }
 
 static void launcher_offers_resume_and_slots(void) {
@@ -729,6 +785,8 @@ int main(void) {
   RUN(save_files_are_read_and_verified);
   RUN(launcher_navigates_and_starts);
   RUN(launcher_offers_resume_and_slots);
+  RUN(home_leads_with_resume_and_slots);
+  RUN(home_tabs_reach_settings_and_add_rom);
   RUN(pause_menu_skips_disabled_items);
   RUN(slots_load_only_used_slots);
   RUN(themes_come_from_the_title_palettes);

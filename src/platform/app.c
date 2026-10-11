@@ -29,6 +29,8 @@
 #include "ui/filter.h"
 #include "ui/touch.h"
 #include "ui/syncui.h"
+#include "ui/home.h"
+#include "gui/screens.h"
 #include "platform/sync_client.h"
 #include "wide/wide.h"
 #include <stdio.h>
@@ -201,7 +203,7 @@ static bool pick_rom(char *game_out, const char *cache) {
   if (pick_state < 0) return false;                 // the player cancelled the dialog
   char err[40] = {0};
   if (extract(picked, cache, game_out, err, sizeof err)) return true;
-  show_status(*err ? err : "CANNOT ADD THAT ROM");
+  show_status(*err ? err : "Can't add that ROM");
   return false;
 }
 
@@ -224,9 +226,36 @@ static void migrate_state(const char *dir) {
   if (file_exists(old) && !file_exists(slot1)) SDL_RenamePath(old, slot1);
 }
 
+// Saving over a slot keeps what was there as state_N.undo (and its thumbnail), until the next save.
+static void slot_keep_undo(const char *dir, int slot) {
+  char from[1300], to[1300];
+  for (int k = 0; k < 2; k++) {
+    const char *ext = k ? ".thumb" : "";
+    slot_path(from, sizeof from, dir, slot, ext);
+    snprintf(to, sizeof to, "%s.undo", from);
+    SDL_RemovePath(to);
+    if (file_exists(from)) SDL_RenamePath(from, to);
+  }
+}
+
+// Puts back what the last save replaced; a save into an empty slot leaves no .undo, so undoing it
+// empties the slot again.
+static bool slot_undo(const char *dir, int slot) {
+  char from[1300], to[1300];
+  bool ok = true;
+  for (int k = 0; k < 2; k++) {
+    slot_path(to, sizeof to, dir, slot, k ? ".thumb" : "");
+    snprintf(from, sizeof from, "%s.undo", to);
+    SDL_RemovePath(to);
+    if (file_exists(from)) ok = SDL_RenamePath(from, to) && ok;
+  }
+  return ok;
+}
+
 static bool slot_save(GB *gb, const char *dir, int slot, const uint8_t *rgb) {
   char path[1300];
   slot_path(path, sizeof path, dir, slot, "");
+  if (slot != SLOT_AUTO) slot_keep_undo(dir, slot);
   if (!oracles_save_boot_state(gb, path)) return false;
   slot_path(path, sizeof path, dir, slot, ".thumb");
   write_file(path, rgb, FB_W * FB_H * 3);
@@ -249,6 +278,7 @@ static void slots_scan(SlotsMenu *m, const char *dir) {
     SDL_PathInfo info;
     slot_path(path, sizeof path, dir, i, "");
     s->used = SDL_GetPathInfo(path, &info);
+    s->time = s->used ? info.modify_time : 0;
     if (!s->used) continue;
     SDL_DateTime dt;
     if (SDL_TimeToDateTime(info.modify_time, &dt, true))
@@ -305,9 +335,18 @@ static float volume_gain(bool muted) { return muted ? 0.0f : settings.volume / 1
 // A message shown over the screen for two seconds (state saved, item set, ...).
 static char toast[40];
 static uint64_t toast_until;
+static bool toast_undo, undo_tapped;        // the message offers Undo; it was tapped
 static void show_status(const char *msg) {
   snprintf(toast, sizeof toast, "%s", msg);
   toast_until = SDL_GetTicks() + 2000;
+  toast_undo = undo_tapped = false;
+}
+
+// A message with an Undo to tap, shown a little longer.
+static void show_undoable(const char *msg) {
+  show_status(msg);
+  toast_until = SDL_GetTicks() + 4000;
+  toast_undo = true;
 }
 
 static void apply_game_settings(void) {
@@ -342,7 +381,7 @@ static void item_button(GB *gb, const char *dir, int slot, bool down) {
   if (!down) { features_slot_release(gb, slot); slot_joy[slot] = 0; return; }
   if (features_assign_slot(gb, slot)) {
     item_buttons_store(dir);
-    show_status(slot ? "ITEM SET ON Y" : "ITEM SET ON X");
+    show_status(slot ? "Item set on Y" : "Item set on X");
     return;
   }
   slot_joy[slot] = features_slot_press(gb, slot);
@@ -361,9 +400,41 @@ static UiTheme overlay_theme;
 
 static void overlay_style(const UiFont *font, const UiTheme *theme) { overlay_font = font; overlay_theme = *theme; }
 
+// The menus at screen resolution (src/gui). ui_layer, when set, declares the open menu into the
+// frame present_frame draws; a full-screen page blocks the touch overlay so taps reach its rows.
+// A tap becomes a button event (gui_button_event, code = UiButton) after moving the selection, so
+// every menu keeps one code path for keys, pads and touch.
+static GuiTheme gui_t;
+static void (*ui_layer)(const GuiFrame *f);
+static bool overlay_blocked;
+static Uint32 gui_button_event;
+
+static void push_button(int b) {
+  if (b < 0 || !gui_button_event) return;
+  SDL_Event ev = {0};
+  ev.type = gui_button_event;
+  ev.user.code = b;
+  SDL_PushEvent(&ev);
+}
+
+typedef struct { void (*layer)(const GuiFrame *f); bool blocked; } UiScope;
+static const uint8_t page_black[FB_W * FB_H * 3];
+
+static UiScope ui_enter(void (*layer)(const GuiFrame *f), bool blocked) {
+  UiScope was = {ui_layer, overlay_blocked};
+  ui_layer = layer;
+  overlay_blocked = blocked;
+  return was;
+}
+static void ui_leave(UiScope was) { ui_layer = was.layer; overlay_blocked = was.blocked; }
+
 static bool direct_touch(SDL_TouchID id) {
   return id == TEST_TOUCH_ID || (touch_mouse && id == SDL_MOUSE_TOUCHID) || SDL_GetTouchDeviceType(id) == SDL_TOUCH_DEVICE_DIRECT;
 }
+
+// A finger that came down on a menu row or button belongs to the menu, not the controls under it.
+static SDL_FingerID menu_finger;
+static bool menu_finger_down;
 
 static void touch_event(const SDL_Event *ev) {
   touch_pressed = touch_released = 0;
@@ -378,6 +449,10 @@ static void touch_event(const SDL_Event *ev) {
   bool up = ev->type == SDL_EVENT_FINGER_UP || ev->type == SDL_EVENT_FINGER_CANCELED;
   if ((!down && !move && !up) || !direct_touch(ev->tfinger.touchID)) return;
   if (!touch_on) { touch_on = down; return; }
+  if (menu_finger_down && ev->tfinger.fingerID == menu_finger) {
+    if (up) menu_finger_down = false;
+    return;
+  }
   int f = -1;
   for (int i = 0; i < FINGERS && f < 0; i++) if (fingers[i].down && fingers[i].id == ev->tfinger.fingerID) f = i;
   for (int i = 0; i < FINGERS && f < 0 && down; i++) if (!fingers[i].down) f = i;
@@ -385,7 +460,7 @@ static void touch_event(const SDL_Event *ev) {
   fingers[f].id = ev->tfinger.fingerID;
   fingers[f].down = !up;
   float x = ev->tfinger.x * layout.screen_w / layout.scale, y = ev->tfinger.y * layout.screen_h / layout.scale;
-  fingers[f].held = up ? 0 : touch_hit(&layout, x, y);
+  fingers[f].held = up || overlay_blocked ? 0 : touch_hit(&layout, x, y);
   uint32_t held = 0;
   for (int i = 0; i < FINGERS; i++) held |= fingers[i].held;
   touch_pressed = held & ~touch_held;
@@ -396,6 +471,11 @@ static void touch_event(const SDL_Event *ev) {
 // Every loop polls through here, so the touch state sees each event once.
 static bool poll_event(SDL_Event *ev) {
   if (!SDL_PollEvent(ev)) return false;
+  bool finger = ev->type >= SDL_EVENT_FINGER_DOWN && ev->type <= SDL_EVENT_FINGER_CANCELED;
+  if ((!finger || direct_touch(ev->tfinger.touchID)) && gui_event(ev, touch_mouse) && touch_on) {
+    menu_finger = ev->tfinger.fingerID;
+    menu_finger_down = true;
+  }
   touch_event(ev);
   stick_event(ev);
   if (ev->type == SDL_EVENT_DID_ENTER_FOREGROUND) sync_retry_soon();
@@ -486,7 +566,7 @@ static void present_frame(SDL_Renderer *ren, const uint8_t *rgb, int pic_w) {
     SDL_UpdateTexture(big, NULL, buf, pic_w * scale * 3);
     SDL_RenderTexture(ren, big, NULL, &dst);
   }
-  if (touch_on) {
+  if (touch_on && !overlay_blocked) {
     if (!over || over_w != layout.w || over_h != layout.h) {
       if (over) SDL_DestroyTexture(over);
       over = SDL_CreateTexture(ren, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STREAMING, layout.w, layout.h);
@@ -500,6 +580,15 @@ static void present_frame(SDL_Renderer *ren, const uint8_t *rgb, int pic_w) {
     touch_draw(&layout, overlay_font, &overlay_theme, touch_held, over_px);
     SDL_UpdateTexture(over, NULL, over_px, layout.w * 4);
     SDL_RenderTexture(ren, over, NULL, &(SDL_FRect){0, 0, (float)(layout.w * layout.scale), (float)(layout.h * layout.scale)});
+  }
+  bool toast_on = toast[0] && SDL_GetTicks() < toast_until;
+  if (ui_layer || toast_on) {
+    GuiFrame f = {{(float)layout.game_px.x, (float)layout.game_px.y, (float)layout.game_px.w, (float)layout.game_px.h},
+                  {(float)safe.x, (float)safe.y, (float)safe.w, (float)safe.h}, (float)w, (float)h, !touch_on};
+    if (ui_layer) ui_layer(&f);
+    else gui_begin(gui_display_scale());
+    if (toast_on && gui_toast(toast, toast_undo, &gui_t, &f)) undo_tapped = true;
+    gui_end();
   }
   shot_if_due(ren);
   SDL_RenderPresent(ren);
@@ -516,12 +605,6 @@ static void present_game(SDL_Renderer *ren, SDL_Texture *tex, const GBSample *sa
   WideOptions o = {seasons, settings.dim_sides, {overlay_theme.bg.r, overlay_theme.bg.g, overlay_theme.bg.b}, rom, rom_size,
                    settings.four_slots, {features.slot_item[0], features.slot_item[1]}};
   wide_render(sample, &o, wide);
-  if (toast[0] && SDL_GetTicks() < toast_until && overlay_font && overlay_font->loaded) {
-    static UiCanvas middle;
-    for (int y = 0; y < FB_H; y++) memcpy(middle.px[y], wide + ((size_t)y * WIDE_W + WIDE_SIDE) * 3, FB_W * 3);
-    ui_toast(&middle, overlay_font, &overlay_theme, toast);
-    for (int y = 0; y < FB_H; y++) memcpy(wide + ((size_t)y * WIDE_W + WIDE_SIDE) * 3, middle.px[y], FB_W * 3);
-  }
   present_frame(ren, wide, WIDE_W);
 }
 
@@ -529,12 +612,6 @@ static void present_game(SDL_Renderer *ren, SDL_Texture *tex, const GBSample *sa
 // and in widescreen centred on the theme's border colour.
 static void present(SDL_Renderer *ren, SDL_Texture *tex, const uint8_t *rgb) {
   (void)tex;
-  if (toast[0] && SDL_GetTicks() < toast_until && overlay_font && overlay_font->loaded) {
-    static UiCanvas with_toast;
-    memcpy(with_toast.px, rgb, sizeof with_toast.px);
-    ui_toast(&with_toast, overlay_font, &overlay_theme, toast);
-    rgb = &with_toast.px[0][0][0];
-  }
   if (!settings.widescreen) { present_frame(ren, rgb, FB_W); return; }
   static uint8_t wide[WIDE_W * FB_H * 3];
   const int side = (WIDE_W - FB_W) / 2;
@@ -623,6 +700,24 @@ static void test_touch(const char *name, bool down) {
   }
 }
 
+// "^Slot.0", "^Back" in ORACLES_TEST_KEYS tap that element of the last menu drawn (one finger),
+// so tests drive the menus the way a phone does.
+static void test_tap(const char *name, bool down) {
+  char id[32];
+  int index = 0;
+  if (sscanf(name, "%31[^.].%d", id, &index) < 1) return;
+  Clay_ElementId eid = Clay_GetElementIdWithIndex((Clay_String){.length = (int32_t)strlen(id), .chars = id}, (uint32_t)index);
+  Clay_ElementData e = Clay_GetElementData(eid);
+  if (!e.found || !gui_tappable(eid) || layout.screen_w <= 0 || layout.screen_h <= 0) { if (down) fprintf(stderr, "test tap: no %s\n", name); return; }
+  SDL_Event ev = {0};
+  ev.type = down ? SDL_EVENT_FINGER_DOWN : SDL_EVENT_FINGER_UP;
+  ev.tfinger.touchID = TEST_TOUCH_ID;
+  ev.tfinger.fingerID = 2;
+  ev.tfinger.x = (e.boundingBox.x + e.boundingBox.width / 2) / layout.screen_w;
+  ev.tfinger.y = (e.boundingBox.y + e.boundingBox.height / 2) / layout.screen_h;
+  SDL_PushEvent(&ev);
+}
+
 static void test_keys(void) {
   static const char *spec;
   static bool init;
@@ -634,6 +729,7 @@ static void test_keys(void) {
     int len = 0;
     if (!test_key_tick(p, &at, name, &len)) break;
     if ((at == test_tick || at + 1 == test_tick) && name[0] == '#') test_touch(name + 1, at == test_tick);
+    else if ((at == test_tick || at + 1 == test_tick) && name[0] == '^') test_tap(name + 1, at == test_tick);
     else if (at == test_tick || at + 1 == test_tick) {
       SDL_Event ev = {0};
       ev.type = at == test_tick ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP;
@@ -654,6 +750,7 @@ static bool window_key(SDL_Window *win, const SDL_KeyboardEvent *key) {
 }
 
 static bool menu_button(const SDL_Event *ev, UiButton *b) {
+  if (gui_button_event && ev->type == gui_button_event) { *b = (UiButton)ev->user.code; return true; }
   static const UiButton touch_buttons[ACTIONS] = {
     [ACT_UP] = UI_UP, [ACT_DOWN] = UI_DOWN, [ACT_LEFT] = UI_LEFT, [ACT_RIGHT] = UI_RIGHT,
     [ACT_A] = UI_ACCEPT, [ACT_START] = UI_ACCEPT, [ACT_B] = UI_BACK, [ACT_PAUSE] = UI_BACK,
@@ -690,9 +787,13 @@ static bool menu_button(const SDL_Event *ev, UiButton *b) {
   return false;
 }
 
-// A modal slot list; returns the slot, -1 for back, or -2 when the window is closed.
-static int pick_slot(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, SlotsMenu *m, const UiFont *font, const UiTheme *theme, const uint8_t *game_rgb) {
-  static UiCanvas canvas;
+static struct { SlotsMenu *menu; int tap; uint32_t stamp; } slots_ui;
+static void slots_layer(const GuiFrame *f) { slots_ui.tap = gui_slots(slots_ui.menu, &gui_t, f, slots_ui.stamp); }
+
+static int pick_slot_page(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, SlotsMenu *m, const uint8_t *game_rgb) {
+  static uint8_t black[FB_W * FB_H * 3];
+  slots_ui.menu = m;
+  slots_ui.stamp++;
   for (;;) {
     test_keys();
     SDL_Event ev;
@@ -706,16 +807,31 @@ static int pick_slot(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, Slots
       if (a == MENU_PICK) return slot;
       if (a == MENU_BACK) return -1;
     }
-    slots_draw(m, font, theme, game_rgb, &canvas);
-    present(ren, tex, &canvas.px[0][0][0]);
+    slots_ui.tap = GUI_NONE;
+    present(ren, tex, game_rgb ? game_rgb : black);
+    push_button(slots_ui.tap == GUI_BACK ? UI_BACK : slots_ui.tap >= 0 ? UI_ACCEPT : GUI_NONE);
     SDL_Delay(16);
   }
 }
 
-static bool run_controls(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, const UiFont *font, const UiTheme *theme, const uint8_t *game_rgb) {
-  static UiCanvas canvas;
+// A modal slot list; returns the slot, -1 for back, or -2 when the window is closed.
+static int pick_slot(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, SlotsMenu *m, const UiFont *font, const UiTheme *theme, const uint8_t *game_rgb) {
+  (void)font; (void)theme;
+  UiScope was = ui_enter(slots_layer, true);
+  int slot = pick_slot_page(win, ren, tex, m, game_rgb);
+  ui_leave(was);
+  return slot;
+}
+
+static struct { ControlsMenu *menu; int tap, page; } controls_ui;
+static void controls_layer(const GuiFrame *f) {
+  controls_ui.tap = gui_controls(controls_ui.menu, &settings.bindings, key_name, pad_name, &gui_t, f, &controls_ui.page);
+}
+
+static bool run_controls_page(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, const uint8_t *game_rgb) {
   ControlsMenu m;
   controls_open(&m);
+  controls_ui.menu = &m;
   m.pad_page = SDL_HasGamepad();
   for (;;) {
     test_keys();
@@ -736,18 +852,39 @@ static bool run_controls(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, c
       if (controls_press(&m, &settings.bindings, b) == MENU_BACK) { settings_store(); return true; }
       settings_store();
     }
-    controls_draw(&m, &settings.bindings, font, theme, game_rgb, key_name, pad_name, &canvas);
-    present(ren, tex, &canvas.px[0][0][0]);
+    controls_ui.tap = controls_ui.page = GUI_NONE;
+    present(ren, tex, game_rgb ? game_rgb : page_black);
+    if (controls_ui.tap == GUI_BACK && m.waiting) m.waiting = false;      // a finger can't press a key: Back cancels
+    else if (controls_ui.tap == GUI_BACK) push_button(UI_BACK);
+    else if (controls_ui.tap >= 0) push_button(UI_ACCEPT);
+    else if (controls_ui.page >= 0 && controls_ui.page != m.pad_page) push_button(UI_RIGHT);
     SDL_Delay(16);
   }
 }
 
+static bool run_controls(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, const UiFont *font, const UiTheme *theme, const uint8_t *game_rgb) {
+  (void)font; (void)theme;
+  UiScope was = ui_enter(controls_layer, true);
+  bool r = run_controls_page(win, ren, tex, game_rgb);
+  ui_leave(was);
+  return r;
+}
+
 static bool run_sync_page(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, const UiFont *font, const UiTheme *theme, const uint8_t *game_rgb);
 
-static bool run_settings(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, const UiFont *font, const UiTheme *theme, const uint8_t *game_rgb, SDL_AudioStream *audio) {
-  static UiCanvas canvas;
+static struct { SettingsMenu *menu; GuiSettingsTap tap; bool back; } settings_ui;
+static void settings_layer(const GuiFrame *f) { settings_ui.back = gui_settings(settings_ui.menu, &settings, settings.sync_label, &gui_t, f, &settings_ui.tap); }
+
+// A settings tap: a volume bar sets the volume through the same Right press a key would give.
+static void push_settings_tap(const GuiSettingsTap *tap) {
+  if (tap->volume >= 1) { settings.volume = tap->volume - 1; push_button(UI_RIGHT); }
+  else if (tap->row >= 0) push_button(tap->button);
+}
+
+static bool run_settings_page(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, const UiFont *font, const UiTheme *theme, const uint8_t *game_rgb, SDL_AudioStream *audio) {
   SettingsMenu m;
   settings_menu_open(&m);
+  settings_ui.menu = &m;
   for (;;) {
     test_keys();
     SDL_Event ev;
@@ -768,10 +905,20 @@ static bool run_settings(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, c
       apply_game_settings();
       settings_store();
     }
-    settings_draw(&m, &settings, font, theme, game_rgb, &canvas);
-    present(ren, tex, &canvas.px[0][0][0]);
+    settings_ui.back = false;
+    settings_ui.tap.row = settings_ui.tap.volume = GUI_NONE;
+    present(ren, tex, game_rgb);
+    if (settings_ui.back) push_button(UI_BACK);
+    else push_settings_tap(&settings_ui.tap);
     SDL_Delay(16);
   }
+}
+
+static bool run_settings(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, const UiFont *font, const UiTheme *theme, const uint8_t *game_rgb, SDL_AudioStream *audio) {
+  UiScope was = ui_enter(settings_layer, true);
+  bool ok = run_settings_page(win, ren, tex, font, theme, game_rgb, audio);
+  ui_leave(was);
+  return ok;
 }
 
 // Save sync (server in its own repository, save-sync-server): this device's code and server, and
@@ -799,21 +946,28 @@ static void settings_reload(SDL_Window *win) {
 }
 
 // Shows `rgb` with a SYNCING message until the sync thread has finished one sync of `game`.
-static bool sync_blocking(SDL_Renderer *ren, SDL_Texture *tex, const uint8_t *rgb, const char *game, SyncResult *r) {
+static bool sync_blocking_canvas(SDL_Renderer *ren, SDL_Texture *tex, const uint8_t *rgb, const char *game, SyncResult *r) {
   if (!sync_cfg.code[0]) return false;
   SyncResult earlier;
-  while (sync_busy()) { show_status("SYNCING..."); present(ren, tex, rgb); SDL_Delay(16); SDL_PumpEvents(); }
+  while (sync_busy()) { show_status("Syncing..."); present(ren, tex, rgb); SDL_Delay(16); SDL_PumpEvents(); }
   sync_poll(&earlier);
   if (!sync_start(&sync_cfg, app_cache, game)) return false;
   while (!sync_poll(r)) {
     SDL_Event ev;
     while (poll_event(&ev)) {}
-    show_status("SYNCING...");
+    show_status("Syncing...");
     present(ren, tex, rgb);
     SDL_Delay(16);
   }
   toast_until = 0;
   return true;
+}
+
+static bool sync_blocking(SDL_Renderer *ren, SDL_Texture *tex, const uint8_t *rgb, const char *game, SyncResult *r) {
+  UiScope was = ui_enter(NULL, false);
+  bool ok = sync_blocking_canvas(ren, tex, rgb, game, r);
+  ui_leave(was);
+  return ok;
 }
 
 static void side_when(ConflictSide *side, int64_t seconds) {
@@ -823,17 +977,19 @@ static void side_when(ConflictSide *side, int64_t seconds) {
 }
 
 static void side_fill(ConflictSide *side, const char *label, const char *game, const char *name, const uint8_t *data, size_t n, const uint8_t *thumb, size_t tn) {
-  snprintf(side->label, sizeof side->label, "%.9s", label);
-  for (char *p = side->label; *p; p++) *p = (char)SDL_toupper(*p);
+  snprintf(side->label, sizeof side->label, "%s", label);
   if (!data) { side->missing = true; return; }
   if (!strcmp(name, "sram.sav")) { side->has_files = true; ui_read_files(data, n, !strcmp(game, "ages"), side->files); }
   if (thumb && tn == sizeof side->thumb) { side->has_thumb = true; memcpy(side->thumb, thumb, tn); }
 }
 
 // Each file that changed here and on the server: the player keeps one side. Returns false on quit.
-static bool run_conflicts(SDL_Renderer *ren, SDL_Texture *tex, const UiFont *font, const UiTheme *theme, const SyncResult *r) {
+static struct { ConflictView *view; int tap; } conflict_ui;
+static void conflict_layer(const GuiFrame *f) { conflict_ui.tap = gui_conflict(conflict_ui.view, &gui_t, f); }
+
+static bool run_conflicts_page(SDL_Renderer *ren, SDL_Texture *tex, const SyncResult *r) {
   static ConflictView v;
-  static UiCanvas canvas;
+  conflict_ui.view = &v;
   for (int i = 0; i < r->choices; i++) {
     const SyncChoice *ch = &r->choice[i];
     bool state = !strncmp(ch->name, "state_", 6);
@@ -846,12 +1002,12 @@ static bool run_conflicts(SDL_Renderer *ren, SDL_Texture *tex, const UiFont *fon
     uint8_t *theirs = sync_fetch(&sync_cfg, ch->game, ch->name, &rn);
     uint8_t *theirs_thumb = state ? sync_fetch(&sync_cfg, ch->game, thumb_name, &rtn) : NULL;
     memset(&v, 0, sizeof v);
-    const char *what = !strcmp(ch->name, "sram.sav") ? "SAVE" : !strcmp(ch->name, "state_auto") ? "RESUME" : NULL;
-    if (what) snprintf(v.what, sizeof v.what, "%s %s", !strcmp(ch->game, "ages") ? "AGES" : "SEASONS", what);
-    else snprintf(v.what, sizeof v.what, "%s SLOT %c", !strcmp(ch->game, "ages") ? "AGES" : "SEASONS", ch->name[6]);
-    side_fill(&v.side[0], "HERE", ch->game, ch->name, mine, n, mine_thumb, tn);
+    const char *what = !strcmp(ch->name, "sram.sav") ? "save files" : !strcmp(ch->name, "state_auto") ? "resume" : NULL;
+    if (what) snprintf(v.what, sizeof v.what, "%s %s", !strcmp(ch->game, "ages") ? "Ages" : "Seasons", what);
+    else snprintf(v.what, sizeof v.what, "%s slot %c", !strcmp(ch->game, "ages") ? "Ages" : "Seasons", ch->name[6]);
+    side_fill(&v.side[0], "This device", ch->game, ch->name, mine, n, mine_thumb, tn);
     side_when(&v.side[0], ch->local_mtime);
-    side_fill(&v.side[1], ch->remote.device[0] ? ch->remote.device : "OTHER", ch->game, ch->name, theirs, rn, theirs_thumb, rtn);
+    side_fill(&v.side[1], ch->remote.device[0] ? ch->remote.device : "Other device", ch->game, ch->name, theirs, rn, theirs_thumb, rtn);
     side_when(&v.side[1], ch->remote.updated);
     free(mine); free(mine_thumb); free(theirs); free(theirs_thumb);
     test_mark("conflict");
@@ -865,19 +1021,27 @@ static bool run_conflicts(SDL_Renderer *ren, SDL_Texture *tex, const UiFont *fon
         MenuAction a = conflict_press(&v, b);
         if (a == MENU_BACK) decided = true;
         if (a == MENU_PICK) {
-          show_status("SYNCING...");
-          conflict_draw(&v, font, theme, &canvas);
-          present(ren, tex, &canvas.px[0][0][0]);
-          show_status(sync_resolve(&sync_cfg, app_cache, ch, v.sel == 0) ? "KEPT" : "SYNC FAILED");
+          show_status("Syncing...");
+          present(ren, tex, page_black);
+          show_status(sync_resolve(&sync_cfg, app_cache, ch, v.sel == 0) ? "Kept" : "Sync failed");
           decided = true;
         }
       }
-      conflict_draw(&v, font, theme, &canvas);
-      present(ren, tex, &canvas.px[0][0][0]);
+      conflict_ui.tap = GUI_NONE;
+      present(ren, tex, page_black);
+      push_button(conflict_ui.tap == GUI_BACK ? UI_BACK : conflict_ui.tap >= 0 ? UI_ACCEPT : GUI_NONE);
       SDL_Delay(16);
     }
   }
   return true;
+}
+
+static bool run_conflicts(SDL_Renderer *ren, SDL_Texture *tex, const UiFont *font, const UiTheme *theme, const SyncResult *r) {
+  (void)font; (void)theme;
+  UiScope was = ui_enter(conflict_layer, true);
+  bool ok = run_conflicts_page(ren, tex, r);
+  ui_leave(was);
+  return ok;
 }
 
 // Toasts the outcome, loads settings that came from elsewhere, and asks about conflicts.
@@ -889,20 +1053,29 @@ static bool sync_finished(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, 
   if (!r->ok) {
     fprintf(stderr, "sync failed: %s\n", r->error);
     snprintf(sync_status_line, sizeof sync_status_line, "SYNC FAILED");
-    if (sync_failures() == 1) show_status("SYNC FAILED");         // not again for every retry
+    if (sync_failures() == 1) show_status("Sync failed");         // not again for every retry
     return true;
   }
   if (r->error[0]) fprintf(stderr, "sync: %s\n", r->error);
   else test_mark("synced");
   if (clock) snprintf(sync_status_line, sizeof sync_status_line, "SYNCED %02d:%02d", dt.hour, dt.minute);
-  if (r->uploaded || r->downloaded) show_status("SYNCED");
+  if (r->uploaded || r->downloaded) show_status("Synced");
   return !r->choices || run_conflicts(ren, tex, font, theme, r);
 }
 
 // The sync page: the code, a new account, entering a code from another device, sync now, off.
-static bool run_sync_page(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, const UiFont *font, const UiTheme *theme, const uint8_t *game_rgb) {
-  static UiCanvas canvas;
+static struct { SyncMenu *menu; CodeEntry *code; bool reveal; int tap; } sync_ui;
+static void sync_layer(const GuiFrame *f) {
+  if (sync_ui.code) sync_ui.tap = gui_code(sync_ui.code, &gui_t, f);
+  else sync_ui.tap = gui_sync(sync_ui.menu, &gui_t, f, &sync_ui.reveal);
+}
+
+static bool run_sync_page_gui(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, const UiFont *font, const UiTheme *theme, const uint8_t *game_rgb) {
   SyncMenu m;
+  sync_ui.menu = &m;
+  sync_ui.code = NULL;
+  sync_ui.reveal = false;
+  if (!game_rgb) game_rgb = page_black;
   char code[20] = "";
   // what SYNC NOW covers: every game, or during play every game but the running one
   const char *scope = !playing ? SYNC_ALL_GAMES : !strcmp(playing, "ages") ? "seasons" : "ages";
@@ -924,26 +1097,42 @@ static bool run_sync_page(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, 
       bool new_code = false;
       if (row == SYNCROW_CREATE) {
         char nc[17], err[128];
-        show_status("CREATING...");
-        present(ren, tex, &canvas.px[0][0][0]);
+        show_status("Creating...");
+        present(ren, tex, game_rgb);
         if (sync_create_account(sync_cfg.url, nc, err, sizeof err)) { memcpy(sync_cfg.code, nc, 17); new_code = true; }
-        else { fprintf(stderr, "sync: %s\n", err); show_status("COULD NOT CREATE"); }
+        else { fprintf(stderr, "sync: %s\n", err); show_status("Couldn't create a code"); }
       } else if (row == SYNCROW_ENTER) {
         CodeEntry e;
         codeentry_open(&e, sync_cfg.code);
-        for (bool done = false; !done;) {
+        sync_ui.code = &e;
+        // typing: the phone's number pad, or the keyboard's digits; each fills the box and moves on
+        SDL_PropertiesID props = SDL_CreateProperties();
+        SDL_SetNumberProperty(props, SDL_PROP_TEXTINPUT_TYPE_NUMBER, SDL_TEXTINPUT_TYPE_NUMBER);
+        SDL_StartTextInputWithProperties(win, props);
+        bool quit = false;
+        for (bool done = false; !done && !quit;) {
           test_keys();
           while (poll_event(&ev)) {
-            if (ev.type == SDL_EVENT_QUIT) return false;
+            if (ev.type == SDL_EVENT_QUIT) { quit = true; break; }
+            if (ev.type == SDL_EVENT_TEXT_INPUT) {
+              for (const char *c = ev.text.text; *c; c++)
+                if (*c >= '0' && *c <= '9') { e.digits[e.pos] = *c; if (e.pos < 15) e.pos++; }
+              continue;
+            }
             if (!menu_button(&ev, &b) || (ev.type == SDL_EVENT_KEY_DOWN && ev.key.repeat)) continue;
             MenuAction ea = codeentry_press(&e, b);
             if (ea == MENU_BACK) done = true;
             if (ea == MENU_PICK) { memcpy(sync_cfg.code, e.digits, 17); new_code = done = true; }
           }
-          codeentry_draw(&e, font, theme, &canvas);
-          present(ren, tex, &canvas.px[0][0][0]);
+          sync_ui.tap = GUI_NONE;
+          present(ren, tex, game_rgb);
+          push_button(sync_ui.tap == GUI_BACK ? UI_BACK : sync_ui.tap == GUI_CONNECT ? UI_ACCEPT : GUI_NONE);
           SDL_Delay(16);
         }
+        SDL_StopTextInput(win);
+        SDL_DestroyProperties(props);
+        sync_ui.code = NULL;
+        if (quit) return false;
       } else if (row == SYNCROW_OFF) {
         sync_cfg.code[0] = 0;
         sync_config_store(&sync_cfg, app_cache);
@@ -952,36 +1141,66 @@ static bool run_sync_page(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, 
       if (new_code) { sync_config_store(&sync_cfg, app_cache); sync_label_update(); }
       if (row == SYNCROW_NOW || new_code) {
         SyncResult r;
-        if (sync_blocking(ren, tex, &canvas.px[0][0][0], scope, &r) && !sync_finished(win, ren, tex, font, theme, &r)) return false;
+        if (sync_blocking(ren, tex, game_rgb, scope, &r) && !sync_finished(win, ren, tex, font, theme, &r)) return false;
       }
       REOPEN();
     }
-    syncmenu_draw(&m, font, theme, game_rgb, &canvas);
-    present(ren, tex, &canvas.px[0][0][0]);
+    sync_ui.tap = GUI_NONE;
+    present(ren, tex, game_rgb);
+    push_button(sync_ui.tap == GUI_BACK ? UI_BACK : sync_ui.tap >= 0 ? UI_ACCEPT : GUI_NONE);
     SDL_Delay(16);
   }
 #undef REOPEN
 }
 
-// Runs the launcher until a game is chosen (true) or the player quits (false).
-static bool run_launcher(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, const char *cache, char *game_out, int *file_out, bool *file_used, int *slot_out) {
-  static Launcher l;
+static bool run_sync_page(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, const UiFont *font, const UiTheme *theme, const uint8_t *game_rgb) {
+  UiScope was = ui_enter(sync_layer, true);
+  bool r = run_sync_page_gui(win, ren, tex, font, theme, game_rgb);
+  ui_leave(was);
+  return r;
+}
+
+// The main menu's slot times: each game's four state files.
+static void home_scan(Home *h, UiFont *font, const char *cache) {
+  launcher_load(&h->l, font, cache);
+  for (int g = 0; g < UI_GAMES; g++)
+    for (int i = 0; i < HOME_SLOTS; i++) {
+      char dir[1100], path[1300];
+      SDL_PathInfo info;
+      snprintf(dir, sizeof dir, "%s%s", cache, game_ids[g]);
+      slot_path(path, sizeof path, dir, i, "");
+      h->slots[g][i].used = SDL_GetPathInfo(path, &info) && info.type == SDL_PATHTYPE_FILE;
+      h->slots[g][i].time = h->slots[g][i].used ? info.modify_time : 0;
+      slot_path(path, sizeof path, dir, SLOT_AUTO, "");
+      h->resume_time[g] = SDL_GetPathInfo(path, &info) ? info.modify_time : 0;
+    }
+}
+
+static struct { Home *home; SettingsMenu *settings; int button; GuiSettingsTap tap; } home_ui;
+static void home_layer(const GuiFrame *f) {
+  home_ui.button = gui_home(home_ui.home, &gui_t, f, home_ui.settings, &settings, settings.sync_label, &home_ui.tap);
+}
+
+// Runs the main menu until a game is chosen (true) or the player quits (false).
+static bool run_home(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, const char *cache, char *game_out, int *file_out, bool *file_used, int *slot_out) {
+  static Home h;
   static UiFont font;
-  static UiCanvas canvas;
-  static uint8_t rgb[UI_W * UI_H * 3];
-  // No ROM yet is not a special case: the launcher opens as usual and its ADD ROM row asks for one,
+  static uint8_t rgb[UI_W * UI_H * 3];          // under the page; also what the sync wait shows
+  // No ROM yet is not a special case: the menu opens as usual and its Add ROM row asks for one,
   // rather than a file dialog appearing over nothing on first launch.
-  launcher_load(&l, &font, cache);
-  launcher_init(&l, UI_GAME_SEASONS);
+  home_scan(&h, &font, cache);
+  home_init(&h, UI_GAME_SEASONS);
   static SettingsMenu settings_menu;
   settings_menu_open(&settings_menu);
+  home_ui.home = &h;
+  home_ui.settings = &settings_menu;
   if (sync_cfg.code[0] && !sync_busy()) sync_start(&sync_cfg, cache, SYNC_ALL_GAMES);
   for (;;) {
     test_keys();
     SyncResult synced;
     if (sync_poll(&synced)) {
-      if (!sync_finished(win, ren, tex, &font, &l.games[l.game].theme, &synced)) return false;
-      launcher_load(&l, &font, cache);
+      if (!sync_finished(win, ren, tex, &font, &h.l.games[h.l.game].theme, &synced)) return false;
+      home_scan(&h, &font, cache);
     }
     if (sync_cfg.code[0] && sync_should_retry()) sync_start(&sync_cfg, cache, SYNC_ALL_GAMES);
     SDL_Event ev;
@@ -991,16 +1210,16 @@ static bool run_launcher(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, c
       if (ev.type == SDL_EVENT_GAMEPAD_ADDED) SDL_OpenGamepad(ev.gdevice.which);
       UiButton b;
       if (!menu_button(&ev, &b) || (ev.type == SDL_EVENT_KEY_DOWN && ev.key.repeat)) continue;
-      LaunchResult r = launcher_press(&l, b);
+      LaunchResult r = home_press(&h, b);
       if (r.action == LAUNCH_QUIT) return false;
       if (r.action == LAUNCH_SETTINGS) {
         SettingsRow row;
         bool was_full = settings.fullscreen, was_wide = settings.widescreen;
         MenuAction sa = settings_press(&settings_menu, &settings, r.button, &row);
-        if (sa == MENU_PICK && row == SET_CONTROLS && !run_controls(win, ren, tex, &font, &l.games[l.game].theme, NULL)) return false;
+        if (sa == MENU_PICK && row == SET_CONTROLS && !run_controls(win, ren, tex, &font, &h.l.games[h.l.game].theme, NULL)) return false;
         if (sa == MENU_PICK && row == SET_SYNC) {
-          if (!run_sync_page(win, ren, tex, &font, &l.games[l.game].theme, NULL)) return false;
-          launcher_load(&l, &font, cache);
+          if (!run_sync_page(win, ren, tex, &font, &h.l.games[h.l.game].theme, NULL)) return false;
+          home_scan(&h, &font, cache);
         }
         if (settings.fullscreen != was_full) apply_window_settings(win);
         if (settings.widescreen != was_wide) fit_window_to_picture(win);
@@ -1009,38 +1228,40 @@ static bool run_launcher(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, c
       }
       if (r.action == LAUNCH_ADD_ROM) {
         char game[16];
-        if (pick_rom(game, cache)) { UiGame g = l.game; launcher_load(&l, &font, cache); launcher_init(&l, g); }
+        if (pick_rom(game, cache)) { UiGame g = h.l.game; home_scan(&h, &font, cache); home_init(&h, g); }
       }
       if (r.action == LAUNCH_PLAY && r.file == LAUNCH_SLOTS) {
-        static SlotsMenu slots;
-        char dir[1100];
-        snprintf(dir, sizeof dir, "%s%s", cache, game_ids[r.game]);
-        slots_scan(&slots, dir);
-        slots_open(&slots, false);
-        int slot = pick_slot(win, ren, tex, &slots, &font, &l.games[r.game].theme, NULL);
-        if (slot == -2) return false;
-        if (slot < 0) continue;
-        *slot_out = slot;
+        if (r.slot < 0) continue;
+        *slot_out = r.slot;
       }
       if (r.action == LAUNCH_PLAY && sync_cfg.code[0]) {
         SyncResult pre;
-        if (sync_blocking(ren, tex, rgb, game_ids[r.game], &pre) && !sync_finished(win, ren, tex, &font, &l.games[r.game].theme, &pre)) return false;
-        launcher_load(&l, &font, cache);
+        if (sync_blocking(ren, tex, rgb, game_ids[r.game], &pre) && !sync_finished(win, ren, tex, &font, &h.l.games[r.game].theme, &pre)) return false;
+        home_scan(&h, &font, cache);
       }
       if (r.action == LAUNCH_PLAY) {
         strcpy(game_out, game_ids[r.game]);
         *file_out = r.file;
-        *file_used = r.file >= 0 && l.games[r.game].files[r.file].valid;
+        *file_used = r.file >= 0 && h.l.games[r.game].files[r.file].valid;
         return true;
       }
     }
-    overlay_style(&font, &l.games[l.game].theme);
-    launcher_draw(&l, &font, &canvas);
-    if (l.settings_tab) settings_draw_list(&settings_menu, &settings, &font, &l.games[l.game].theme, LAUNCHER_BODY_Y + 2, 5, l.settings_list, &canvas);
-    ui_to_rgb(&canvas, rgb);
+    overlay_style(&font, &h.l.games[h.l.game].theme);
+    gui_theme(&gui_t, h.l.game == UI_GAME_AGES);
+    home_ui.button = GUI_NONE;
+    home_ui.tap.row = home_ui.tap.volume = GUI_NONE;
     present(ren, tex, rgb);
+    if (home_ui.button >= 0) push_button(home_ui.button);
+    else push_settings_tap(&home_ui.tap);
     SDL_Delay(16);
   }
+}
+
+static bool run_launcher(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, const char *cache, char *game_out, int *file_out, bool *file_used, int *slot_out) {
+  UiScope was = ui_enter(home_layer, true);
+  bool ok = run_home(win, ren, tex, cache, game_out, file_out, file_used, slot_out);
+  ui_leave(was);
+  return ok;
 }
 
 // Boots straight into a save file: presses Start until the file select screen is up, moves the
@@ -1165,6 +1386,9 @@ static void write_crash_log(const GB *gb, const char *dir, const char *game, boo
   fprintf(stderr, "wrote %s\n", path);
 }
 
+static struct { PauseMenu *menu; int tap; } pause_ui;
+static void pause_layer(const GuiFrame *f) { pause_ui.tap = gui_pause(pause_ui.menu, &gui_t, f); }
+
 static GameEnd run_game(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, const GameStart *gs) {
   char dir[1100], path[1300];
   snprintf(dir, sizeof dir, "%s%s", gs->cache, gs->game);
@@ -1202,9 +1426,10 @@ static GameEnd run_game(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, co
 
   static uint8_t rgb[FB_W * FB_H * 3], paused_rgb[FB_W * FB_H * 3];
   static int16_t samples[APU_RING * 2];
-  static UiCanvas canvas;
   static SlotsMenu slots;
   PauseMenu pause;
+  int undo_slot = -1;
+  gui_theme(&gui_t, ages);
   gb->input_at = live_input;
   live_joy = slot_joy[0] = slot_joy[1] = 0;
   item_buttons_load(dir);
@@ -1216,6 +1441,7 @@ static GameEnd run_game(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, co
   if (gs->start_file == LAUNCH_RESUME || gs->start_file == LAUNCH_SLOTS) {
     int slot = gs->start_file == LAUNCH_RESUME ? SLOT_AUTO : gs->start_slot;
     if (!slot_load(gb, dir, slot)) fprintf(stderr, "could not load the state in slot %d\n", slot + 1);
+    else if (slot != SLOT_AUTO) fprintf(stderr, "started from slot %d\n", slot + 1);
   }
   framebuffer_to_rgb(gb->sample ? gb->sample->framebuffer : gb->framebuffer, rgb);
   session = (Session){gb, dir, sav, paused_rgb, &mode, &parked, false, &frames, gs->game};
@@ -1225,8 +1451,8 @@ static GameEnd run_game(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, co
     test_keys();
     SyncResult synced;
     if (sync_poll(&synced)) {
-      if (synced.ok && !synced.error[0]) show_status("SYNCED");
-      else if (sync_failures() == 1) show_status("SYNC FAILED");
+      if (synced.ok && !synced.error[0]) show_status("Synced");
+      else if (sync_failures() == 1) show_status("Sync failed");
     }
     // the running game's files wait for the game to end; the rest go as soon as the server answers
     if (sync_cfg.code[0] && sync_should_retry()) sync_start(&sync_cfg, app_cache, strcmp(gs->game, "ages") ? "ages" : "seasons");
@@ -1254,11 +1480,15 @@ static GameEnd run_game(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, co
           if (slot == -2) { end = GAME_QUIT; running = false; if (parked) slot_save(gb, dir, SLOT_AUTO, paused_rgb); }
           else if (slot >= 0 && item == PAUSE_SAVE) {
             bool ok = slot_save(gb, dir, slot, paused_rgb);
-            show_status(ok ? "STATE SAVED" : "COULD NOT SAVE STATE");
+            char msg[40];
+            snprintf(msg, sizeof msg, "Saved to slot %d", slot + 1);
+            if (ok) { undo_slot = slot; show_undoable(msg); } else show_status("Couldn't save the state");
             pause.can_load = pause.can_load || ok;
           } else if (slot >= 0) {
             bool ok = slot_load(gb, dir, slot);
-            show_status(ok ? "STATE LOADED" : "COULD NOT LOAD STATE");
+            char msg[40];
+            snprintf(msg, sizeof msg, "Loaded slot %d", slot + 1);
+            show_status(ok ? msg : "Couldn't load the state");
             if (ok) { mode = MODE_PLAY; if (audio) SDL_ResumeAudioStreamDevice(audio); }
           }
         } else if (a == MENU_PICK && item == PAUSE_SETTINGS) {
@@ -1281,12 +1511,12 @@ static GameEnd run_game(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, co
         else if ((ev.key.mod & SDL_KMOD_GUI) && ev.key.scancode == SDL_SCANCODE_R) {
           bool ok = slot_load(gb, dir, 0);
           if (ok) { live_joy = 0; save_from = NO_SAVE; }
-          show_status(ok ? "STATE 1 LOADED" : "NO STATE IN SLOT 1");
+          show_status(ok ? "Loaded slot 1" : "Slot 1 is empty");
         }
         else if (ev.key.scancode == SDL_SCANCODE_M) {
           muted = !muted;
           if (audio) SDL_SetAudioStreamGain(audio, volume_gain(muted));
-          show_status(muted ? "SOUND OFF" : "SOUND ON");
+          show_status(muted ? "Sound off" : "Sound on");
         }
         else press |= action_bit(bindings_key_action(&settings.bindings, (int)ev.key.scancode));
         break;
@@ -1331,9 +1561,21 @@ static GameEnd run_game(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, co
     }
     if (!running) break;
 
+    if (undo_tapped) {
+      undo_tapped = false;
+      char msg[40];
+      snprintf(msg, sizeof msg, "Slot %d is back as it was", undo_slot + 1);
+      show_status(undo_slot >= 0 && slot_undo(dir, undo_slot) ? msg : "Nothing to undo");
+      undo_slot = -1;
+    }
+
     if (mode == MODE_PAUSED) {
-      pause_draw(&pause, &font, &theme, paused_rgb, &canvas);
-      present(ren, tex, &canvas.px[0][0][0]);
+      pause_ui.menu = &pause;
+      pause_ui.tap = GUI_NONE;
+      UiScope was = ui_enter(pause_layer, false);
+      present(ren, tex, paused_rgb);
+      ui_leave(was);
+      if (pause_ui.tap >= 0) push_button(UI_ACCEPT);
       SDL_Delay(16);
       continue;
     }
@@ -1370,10 +1612,10 @@ static GameEnd run_game(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, co
     if (save_from != NO_SAVE && threads_parked(gb)) {
       framebuffer_to_rgb(gb->sample->framebuffer, rgb);
       bool ok = slot_save(gb, dir, 0, rgb);
-      show_status(ok ? "STATE 1 SAVED" : "COULD NOT SAVE STATE");
+      if (ok) { undo_slot = 0; show_undoable("Saved to slot 1"); } else show_status("Couldn't save the state");
       save_from = NO_SAVE;
     } else if (save_from != NO_SAVE && frames - save_from > PARK_TIMEOUT) {
-      show_status("CAN'T SAVE HERE");
+      show_status("Can't save here");
       save_from = NO_SAVE;
     }
     uint32_t n = apu_read_samples(&gb->apu, samples, APU_RING);
@@ -1456,6 +1698,9 @@ int main(int argc, char **argv) {
   char window_size[1100];
   snprintf(window_size, sizeof window_size, "%swindow.txt", cache);
   if (!oracles_open_window("Oracles", window_size, &win, &ren, &tex)) { fprintf(stderr, "%s\n", SDL_GetError()); return 2; }
+  if (!gui_init(ren)) { fprintf(stderr, "could not load the menu font\n"); return 2; }
+  gui_button_event = SDL_RegisterEvents(1);
+  gui_theme(&gui_t, false);
   snprintf(settings_path, sizeof settings_path, "%ssettings.ini", cache);
   snprintf(app_cache, sizeof app_cache, "%s", cache);
   sync_config_load(&sync_cfg, cache);

@@ -21,6 +21,7 @@ void pause_draw(const PauseMenu *m, const UiFont *font, const UiTheme *t, const 
 typedef struct {
   bool used;
   char when[16];                // e.g. "SEP26 14:02"
+  int64_t time;                 // SDL_Time the state was written; 0 when unknown
   uint8_t thumb[UI_H][UI_W][3];
 } UiSlot;
 
