@@ -40,6 +40,11 @@ android {
     }
 
     buildTypes {
+        // a debug build installs beside the released app (its own package, saves and name), so
+        // testing one never means uninstalling the other
+        debug {
+            applicationIdSuffix = ".test"
+        }
         release {
             isMinifyEnabled = false
             if (keystore != null) signingConfig = signingConfigs.getByName("release")

@@ -223,7 +223,8 @@ cd android
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-The build runs this repo's CMake with SDL 3.4.16 from source (its Java glue is vendored in
+A debug APK is `org.oracles.test`, named "Oracles test": it installs beside a released copy, with
+its own saves. The build runs this repo's CMake with SDL 3.4.16 from source (its Java glue is vendored in
 `android/app/src/main/java/org/libsdl/app`, same release) and optimises the engine in debug APKs too.
 Push a ROM somewhere the picker can reach it, e.g. `adb push ROM /sdcard/Download/`.
 `adb logcat -s oracles` shows the engine's messages.
