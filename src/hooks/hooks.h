@@ -11,6 +11,10 @@ typedef struct {
   HookFn fn;
   uint64_t calls;
   int flags;
+  // entries from other ported C (CALL_C/TAIL reach hook_run, not the dispatcher), counted only
+  // under HOOKCENSUS: the lookup is a table walk, and these must stay out of `calls` because
+  // verify mode samples by it. Last, so the positional HOOK() initialiser needn't name it.
+  uint64_t ccalls;
 } Hook;
 
 enum { HOOK_NOVERIFY = 1, HOOK_LOCAL = 2 };

@@ -288,8 +288,18 @@ static void shadow(GB *gb, Hook *h) {
   memcpy(gb, after, sizeof *gb);
 }
 
+// A routine a ported caller enters directly (CALL_C, TAIL) never passes the dispatcher, so counting
+// it costs a table lookup on a hot path -- hence HOOKCENSUS, off by default. Shadow mode looks the
+// routine up regardless and so counts these anyway.
+static bool hook_census(void) {
+  static int on = -1;
+  if (on < 0) on = getenv("HOOKCENSUS") != NULL;
+  return on != 0;
+}
+
 void hook_run(GB *gb, HookFn fn, uint16_t target) {
   if (hook_shadow) { Hook *h = lookup(gb, target); if (h && h->fn == fn) { h->calls++; gb->pc = target; shadow(gb, h); return; } }
+  if (hook_census()) { Hook *h = lookup(gb, target); if (h && h->fn == fn) h->ccalls++; }
   fn(gb);
 }
 
@@ -335,15 +345,28 @@ bool hook_dispatch(GB *gb) {
 
 void hooks_report(void) {
   uint64_t total = 0;
-  for (size_t i = 0; i < NHOOKS; i++) total += hooks[i].calls;
+  for (size_t i = 0; i < NHOOKS; i++) total += hooks[i].calls + hooks[i].ccalls;
   fprintf(stderr, "hooks: %zu routines, %llu calls, %llu verify failures\n", NHOOKS, (unsigned long long)total, (unsigned long long)hook_verify_failures);
   if (hook_shadow) fprintf(stderr, "shadow: %llu calls compared, %llu interrupted (not compared)\n", (unsigned long long)hook_shadow_checked, (unsigned long long)hook_shadow_skipped);
   fprintf(stderr, "vblank dispatch: mid-logic %llu, from halt %llu, interpreter %llu (of which halted %llu)\n", (unsigned long long)dbg_vbl_midlogic, (unsigned long long)dbg_vbl_halt, (unsigned long long)dbg_vbl_step, (unsigned long long)dbg_vbl_step_halted);
+  // Without a full census the counts see only the dispatcher, so a routine its ported callers enter
+  // directly reads as zero while running every frame: say "never dispatched", never "never called",
+  // so that nobody reads the weaker fact as the stronger one.
+  bool census = hook_census() || hook_shadow;
+  bool titled = false;
   for (size_t i = 0; i < NHOOKS; i++) {
     size_t n = strlen(hooks[i].name);
-    if (n > 5 && strcmp(hooks[i].name + n - 5, "_hook") == 0 && hooks[i].calls == 0) fprintf(stderr, "  never called: %s\n", hooks[i].name);
+    if (n <= 5 || strcmp(hooks[i].name + n - 5, "_hook") != 0) continue;
+    if (hooks[i].calls || hooks[i].ccalls) continue;
+    if (!titled) {
+      titled = true;
+      fprintf(stderr, census ? "  routines that never ran (calls from ported C counted):\n"
+                             : "  routines the dispatcher never entered -- calls from ported C are NOT counted,\n"
+                               "  so these may still have run; HOOKCENSUS=1 counts those too:\n");
+    }
+    fprintf(stderr, census ? "  never called: %s\n" : "  never dispatched: %s\n", hooks[i].name);
   }
-  for (size_t i = 0; i < NHOOKS; i++) fprintf(stderr, "  %02x:%04x %-28s %llu\n", hooks[i].bank, hooks[i].addr, hooks[i].name, (unsigned long long)hooks[i].calls);
+  for (size_t i = 0; i < NHOOKS; i++) fprintf(stderr, "  %02x:%04x %-28s %llu\n", hooks[i].bank, hooks[i].addr, hooks[i].name, (unsigned long long)(hooks[i].calls + hooks[i].ccalls));
 }
 
 void asm_call(GB *gb, uint16_t target, uint16_t ret_addr) {

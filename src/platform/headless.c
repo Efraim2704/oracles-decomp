@@ -111,8 +111,10 @@ static void on_frame(GB *gb, const GBSample *sm, void *ctx) {
     for (int i = 0; i < 128; i++) printf("%02x", sm->io[i]);
     printf("\n");
   }
-  if (c->dump) {
-    uint64_t movie_frame = frame + c->input_offset;
+  uint64_t movie_frame = frame + c->input_offset;
+  // WRAMDUMP_AT stands on its own: it used to sit inside the --dump block and so wrote nothing
+  // unless --dump was passed too, with no hint why.
+  {
     static uint64_t wd_a = 0, wd_b = 0; static bool wd_init = false;
     if (!wd_init) { wd_init = true; if (getenv("WRAMDUMP_AT")) { if (sscanf(getenv("WRAMDUMP_AT"), "%llu-%llu", (unsigned long long *)&wd_a, (unsigned long long *)&wd_b) < 2) wd_b = wd_a; } }
     if (getenv("WRAMDUMP_AT") && movie_frame >= wd_a && movie_frame <= wd_b) {
@@ -133,6 +135,8 @@ static void on_frame(GB *gb, const GBSample *sm, void *ctx) {
       fprintf(wf, " ie %02x rom_bank %u ram_bank %u\n", sm->ie, (unsigned)sm->rom_bank, (unsigned)sm->ram_bank);
       fclose(wf);
     }
+  }
+  if (c->dump) {
     if ((movie_frame + 1) % 60 == 0) {
       uint32_t h = 0xcbf29ce4u;
       for (int i = 0x300; i < 0x1000; i++) { h ^= sm->wram[0][i]; h *= 16777619u; }

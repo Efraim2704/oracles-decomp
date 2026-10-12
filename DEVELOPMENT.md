@@ -157,6 +157,18 @@ compares registers, memory and cycles. `--ref-check` compares the machine state 
 the hashes the pure interpreter (`--no-hooks`) recorded. `oracles-native-run` replays movies on the
 native build.
 
+Both runners end with a hook census on stderr: how many routines are hooked, how many entries they
+saw, and which saw none. That counter normally observes only the dispatcher, and a routine its ported
+callers enter directly (`CALL_C`, `TAIL`) never reaches the dispatcher -- so the list says "never
+dispatched", which is not evidence the routine never ran. `HOOKCENSUS=1` counts entries from ported C
+too, at a table lookup per call, and the list then names what really never ran; `--verify-shadow`
+counts them anyway. On a 4,000-frame Ages run the census goes from 162,317 entries to 728,900, and
+580 routines leave the never-ran list.
+
+`WRAMDUMP_AT=<first>-<last> WRAMDUMP_FILE=<path>` appends WRAM, HRAM, VRAM, OAM, IO and the palettes
+as hex for those movie frames. If what it writes looks dead, check the harness is where you think it
+is: `wRoomLayout` at `$cf00` cannot be zero in a loaded room.
+
 `test_wide` checks the widescreen renderer against the game through both TAS movies: the middle 160
 columns drawn its way equal the PPU's picture exactly, and what a side strip showed of the next room
 matches that room's own picture once the movie reaches it (Seasons 96.8%, Ages 98.9% of the pixels;
