@@ -5,6 +5,28 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
+// The monotonic clock the budget below runs on. clock_gettime is not usable on Windows: mingw-w64
+// keeps it in winpthreads, which only a posix-thread-model toolchain links implicitly -- Homebrew's
+// mingw does, Ubuntu's (win32 model, what the release workflow installs) does not, so the release
+// build's Windows link failed on `undefined reference to clock_gettime` while the same cross-build
+// succeeded locally. QueryPerformanceCounter needs nothing but kernel32, is monotonic, and is what
+// winpthreads would have called anyway. Returns 0 on success, like clock_gettime, so both callers
+// keep their fail-closed handling of a clock that did not answer.
+static int mono_now(struct timespec *ts) {
+#ifdef _WIN32
+  LARGE_INTEGER freq, now;
+  if (!QueryPerformanceFrequency(&freq) || !QueryPerformanceCounter(&now) || freq.QuadPart <= 0) return -1;
+  ts->tv_sec = (time_t)(now.QuadPart / freq.QuadPart);
+  ts->tv_nsec = (long)(((now.QuadPart % freq.QuadPart) * 1000000000LL) / freq.QuadPart);
+  return 0;
+#else
+  return clock_gettime(CLOCK_MONOTONIC, ts);
+#endif
+}
 
 // ModAlloc and MOD_MEM_CAP are declared in sandbox.h: mods.c constructs a ModAlloc itself (it
 // owns that allocation, see mods.c's run_main_lua) before handing it to lua_newstate as `ud`,
@@ -118,7 +140,7 @@ void *mod_lua_alloc(void *ud, void *ptr, size_t osize, size_t nsize) {
 // instead of trusting a clean LUA_OK to mean "nothing went wrong".
 typedef struct {
   long long remaining;        // instruction-count budget left; see MOD_LOAD_INSTRUCTION_BUDGET
-  struct timespec deadline;   // CLOCK_MONOTONIC point past which this run is cut off regardless
+  struct timespec deadline;   // mono_now() point past which this run is cut off regardless
                                // of remaining -- see MOD_LOAD_WALLCLOCK_DEADLINE_SECONDS
   bool exhausted;             // true once EITHER bound above has been hit
   bool deadline_exceeded;     // true iff it was specifically the deadline, not the instruction
@@ -173,7 +195,8 @@ typedef struct {
 //
 // Lowering this constant is what actually closes that gap, and it is cheap to lower: the hook
 // decrements a counter and compares two integers regardless of the threshold, so the per-firing
-// cost (one clock_gettime -- a vDSO call, tens of nanoseconds -- plus the arithmetic above) is
+// cost (one mono_now -- a vDSO call on Linux, a counter read on Windows, tens of nanoseconds --
+// plus the arithmetic above) is
 // the same at any threshold; only how *often* that cost is paid changes, and legitimate code pays
 // it rarely to never, since an ordinary handler finishes before the hook ever fires once. Measured
 // directly (9-trial medians, this dev machine, against the same adversarial pcall/error shape,
@@ -260,9 +283,9 @@ static void mod_instruction_limit_hook(lua_State *L, lua_Debug *ar) {
     // would make deadline_passed effectively random, silently turning "the deadline mechanism"
     // into "the deadline mechanism, maybe" exactly when it can least afford to be unreliable.
     // Treating a clock failure as "the deadline has already passed" costs a healthy mod nothing
-    // (clock_gettime does not fail in practice) and costs a hostile one nothing it wasn't
+    // (the monotonic clock does not fail in practice) and costs a hostile one nothing it wasn't
     // already going to lose.
-    bool deadline_passed = clock_gettime(CLOCK_MONOTONIC, &now) != 0 ||
+    bool deadline_passed = mono_now(&now) != 0 ||
         now.tv_sec > b->deadline.tv_sec ||
         (now.tv_sec == b->deadline.tv_sec && now.tv_nsec >= b->deadline.tv_nsec);
     if (b->remaining <= 0 || deadline_passed) {
@@ -342,11 +365,12 @@ int mod_resume_budgeted(lua_State *thread, int nargs, long long total,
                                 double deadline_seconds, bool *exhausted, bool *deadline_hit) {
   ModBudget budget = { .remaining = total, .exhausted = false, .deadline_exceeded = false };
   // Fail closed here too: if the clock call fails, leave budget.deadline at its zero-initialised
-  // value rather than adding an offset to uninitialised garbage -- CLOCK_MONOTONIC's epoch is
-  // unspecified but always non-negative and only ever increases from some point at or before
-  // process start, so a deadline of "0" reads as already-elapsed the moment the hook first
-  // checks it, same fail-closed choice as above.
-  if (clock_gettime(CLOCK_MONOTONIC, &budget.deadline) == 0) {
+  // value rather than adding an offset to uninitialised garbage -- the epoch is unspecified on
+  // both clocks behind mono_now (POSIX leaves it open, QueryPerformanceCounter counts from boot)
+  // but always non-negative and only ever increases from some point at or before process start,
+  // so a deadline of "0" reads as already-elapsed the moment the hook first checks it, same
+  // fail-closed choice as above.
+  if (mono_now(&budget.deadline) == 0) {
     long whole_secs = (long)deadline_seconds;
     long extra_nsecs = (long)((deadline_seconds - (double)whole_secs) * 1e9);
     budget.deadline.tv_sec += whole_secs;
