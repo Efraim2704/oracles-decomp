@@ -38,13 +38,15 @@ with tempfile.TemporaryDirectory() as cache:
     assert os.path.exists(os.path.join(d, 'state_1')), f'touch did not save slot 1; stderr: {r.stderr}'
     # taps only: pause with the overlay, then rows: Save state, slot 2, Quit to menu; on the main
     # menu, slot 2's row starts the game from that state; quit with the keyboard from the pause menu
-    keys = ('200:#PAUSE,230:^Pause.1,260:^Slot.1,300:^Pause.4,340:^Home.2,'
+    # B once the game is running: the main menu was the last menu drawn, and its rows must not go on
+    # claiming fingers meant for the controls under where they were
+    keys = ('200:#PAUSE,230:^Pause.1,260:^Slot.1,300:^Pause.4,340:^Home.2,390:#B,'
             '420:Escape,440:Up,460:X,500:Z')
     r = subprocess.run([app, '--game', 'seasons', '--cache', cache], env=dict(env, ORACLES_TOUCH='1', ORACLES_TEST_KEYS=keys, ORACLES_TEST_HAPTICS='1'), capture_output=True, text=True, timeout=120)
     assert r.returncode == 0, r.stderr
     assert 'test tap: no' not in r.stderr, r.stderr
     ticks = r.stderr.count('haptic\n')
-    assert ticks == 5, f'{ticks} haptic ticks for the Pause control and four taps; stderr: {r.stderr}' 
+    assert ticks == 6, f'{ticks} haptic ticks for Pause, four taps and B in game; stderr: {r.stderr}' 
     assert os.path.exists(os.path.join(d, 'state_2')), f'tapping did not save slot 2; stderr: {r.stderr}'
     assert 'started from slot 2' in r.stderr, f'the main menu did not start slot 2; stderr: {r.stderr}'
     # Undo: saving into empty slot 3 and undoing empties it again; saving over slot 2 and undoing

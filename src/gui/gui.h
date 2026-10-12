@@ -46,6 +46,9 @@ float gui_display_scale(void);
 bool gui_tapped(Clay_ElementId id);
 // Some element was tapped since the last call (for the tap's haptic tick).
 bool gui_take_tap(void);
+// A frame with no menu on screen: nothing is offered for tapping. Without it, the last menu drawn
+// (the main menu's rows fill the screen) would go on claiming fingers meant for the controls.
+void gui_none(void);
 // The last frame drawn offered this element for tapping (tests tap only what is on screen).
 bool gui_tappable(Clay_ElementId id);
 // The mouse moved onto this element this frame.

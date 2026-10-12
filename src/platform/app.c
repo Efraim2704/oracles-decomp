@@ -587,7 +587,7 @@ static void present_frame(SDL_Renderer *ren, const uint8_t *rgb, int pic_w) {
     else if (toast_on && gui_toast(toast, toast_undo, &gui_t, &f)) undo_tapped = true;
     gui_end();
     if (gui_take_tap() && settings.haptics) haptic_tick();
-  }
+  } else gui_none();
   shot_if_due(ren);
   SDL_RenderPresent(ren);
 }

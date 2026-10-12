@@ -197,6 +197,8 @@ bool gui_init(SDL_Renderer *r) {
 static uint32_t tappable[2][TAPPABLE];
 static int n_tappable[2];
 
+void gui_none(void) { n_tappable[0] = n_tappable[1] = 0; }
+
 bool gui_tappable(Clay_ElementId id) {
   for (int i = 0; i < n_tappable[1]; i++) if (tappable[1][i] == id.id) return true;
   return false;
