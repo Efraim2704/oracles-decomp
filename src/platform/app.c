@@ -40,6 +40,7 @@
 #define ON_PHONE false
 #endif
 #include "wide/wide.h"
+#include "mods/mods.h"
 #include <stdio.h>
 #include <time.h>
 #include <stdlib.h>
@@ -403,6 +404,7 @@ static bool touch_on, touch_mouse;
 static uint32_t touch_held, touch_pressed, touch_released;
 static struct { SDL_FingerID id; uint32_t held; bool down; } fingers[FINGERS];
 static UiTheme overlay_theme;            // the game's title-screen colours, behind widescreen's sides
+static UiFont mod_font;                  // the ROM's dialogue font, for mods' overlay text
 
 static void overlay_style(const UiTheme *theme) { overlay_theme = *theme; }
 
@@ -592,15 +594,52 @@ static void present_frame(SDL_Renderer *ren, const uint8_t *rgb, int pic_w) {
 
 static void present(SDL_Renderer *ren, SDL_Texture *tex, const uint8_t *rgb);
 
+// The current room, bank 0 ($c000..$cfff) at the same low-12-bit offset test_wide.c's
+// neighbour_cb and test_room.c's record_cb already read (`w[seasons ? 0xc4c : 0xc30]` there, for
+// `w = sample->wram[0]`) -- not a real-looking 4-digit $Cxxx address, but the low 12 bits of one
+// ($C000 + 0xc4c == $CC4C), which is what indexing a bank-0 array that starts at $C000 wants.
+// Kept identical to that convention on purpose: an off-by-a-bank slip here would make
+// mods_frame's on_room_change fire at the wrong moments. app.c is still not linked into test_mods
+// (the engine stays out of oraclesmods by design) and test_wide/test_room are still multi-hour ROM
+// replays that never call through app.c at all, so neither pins this particular line. The
+// `mods_room` ctest (tests/test_mods_room.py) closes that gap through the real frame path instead:
+// it drives oracles-native through the start of the known-good Seasons movie with a mod watching
+// on_room_change, and asserts the handler fires with a room other than the pre-game default.
+// Confirmed by mutation: swapping the ternary's two branches is caught by that test (it never sees
+// a second, non-zero room) while leaving ctest's fast suite and tests/test_app_menus.py unaffected.
+static int rd_room(const GBSample *sample, bool seasons) {
+  return sample->wram[0][seasons ? 0xc4c : 0xc30];
+}
+
 // A game frame: in widescreen the room around the camera fills the sides (the message stays centred).
 static void present_game(SDL_Renderer *ren, SDL_Texture *tex, const GBSample *sample, const uint8_t *rgb, bool seasons, const uint8_t *rom, size_t rom_size) {
-  if (!settings.widescreen) { present(ren, tex, rgb); return; }
+  // Mods draw before the filters, so an overlay scales with the picture and takes the chosen
+  // filter rather than sitting on top of it looking sharp. Run once here, above the
+  // widescreen/narrow split below, rather than only after wide_render: the non-widescreen branch
+  // returns through present() before ever reaching wide_render, so a mod would never run for the
+  // (common) non-widescreen case if this were placed after it instead.
+  ModsFrame mf = {sample->wram[0], sample->hram, seasons, settings.widescreen ? WIDE_W : FB_W,
+                  rd_room(sample, seasons), rom, rom_size, &mod_font};
+  mods_frame(&mf);
+  const ModOverlay *ov = mods_overlay();
+
+  if (!settings.widescreen) {
+    uint8_t *pic = (uint8_t *)rgb;
+    for (int y = 0; y < FB_H; y++)
+      for (int x = 0; x < ov->width; x++)
+        if (overlay_cover_at(ov, x, y)) memcpy(pic + ((size_t)y * ov->width + x) * 3, overlay_rgb_at(ov, x, y), 3);
+    present(ren, tex, rgb);
+    return;
+  }
   static uint8_t wide[WIDE_W * FB_H * 3];
   // The X and Y items go in the space widescreen adds beside the status bar; the game has nowhere to
   // put them, so without the wider picture there is no room to show them in.
   WideOptions o = {seasons, settings.dim_sides, {overlay_theme.bg.r, overlay_theme.bg.g, overlay_theme.bg.b}, rom, rom_size,
                    settings.four_slots, {features.slot_item[0], features.slot_item[1]}};
   wide_render(sample, &o, wide);
+  for (int y = 0; y < FB_H; y++)
+    for (int x = 0; x < ov->width; x++)
+      if (overlay_cover_at(ov, x, y)) memcpy(wide + ((size_t)y * ov->width + x) * 3, overlay_rgb_at(ov, x, y), 3);
   present_frame(ren, wide, WIDE_W);
 }
 
@@ -1387,6 +1426,7 @@ static GameEnd run_game(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, co
   UiTheme theme;
   ui_theme_load(&theme, rom, rom_size, ages);
   overlay_style(&theme);
+  ui_font_load(&mod_font, rom, rom_size);
   GB *gb = calloc(1, sizeof *gb);
   gb_init(gb);
   if (!gb_load_rom(gb, rom, rom_size)) { fprintf(stderr, "cache in %s is not a ROM image\n", dir); return GAME_FAILED; }
@@ -1415,6 +1455,22 @@ static GameEnd run_game(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, co
   gb->input_at = live_input;
   live_joy = slot_joy[0] = slot_joy[1] = 0;
   item_buttons_load(dir);
+  // Re-scans for this specific game: the launcher's own, game-agnostic mods_init (see main())
+  // already populated settings rows before the player picked anything, but only mods_init here
+  // knows the real `seasons`, which is what a mod's on_frame/on_room_change handlers and its own
+  // oracles.game()/oracles.rd() calls need to be correct for -- so every mod is reloaded now
+  // under the right game, discarding whatever the launcher-time scan loaded. mods_init closes any
+  // previously-loaded mods itself before rescanning, so this is safe however we got here.
+  char mods_dir[1200];
+  snprintf(mods_dir, sizeof mods_dir, "%smods", app_cache);
+  mods_init(mods_dir, !ages);
+  // Tracks only true->false transitions below, so the player sees a status line the moment a mod
+  // fails -- whether that's immediately (a bad main.lua) or frames into play (a runaway handler)
+  // -- without repeating it every subsequent frame the same mod stays disabled.
+  int mod_count = mods_count();
+  bool mod_was_enabled[MODS_MAX];
+  for (int i = 0; i < mod_count; i++) mod_was_enabled[i] = mods_enabled(i);
+  for (int i = 0; i < mod_count; i++) if (!mod_was_enabled[i]) { show_status("Mod disabled"); break; }
   uint64_t frames = 0, save_from = NO_SAVE, park_from = 0;
   bool muted = false, parked = false, fast = false;
   GameMode mode = MODE_PLAY;
@@ -1604,6 +1660,11 @@ static GameEnd run_game(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, co
     if (audio && mode == MODE_PLAY) SDL_PutAudioStreamData(audio, samples, n * 4);
     framebuffer_to_rgb(gb->sample->framebuffer, rgb);
     present_game(ren, tex, gb->sample, rgb, !ages, rom, rom_size);
+    for (int i = 0; i < mod_count; i++) {
+      bool now = mods_enabled(i);
+      if (mod_was_enabled[i] && !now) show_status("Mod disabled");
+      mod_was_enabled[i] = now;
+    }
     if (frames % 600 == 0) save_sram(gb, sav);
     if (gs->max_frames && frames >= gs->max_frames) running = false;
   }
@@ -1617,6 +1678,11 @@ static GameEnd run_game(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, co
   playing = NULL;
   if (audio) SDL_DestroyAudioStream(audio);
   SDL_SetWindowTitle(win, "Oracles");
+  // Closes every mod's Lua state now rather than leaving them alive (with handlers registered
+  // against this game) for as long as the launcher happens to sit idle, or for a different game
+  // entirely if the player picks one next. main()'s loop re-scans game-agnostically before the
+  // launcher is shown again, and the next run_game re-inits for whichever game is actually picked.
+  mods_shutdown();
   free(gb); free(rom); free(tab);
   return end;
 }
@@ -1706,9 +1772,23 @@ int main(int argc, char **argv) {
       gs.open_file = probe.games[strcmp(game, "ages") == 0 ? UI_GAME_AGES : UI_GAME_SEASONS].files[file_arg].valid;
     }
   }
+  // The spec wants settings rows a mod asked for to exist "from the launcher", before any game
+  // has been chosen, so a player can configure a mod before playing -- but mods_init takes a
+  // `seasons` bool, and the launcher does not commit to a game until LAUNCH_PLAY. Resolved by
+  // scanning game-agnostically here, defaulting to Seasons (true): a mod declared for either game,
+  // or for Seasons only, gets its rows now; an Ages-only mod's rows do not appear until Ages is
+  // actually played, since nothing short of running the scan twice (once per game) could do
+  // better, and mods_setting_* is already documented session-only (Task 9) in the same spirit.
+  // run_game() below re-inits with the real `seasons` the moment a game actually starts, which is
+  // also what makes a mod's on_frame/oracles.rd see the correct game rather than this default.
+  char mods_dir[1200];
+  snprintf(mods_dir, sizeof mods_dir, "%smods", cache);
   int status = 0;
   for (;;) {
-    if (!direct && !run_launcher(win, ren, tex, cache, game, &gs.start_file, &gs.open_file, &gs.start_slot)) break;
+    if (!direct) {
+      mods_init(mods_dir, true);
+      if (!run_launcher(win, ren, tex, cache, game, &gs.start_file, &gs.open_file, &gs.start_slot)) break;
+    }
     direct = false;
     GameEnd end = run_game(win, ren, tex, &gs);
     if (sync_cfg.code[0] && end != GAME_FAILED && !max_frames) {
@@ -1723,6 +1803,7 @@ int main(int argc, char **argv) {
     gs.open_file = false;
   }
   if (!sync_wait(20000)) fprintf(stderr, "sync still running at exit\n");
+  mods_shutdown();
   oracles_close_window(win, window_size);
   SDL_Quit();
   return status;

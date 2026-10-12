@@ -12,6 +12,16 @@
 
 static uint8_t rom[0x80000];
 
+static void font_loads_from_the_rom_offset(void) {
+  UiFont font;
+  ASSERT(!ui_font_load(&font, rom, 0x1000));
+  size_t off = 0x1c * 0x4000 + 0x0720;
+  memset(rom + off, 0xff, 128 * 16);                   // every glyph blank: set bits are paper
+  rom[off + 'A' * 16 + 3] = 0x7e;
+  ASSERT(ui_font_load(&font, rom, sizeof rom));
+  ASSERT_EQ(font.glyph['A'][3], 0x7e);
+}
+
 static void make_file(uint8_t *file, bool ages, const char *name, int max_health, uint8_t essences) {
   memset(file, 0, 0x550);
   memcpy(file + 2, ages ? "Z21216-0" : "Z11216-0", 8);
@@ -594,6 +604,7 @@ static void upscale_factor_is_capped_at_the_window_scale(void) {
 }
 
 int main(void) {
+  RUN(font_loads_from_the_rom_offset);
   RUN(save_files_are_read_and_verified);
   RUN(home_leads_with_resume_and_slots);
   RUN(home_tabs_reach_settings_and_add_rom);

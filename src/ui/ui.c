@@ -1,4 +1,5 @@
 #include "ui/ui.h"
+#include <string.h>
 
 // title-screen palettes: Seasons gold/red/brown on cream, Ages cyan/purple/orange on ice
 static const UiTheme seasons_theme = {{24, 12, 0}, {90, 65, 0}, {213, 180, 0}, {255, 255, 238}, {197, 115, 0}, {213, 180, 0}, {164, 0, 0}};
@@ -32,5 +33,17 @@ bool ui_theme_load(UiTheme *t, const uint8_t *rom, size_t rom_size, bool ages) {
     t->accent = gbc_color(pal + 0 * 8 + 3 * 2);          // bg0 colour 3: dark red
   }
   t->bg = darken(t->panel, 1, 4);
+  return true;
+}
+
+#define FONT_BANK 0x1c
+#define FONT_ADDR 0x4720
+
+bool ui_font_load(UiFont *font, const uint8_t *rom, size_t rom_size) {
+  size_t off = (size_t)FONT_BANK * 0x4000 + (FONT_ADDR - 0x4000);
+  font->loaded = false;
+  if (!rom || rom_size < off + sizeof font->glyph) return false;
+  memcpy(font->glyph, rom + off, sizeof font->glyph);
+  font->loaded = true;
   return true;
 }
