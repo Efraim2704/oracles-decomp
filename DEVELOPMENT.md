@@ -92,6 +92,26 @@ cmake --build build-win
 wine build-win/test_native_tas.exe
 ```
 
+Homebrew's mingw-w64 is posix-thread-model and links winpthreads implicitly; apt's, which CI
+installs, is win32-model and does not. So a symbol that only winpthreads provides (`clock_gettime`,
+as `clock_gettime64`) links here and fails there, and compiling each file with `-c` never sees it at
+all, since the symbol only has to exist at link time. The `windows-cross` ci job builds with the
+stricter toolchain on every branch push. Locally, intersect the undefined symbols in the archives
+with what libwinpthread defines -- toolchain-independent, needs no SDL and no exe, and prints
+nothing when nothing depends on winpthreads:
+
+```bash
+cmake -S . -B build-win -G Ninja -DORACLES_SDL=OFF -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-w64-x86_64.cmake
+cmake --build build-win
+WP=$(x86_64-w64-mingw32-gcc -print-file-name=libwinpthread.a)
+nm -g build-win/*.a | awk '$1=="U"{print $2}' | sort -u > /tmp/undef
+nm -g "$WP" | awk '$2=="T"{print $3}' | sort -u > /tmp/wp
+comm -12 /tmp/undef /tmp/wp
+```
+
+That configure takes a second (no vendored SDL to fetch or build), the archives about two minutes
+cold and under one second to rebuild one of them after an edit.
+
 ## The two apps
 
 Same game, two frontends:
