@@ -2,7 +2,10 @@
 """Drives oracles-native's menus headless (SDL dummy drivers, ORACLES_TEST_KEYS) through a fresh
 cache: install the ROM, boot into file 1, pause, save to slot 1, resume, pause, load slot 1, open
 Settings from the pause menu, lower the volume and bind A to the S key, quit to the launcher (which writes the auto
-state), quit the app; then save slot 1 again through the touch overlay.
+state), quit the app; then save slot 1 again with the touch overlay and a tap on the slot's row; then
+play by taps alone: pause, Save state, slot 2, Quit to menu, and start the game from slot 2 on the main menu.
+Haptic ticks (ORACLES_TEST_HAPTICS logs them): one per control pressed and menu tap, none for keys,
+none once settings.ini turns them off.
 usage: test_app_menus.py ORACLES_NATIVE ROM   (exit 77 when the ROM is missing)"""
 import os, subprocess, sys, tempfile
 
@@ -16,8 +19,9 @@ with tempfile.TemporaryDirectory() as cache:
             '360:Escape,370:Up,380:Up,390:X,400:Left,' + ','.join(f'{t}:Down' for t in range(401, 412)) + ',412:X,'
             '414:Down,416:Down,418:Down,420:Down,422:X,424:S,426:Z,428:Z,430:Z,'
             '460:Escape,470:Up,480:X,520:Z')
-    r = subprocess.run([app, '--game', 'seasons', '--cache', cache], env=dict(env, ORACLES_TEST_KEYS=keys), capture_output=True, text=True, timeout=120)
+    r = subprocess.run([app, '--game', 'seasons', '--cache', cache], env=dict(env, ORACLES_TEST_KEYS=keys, ORACLES_TEST_HAPTICS='1'), capture_output=True, text=True, timeout=120)
     assert r.returncode == 0, r.stderr
+    assert 'haptic' not in r.stderr, f'keys gave a haptic tick; stderr: {r.stderr}'
     d = os.path.join(cache, 'seasons')
     for f in ('state_1', 'state_1.thumb', 'state_auto', 'state_auto.thumb', 'sram.sav'):
         assert os.path.exists(os.path.join(d, f)), f'missing {f}; stderr: {r.stderr}'
@@ -26,10 +30,41 @@ with tempfile.TemporaryDirectory() as cache:
     assert 'volume=9' in ini, ini
     assert 'keys=82,-1;81,-1;80,-1;79,-1;22,27;' in ini, ini
     assert ini.count(';') >= 24, ini                   # every action, Swap and Item X/Y included
-    # the touch overlay: Pause, down to Save State, A, A (slot 1), then quit with the keyboard
+    # the touch overlay: Pause, down to Save State, A, then tap slot 1's row; quit with the keyboard
     os.remove(os.path.join(d, 'state_1'))
-    keys = '200:#PAUSE,210:#DOWN,220:#A,230:#A,300:Escape,360:Escape,370:Up,380:X,420:Z'
+    keys = '200:#PAUSE,210:#DOWN,220:#A,240:^Slot.0,300:Escape,360:Escape,370:Up,380:X,420:Z'
     r = subprocess.run([app, '--game', 'seasons', '--cache', cache], env=dict(env, ORACLES_TOUCH='1', ORACLES_TEST_KEYS=keys), capture_output=True, text=True, timeout=120)
     assert r.returncode == 0, r.stderr
     assert os.path.exists(os.path.join(d, 'state_1')), f'touch did not save slot 1; stderr: {r.stderr}'
+    # taps only: pause with the overlay, then rows: Save state, slot 2, Quit to menu; on the main
+    # menu, slot 2's row starts the game from that state; quit with the keyboard from the pause menu
+    # B once the game is running: the main menu was the last menu drawn, and its rows must not go on
+    # claiming fingers meant for the controls under where they were
+    keys = ('200:#PAUSE,230:^Pause.1,260:^Slot.1,300:^Pause.4,340:^Home.2,390:#B,'
+            '420:Escape,440:Up,460:X,500:Z')
+    r = subprocess.run([app, '--game', 'seasons', '--cache', cache], env=dict(env, ORACLES_TOUCH='1', ORACLES_TEST_KEYS=keys, ORACLES_TEST_HAPTICS='1'), capture_output=True, text=True, timeout=120)
+    assert r.returncode == 0, r.stderr
+    assert 'test tap: no' not in r.stderr, r.stderr
+    ticks = r.stderr.count('haptic\n')
+    assert ticks == 6, f'{ticks} haptic ticks for Pause, four taps and B in game; stderr: {r.stderr}' 
+    assert os.path.exists(os.path.join(d, 'state_2')), f'tapping did not save slot 2; stderr: {r.stderr}'
+    assert 'started from slot 2' in r.stderr, f'the main menu did not start slot 2; stderr: {r.stderr}'
+    # Undo: saving into empty slot 3 and undoing empties it again; saving over slot 2 and undoing
+    # brings back the state that was there
+    before = open(os.path.join(d, 'state_2'), 'rb').read()
+    keys = ('200:#PAUSE,230:^Pause.1,260:^Slot.2,290:^Undo,'
+            '330:^Pause.1,360:^Slot.1,390:^Undo,430:^Pause.4,470:Z')
+    r = subprocess.run([app, '--game', 'seasons', '--cache', cache], env=dict(env, ORACLES_TOUCH='1', ORACLES_TEST_KEYS=keys), capture_output=True, text=True, timeout=120)
+    assert r.returncode == 0, r.stderr
+    assert 'test tap: no' not in r.stderr, r.stderr
+    assert not os.path.exists(os.path.join(d, 'state_3')), f'undo left slot 3 saved; stderr: {r.stderr}'
+    assert open(os.path.join(d, 'state_2'), 'rb').read() == before, 'undo did not bring slot 2 back'
+    # Vibration off: the same touches give no tick
+    with open(os.path.join(cache, 'settings.ini'), 'a') as f: f.write('haptics=off\n')
+    keys = '200:#PAUSE,230:^Pause.0,300:#PAUSE,330:^Pause.4,370:Z'
+    r = subprocess.run([app, '--game', 'seasons', '--cache', cache], env=dict(env, ORACLES_TOUCH='1', ORACLES_TEST_KEYS=keys, ORACLES_TEST_HAPTICS='1'), capture_output=True, text=True, timeout=120)
+    assert r.returncode == 0, r.stderr
+    assert 'test tap: no' not in r.stderr, r.stderr
+    assert 'haptic' not in r.stderr, f'ticks with haptics=off; stderr: {r.stderr}'
+    assert 'haptics=off' in open(os.path.join(cache, 'settings.ini')).read()
 print('ok app_menus')

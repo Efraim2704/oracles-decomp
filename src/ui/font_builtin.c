@@ -1,10 +1,10 @@
 #include "ui/ui.h"
 #include <string.h>
 
-// A small original 8x8 font for the launcher before any ROM is installed. The real UI font lives in
-// the ROM (ui_font_load), but the launcher has to draw its "ADD ROM" screen before there is a ROM to
-// read it from, and none of the game's data may ship in this binary -- so these glyphs are drawn
-// here by hand. Each entry is eight rows of eight characters, '#' for ink.
+// A small original 8x8 font that stands in for the ROM's (ui_font_load) where there is no ROM to
+// read it from -- mods' overlay text in tests, before any game is installed. None of the game's
+// data may ship in this binary, so these glyphs are drawn here by hand. Each entry is eight rows of
+// eight characters, '#' for ink.
 
 #define GLYPH_ROWS 8
 // Where the 8-row art sits in the 16-row cell the UI font uses, so it shares the ROM font's baseline.

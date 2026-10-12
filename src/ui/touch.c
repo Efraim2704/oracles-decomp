@@ -10,13 +10,14 @@
 #define CLUSTER_H DPAD
 #define CLUSTER_ITEMS_H (DPAD / 2 + 40 + ITEM_R)
 
+// sized for the labels src/gui/pad.c draws in them, at 8 game pixels a character
 static const char *const labels[ACTIONS] = {
   [ACT_A] = "A", [ACT_B] = "B", [ACT_START] = "START", [ACT_SELECT] = "SELECT",
   [ACT_PAUSE] = "PAUSE", [ACT_FAST] = ">>", [ACT_ITEM_X] = "X", [ACT_ITEM_Y] = "Y",
 };
 
 static bool round_button(Action a) { return a == ACT_A || a == ACT_B || a == ACT_ITEM_X || a == ACT_ITEM_Y; }
-static int pill_w(Action a) { return (int)strlen(labels[a]) * UI_GLYPH_W + 8; }
+static int pill_w(Action a) { return (int)strlen(labels[a]) * 8 + 8; }
 static UiRect circle(int cx, int cy, int r) { return (UiRect){cx - r, cy - r, 2 * r, 2 * r}; }
 static int imax(int a, int b) { return a > b ? a : b; }
 static int imin(int a, int b) { return a < b ? a : b; }
@@ -134,82 +135,4 @@ bool touch_point(const TouchLayout *l, Action a, float *x, float *y) {
   *x = b->x + b->w / 2.0f;
   *y = b->y + b->h / 2.0f;
   return b->w > 0;
-}
-
-typedef struct { const TouchLayout *l; uint8_t *rgba; uint8_t alpha; } Ink;
-
-static void put(const Ink *k, int x, int y, UiColor c) {
-  if (x < 0 || y < 0 || x >= k->l->w || y >= k->l->h) return;
-  uint8_t *p = k->rgba + ((size_t)y * k->l->w + x) * 4;
-  p[0] = c.r; p[1] = c.g; p[2] = c.b; p[3] = k->alpha;
-}
-
-// Centred on its ink, not its cell: the font's letters sit low in their 16-pixel cells.
-static void text(const Ink *k, const UiFont *font, int cx, int cy, const char *s, UiColor c) {
-  int top, bottom;
-  if (!font || !ui_text_ink(font, s, &top, &bottom)) return;
-  int x = cx - (int)strlen(s) * UI_GLYPH_W / 2, y = cy - (top + bottom + 1) / 2;
-  for (; *s; s++, x += UI_GLYPH_W)
-    for (int r = 0; r < UI_GLYPH_H; r++)
-      for (int b = 0; b < UI_GLYPH_W; b++)
-        if ((uint8_t)*s < 128 && !(font->glyph[(uint8_t)*s][r] & (0x80 >> b))) put(k, x + b, y + r, c);
-}
-
-static void draw_circle(const Ink *k, const UiRect *b, UiColor border, UiColor fill) {
-  float r = b->w / 2.0f, cx = b->x + r, cy = b->y + r;
-  for (int y = b->y; y < b->y + b->h; y++)
-    for (int x = b->x; x < b->x + b->w; x++) {
-      float dx = x + 0.5f - cx, dy = y + 0.5f - cy, d2 = dx * dx + dy * dy;
-      if (d2 <= r * r) put(k, x, y, d2 > (r - 1.2f) * (r - 1.2f) ? border : fill);
-    }
-}
-
-static void draw_pill(const Ink *k, const UiRect *b, UiColor border, UiColor fill) {
-  for (int y = b->y; y < b->y + b->h; y++)
-    for (int x = b->x; x < b->x + b->w; x++) {
-      bool edge_x = x == b->x || x == b->x + b->w - 1, edge_y = y == b->y || y == b->y + b->h - 1;
-      if (edge_x && edge_y) continue;
-      put(k, x, y, edge_x || edge_y ? border : fill);
-    }
-}
-
-// The D-pad: a cross with a border; each held arm is lit and carries a small arrow.
-static void draw_dpad(const Ink *k, const UiTheme *t, uint32_t held) {
-  const UiRect *d = &k->l->dpad;
-  int arm = d->w / 3, cx = d->x + d->w / 2, cy = d->y + d->h / 2;
-  for (int y = d->y; y < d->y + d->h; y++)
-    for (int x = d->x; x < d->x + d->w; x++) {
-      int ax = x - cx, ay = y - cy;
-      bool vert = ax >= -arm / 2 && ax < arm - arm / 2, horiz = ay >= -arm / 2 && ay < arm - arm / 2;
-      if (!vert && !horiz) continue;
-      bool edge = (vert && !horiz && (ax == -arm / 2 || ax == arm - arm / 2 - 1 || y == d->y || y == d->y + d->h - 1)) ||
-                  (horiz && !vert && (ay == -arm / 2 || ay == arm - arm / 2 - 1 || x == d->x || x == d->x + d->w - 1));
-      Action dir = ACTIONS;
-      if (vert && !horiz) dir = ay < 0 ? ACT_UP : ACT_DOWN;
-      if (horiz && !vert) dir = ax < 0 ? ACT_LEFT : ACT_RIGHT;
-      bool lit = dir < ACTIONS && (held >> dir & 1);
-      put(k, x, y, edge ? t->border : lit ? t->highlight : t->panel);
-    }
-  for (int i = 0; i < 4; i++)
-    for (int j = -i; j <= i; j++) {
-      put(k, cx + j, d->y + 4 + i, t->text);
-      put(k, cx + j, d->y + d->h - 5 - i, t->text);
-      put(k, d->x + 4 + i, cy + j, t->text);
-      put(k, d->x + d->w - 5 - i, cy + j, t->text);
-    }
-}
-
-void touch_draw(const TouchLayout *l, const UiFont *font, const UiTheme *t, uint32_t held, uint8_t *rgba) {
-  memset(rgba, 0, (size_t)l->w * l->h * 4);
-  if (!l->overlay) return;
-  Ink k = {l, rgba, l->portrait ? 255 : 176};
-  draw_dpad(&k, t, held);
-  for (int a = 0; a < ACTIONS; a++) {
-    const UiRect *b = &l->button[a];
-    if (!b->w) continue;
-    UiColor fill = (held >> a & 1) ? t->highlight : t->panel;
-    if (round_button((Action)a)) draw_circle(&k, b, t->border, fill);
-    else draw_pill(&k, b, t->border, fill);
-    text(&k, font, b->x + b->w / 2, b->y + b->h / 2, labels[a], t->text);
-  }
 }

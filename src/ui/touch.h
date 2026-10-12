@@ -1,6 +1,6 @@
 #pragma once
-// On-screen controls for touch screens. Everything is measured in game pixels (one game pixel is
-// `scale` screen pixels), so the controls are drawn on the same grid as the game.
+// On-screen controls for touch screens: where they go and what a finger presses. Everything is
+// measured in game pixels (one game pixel is `scale` screen pixels); src/gui/pad.c draws them.
 #include "ui/ui.h"
 #include "ui/controls.h"
 
@@ -27,5 +27,3 @@ void touch_layout(TouchLayout *l, int screen_w, int screen_h, UiRect safe, bool 
 uint32_t touch_hit(const TouchLayout *l, float x, float y);
 // Where a finger presses the action, in game pixels; false when the layout does not show it.
 bool touch_point(const TouchLayout *l, Action a, float *x, float *y);
-// Draws the controls into an RGBA image of l->w x l->h, transparent elsewhere; held actions are lit.
-void touch_draw(const TouchLayout *l, const UiFont *font, const UiTheme *t, uint32_t held, uint8_t *rgba);

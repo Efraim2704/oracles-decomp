@@ -1,5 +1,5 @@
 #pragma once
-// Player settings (kept in settings.ini in the app folder) and the settings screen.
+// Player settings (kept in settings.ini in the app folder) and the settings list's state machine.
 #include "ui/ui.h"
 #include "ui/launcher.h"
 #include "ui/menu.h"
@@ -22,14 +22,17 @@ typedef struct {
   bool quick_swap;              // the Swap button exchanges the A and B items
   bool fast_menus;              // quick fades into and out of the inventory and map
   bool four_slots;              // Item X / Item Y buttons, assigned in the inventory
+  bool haptics;                 // a tick when a finger presses a control or taps a menu (Android)
   Bindings bindings;
   char sync_label[12];          // the SYNC row's value, kept by the app (sync.ini, not settings.ini)
 } Settings;
 
-typedef enum { SET_VOLUME, SET_SCREEN, SET_SCALE, SET_WIDESCREEN, SET_DIM_SIDES, SET_COLOURS, SET_FULLSCREEN, SET_FAST_TEXT, SET_FAST_MENUS, SET_QUICK_SWAP, SET_FOUR_SLOTS, SET_CONTROLS, SET_SYNC, SET_ROWS } SettingsRow;
+typedef enum { SET_VOLUME, SET_SCREEN, SET_SCALE, SET_WIDESCREEN, SET_DIM_SIDES, SET_COLOURS, SET_FULLSCREEN, SET_FAST_TEXT, SET_FAST_MENUS, SET_QUICK_SWAP, SET_FOUR_SLOTS, SET_HAPTICS, SET_CONTROLS, SET_SYNC, SET_ROWS } SettingsRow;
 
 typedef struct {
   SettingsRow sel;
+  bool phone;                   // Android: Vibration is shown (nothing else vibrates) and Fullscreen
+                                // is not (the app always fills the screen there)
 } SettingsMenu;
 
 void settings_default(Settings *s);
@@ -38,10 +41,8 @@ void settings_parse(Settings *s, const char *text);
 // Writes "key=value" lines; returns the number of bytes (as snprintf).
 int settings_format(const Settings *s, char *out, size_t size);
 
-void settings_menu_open(SettingsMenu *m);
+void settings_menu_open(SettingsMenu *m, bool phone);
+// The row is in the list (SET_HAPTICS only on a phone, SET_FULLSCREEN never); keys skip the others.
+bool settings_row_shown(const SettingsMenu *m, SettingsRow r);
 // Left/right change the highlighted value in s; accept on CONTROLS or SYNC returns MENU_PICK with that row.
 MenuAction settings_press(SettingsMenu *m, Settings *s, UiButton b, SettingsRow *picked);
-void settings_draw(const SettingsMenu *m, const Settings *s, const UiFont *font, const UiTheme *t, const uint8_t *game_rgb, UiCanvas *c);
-// The rows alone, `visible` of them from y, scrolled to the selection; the cursor only when focused
-// (the launcher's settings tab draws them in its body).
-void settings_draw_list(const SettingsMenu *m, const Settings *s, const UiFont *font, const UiTheme *t, int y, int visible, bool focused, UiCanvas *c);

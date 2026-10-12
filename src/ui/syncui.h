@@ -1,6 +1,6 @@
 #pragma once
-// The sync screens: the sync page (from the settings' SYNC row), entering a sync code with the
-// D-pad, and choosing between two versions of a save that changed on two devices.
+// The sync screens' state: the sync page (from the settings' Save sync row), entering a sync code,
+// and choosing between two versions of a save that changed on two devices. src/gui draws them.
 #include "ui/ui.h"
 #include "ui/launcher.h"
 #include "ui/menu.h"
@@ -11,13 +11,14 @@ typedef enum { SYNCROW_NOW, SYNCROW_CREATE, SYNCROW_ENTER, SYNCROW_OFF, SYNCROWS
 typedef struct {
   bool on;                      // this device has a sync code
   char code[20];                // "4827-1930-5561-0284"
-  char status[24];              // the last sync, e.g. "SYNCED 17:32"
+  char status[24];              // the last sync, e.g. "Synced at 17:32"
   SyncRow sel;
 } SyncMenu;
 
 void syncmenu_open(SyncMenu *m, bool on, const char *code, const char *status);
 MenuAction syncmenu_press(SyncMenu *m, UiButton b, SyncRow *picked);
-void syncmenu_draw(const SyncMenu *m, const UiFont *font, const UiTheme *t, const uint8_t *game_rgb, UiCanvas *c);
+// Off: Create and Enter; on: everything but Create.
+bool syncmenu_row_shown(const SyncMenu *m, SyncRow r);
 
 typedef struct {
   char digits[17];
@@ -27,11 +28,10 @@ typedef struct {
 void codeentry_open(CodeEntry *e, const char *digits);
 // Up/down change the digit, left/right move; A: MENU_PICK (all 16 digits are set), B: MENU_BACK.
 MenuAction codeentry_press(CodeEntry *e, UiButton b);
-void codeentry_draw(const CodeEntry *e, const UiFont *font, const UiTheme *t, UiCanvas *c);
 
 typedef struct {
-  char label[12];               // "THIS DEVICE" side: "HERE"; the server side: the device that wrote it
-  char when[12];                // "26 17:32"
+  char label[24];               // "This device", or the device that wrote the server's copy
+  int64_t time;                 // SDL_Time it was written; 0 when unknown
   bool missing;                 // no file on this side
   bool has_files;               // a save: its three files
   UiFileInfo files[UI_FILES];
@@ -40,11 +40,10 @@ typedef struct {
 } ConflictSide;
 
 typedef struct {
-  char what[20];                // "SEASONS SAVE", "SEASONS SLOT 2"
+  char what[24];                // "Seasons save files", "Seasons slot 2"
   ConflictSide side[2];         // 0 this device, 1 the server
   int sel;
 } ConflictView;
 
 // Left/right pick a side, A keeps it (MENU_PICK), B leaves the choice for later (MENU_BACK).
 MenuAction conflict_press(ConflictView *v, UiButton b);
-void conflict_draw(const ConflictView *v, const UiFont *font, const UiTheme *t, UiCanvas *c);

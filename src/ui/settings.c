@@ -3,7 +3,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-static const char *const filter_names[FILTERS] = {"SHARP", "LINES", "LCD", "CRT", "XBRZ", "HQX"};
 static const char *const filter_keys[FILTERS] = {"sharp", "scanlines", "lcd", "crt", "xbrz", "hqx"};
 
 void settings_default(Settings *s) {
@@ -18,6 +17,7 @@ void settings_default(Settings *s) {
   s->quick_swap = false;
   s->fast_menus = false;
   s->four_slots = false;
+  s->haptics = true;
   bindings_default(&s->bindings);
 }
 
@@ -39,6 +39,7 @@ void settings_parse(Settings *s, const char *text) {
       else if (!strcmp(key, "quick_swap")) s->quick_swap = !strcmp(value, "on");
       else if (!strcmp(key, "fast_menus")) s->fast_menus = !strcmp(value, "on");
       else if (!strcmp(key, "four_slots")) s->four_slots = !strcmp(value, "on");
+      else if (!strcmp(key, "haptics")) s->haptics = !strcmp(value, "on");
       else if (!strcmp(key, "filter")) {
         for (int i = 0; i < FILTERS; i++) if (!strcmp(value, filter_keys[i])) s->filter = (ScreenFilter)i;
       }
@@ -49,20 +50,35 @@ void settings_parse(Settings *s, const char *text) {
 }
 
 int settings_format(const Settings *s, char *out, size_t size) {
-  int n = snprintf(out, size, "volume=%d\nfullscreen=%s\nfilter=%s\nscale=%s\nwidescreen=%s\ndim_sides=%s\ngbc_colours=%s\nfast_text=%s\nfast_menus=%s\nquick_swap=%s\nfour_slots=%s\n",
+  int n = snprintf(out, size, "volume=%d\nfullscreen=%s\nfilter=%s\nscale=%s\nwidescreen=%s\ndim_sides=%s\ngbc_colours=%s\nfast_text=%s\nfast_menus=%s\nquick_swap=%s\nfour_slots=%s\nhaptics=%s\n",
                    s->volume, s->fullscreen ? "on" : "off", filter_keys[s->filter], s->fill ? "fill" : "pixel", s->widescreen ? "on" : "off", s->dim_sides ? "on" : "off", s->gbc_colours ? "on" : "off",
-                   s->fast_text ? "on" : "off", s->fast_menus ? "on" : "off", s->quick_swap ? "on" : "off", s->four_slots ? "on" : "off");
+                   s->fast_text ? "on" : "off", s->fast_menus ? "on" : "off", s->quick_swap ? "on" : "off", s->four_slots ? "on" : "off",
+                   s->haptics ? "on" : "off");
   if (n < (int)size) n += bindings_format(&s->bindings, out + n, size - n);
   return n;
 }
 
-void settings_menu_open(SettingsMenu *m) { m->sel = SET_VOLUME; }
+void settings_menu_open(SettingsMenu *m, bool phone) {
+  m->sel = SET_VOLUME;
+  m->phone = phone;
+}
+
+bool settings_row_shown(const SettingsMenu *m, SettingsRow r) {
+  if (r == SET_HAPTICS) return m->phone;
+  if (r == SET_FULLSCREEN) return !m->phone;
+  return true;
+}
+
+static void step(SettingsMenu *m, int dir) {
+  do m->sel = (SettingsRow)((m->sel + dir + SET_ROWS) % SET_ROWS);
+  while (!settings_row_shown(m, m->sel));
+}
 
 MenuAction settings_press(SettingsMenu *m, Settings *s, UiButton b, SettingsRow *picked) {
   int dir = b == UI_LEFT ? -1 : b == UI_RIGHT ? 1 : 0;
   switch (b) {
-  case UI_UP: m->sel = (SettingsRow)((m->sel + SET_ROWS - 1) % SET_ROWS); return MENU_NONE;
-  case UI_DOWN: m->sel = (SettingsRow)((m->sel + 1) % SET_ROWS); return MENU_NONE;
+  case UI_UP: step(m, -1); return MENU_NONE;
+  case UI_DOWN: step(m, 1); return MENU_NONE;
   case UI_BACK: return MENU_BACK;
   case UI_ACCEPT:
     if (m->sel == SET_CONTROLS || m->sel == SET_SYNC) { *picked = m->sel; return MENU_PICK; }
@@ -82,47 +98,8 @@ MenuAction settings_press(SettingsMenu *m, Settings *s, UiButton b, SettingsRow 
   case SET_FAST_MENUS: if (dir) s->fast_menus = !s->fast_menus; break;
   case SET_QUICK_SWAP: if (dir) s->quick_swap = !s->quick_swap; break;
   case SET_FOUR_SLOTS: if (dir) s->four_slots = !s->four_slots; break;
+  case SET_HAPTICS: if (dir) s->haptics = !s->haptics; break;
   default: break;
   }
   return MENU_NONE;
-}
-
-void settings_draw_list(const SettingsMenu *m, const Settings *s, const UiFont *font, const UiTheme *t, int y0, int visible, bool focused, UiCanvas *c) {
-  static const char *const labels[SET_ROWS] = {"VOLUME", "SCREEN", "SCALE", "WIDESCREEN", "DIM SIDES", "COLOURS", "FULLSCREEN", "FAST TEXT", "FAST MENUS", "QUICK SWAP", "4 SLOTS", "CONTROLS", "SYNC"};
-  int first = (int)m->sel - visible / 2;
-  if (first > SET_ROWS - visible) first = SET_ROWS - visible;
-  if (first < 0) first = 0;
-  for (int i = first; i < first + visible && i < SET_ROWS; i++) {
-    int y = y0 + (i - first) * 17;
-    bool on = focused && (int)m->sel == i;
-    UiColor fg = on ? t->highlight : t->text;
-    if (on) ui_glyph(c, font, 2, y, '>', t->highlight);
-    ui_text(c, font, 10, y, labels[i], fg);
-    char v[16] = "";
-    switch ((SettingsRow)i) {
-    case SET_VOLUME: snprintf(v, sizeof v, "%d", s->volume); break;
-    case SET_SCREEN: snprintf(v, sizeof v, "%s", filter_names[s->filter]); break;
-    case SET_SCALE: snprintf(v, sizeof v, "%s", s->fill ? "FILL" : "PIXEL"); break;
-    case SET_WIDESCREEN: snprintf(v, sizeof v, "%s", s->widescreen ? "ON" : "OFF"); break;
-    case SET_DIM_SIDES: snprintf(v, sizeof v, "%s", s->dim_sides ? "ON" : "OFF"); break;
-    case SET_COLOURS: snprintf(v, sizeof v, "%s", s->gbc_colours ? "GBC" : "VIVID"); break;
-    case SET_FULLSCREEN: snprintf(v, sizeof v, "%s", s->fullscreen ? "ON" : "OFF"); break;
-    case SET_FAST_TEXT: snprintf(v, sizeof v, "%s", s->fast_text ? "ON" : "OFF"); break;
-    case SET_FAST_MENUS: snprintf(v, sizeof v, "%s", s->fast_menus ? "ON" : "OFF"); break;
-    case SET_QUICK_SWAP: snprintf(v, sizeof v, "%s", s->quick_swap ? "ON" : "OFF"); break;
-    case SET_FOUR_SLOTS: snprintf(v, sizeof v, "%s", s->four_slots ? "ON" : "OFF"); break;
-    case SET_SYNC: snprintf(v, sizeof v, "%s", s->sync_label[0] ? s->sync_label : "OFF"); break;
-    default: break;
-    }
-    if (*v) ui_text(c, font, UI_W - 4 - ui_text_width(v), y, v, fg);
-  }
-}
-
-void settings_draw(const SettingsMenu *m, const Settings *s, const UiFont *font, const UiTheme *t, const uint8_t *game_rgb, UiCanvas *c) {
-  if (game_rgb) ui_dim_rgb(c, game_rgb);
-  else ui_clear(c, t->bg);
-  ui_box(c, 0, 0, UI_W, UI_H, t->border, t->panel);
-  ui_text(c, font, 4, 0, "SETTINGS", t->highlight);
-  settings_draw_list(m, s, font, t, 18, 6, true, c);
-  ui_text(c, font, 4, 124, "<>:CHANGE B:BACK", t->dim);
 }

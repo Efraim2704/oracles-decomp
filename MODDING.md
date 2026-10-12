@@ -422,7 +422,7 @@ as `\x00` and logs the whole string; `oracles.draw_text` stops at it, drawing on
 **Settings do not persist, and have no menu yet.** See `oracles.setting`.
 
 **No mod manager.** No list, no enable/disable, no zip install. The only sign a player gets that
-something went wrong is a **MOD DISABLED** message at the bottom of the screen the moment a mod is
+something went wrong is a **Mod disabled** message at the bottom of the screen the moment a mod is
 switched off; the reason goes to the log.
 
 ## A worked example: an essence tracker
@@ -517,7 +517,7 @@ every call, which is not something to do sixty times a second.
 
 ## When something goes wrong
 
-- **MOD DISABLED** at the bottom of the screen means a mod was switched off this session. The reason
+- **Mod disabled** at the bottom of the screen means a mod was switched off this session. The reason
   goes to the log.
 - **Nothing happens at all.** The usual causes, in order: the folder name and `id=` don't match;
   `games=` doesn't name the game you're playing; the folder is not in the `mods` folder next to your

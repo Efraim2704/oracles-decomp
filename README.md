@@ -51,9 +51,9 @@ Each desktop download is a single self-contained file; nothing else needs instal
 
 ## Adding your ROM
 
-The app opens on its launcher, with Ages and Seasons side by side. A game you have no ROM for yet
-shows **NOT INSTALLED** and an **ADD ROM...** row — choose it and the file picker opens. Do the same
-on the other tab to add the second game. Nothing is asked for before the launcher appears.
+The app opens on its main menu, with a tab each for Ages and Seasons. A game you have no ROM for yet
+shows **Not installed** and an **Add ROM...** row — choose it and the file picker opens. Do the same
+on the other tab to add the second game. Nothing is asked for before the menu appears.
 
 The ROM can be a plain `.gbc`/`.gb` file **or a `.zip` or `.gz`** holding one, so a freshly
 downloaded archive works as it came. From a zip the `.gbc`/`.gb` file inside is taken, otherwise the
@@ -64,9 +64,11 @@ Android, copy the ROM to the phone's Downloads first so the picker can reach it.
 
 ## Playing
 
-The launcher shows each game's three save files with name, hearts and essences, plus **Resume** (the
-state from when you last quit), **Load state** and the title screen. Choosing a file boots straight
-into it.
+A game's tab leads with **Resume** (the state from when you last quit) and its four save-state slots,
+each with when it was saved and the newest marked **Latest**; choosing one starts from it. Below them,
+**Save files** opens the game's own three files (name, hearts, essences) — choosing one boots
+straight into it — and **Title screen** starts the game from the beginning. Every menu works with a
+keyboard, a controller, the mouse, or by tapping its rows.
 
 ### Controls
 
@@ -108,9 +110,11 @@ There are also quality-of-life toggles, **all off by default**:
 
 ### Save states
 
-Esc pauses the game: Resume, Save state, Load state (4 slots, each with a thumbnail and its date)
-and Quit, which saves a Resume state and returns to the launcher. Cmd+S and Cmd+R are shortcuts for
-slot 1. Messages like *state saved* or *sound off* appear at the bottom of the screen.
+Esc pauses the game: Resume, Save state, Load state (4 slots, each with a thumbnail and the time
+it was saved, to the second) and Quit to menu, which saves a Resume state and returns to the main
+menu. Cmd+S and Cmd+R are shortcuts for slot 1. Messages like *Saved to slot 2* or *Sound off*
+appear at the bottom of the picture; after a save the message offers **Undo**, which puts back what
+the slot held before.
 
 Save states work across every platform — all 64-bit builds share one layout, so a state made on your
 desktop loads on your phone.
@@ -154,7 +158,12 @@ state's picture too), until the next KEEP WHICH? about the same file replaces it
 Touch controls sit under the game in portrait and at its sides in landscape: D-pad (diagonals by
 touching between the arms), A, B, Start, Select, Pause and fast-forward (`>>`, hold), plus X and Y
 when 4 slots is on. They hide when you use a controller or keyboard and come back on the next touch.
-The back button pauses, and goes back in menus.
+The back button pauses, and goes back in menus. In the menus, tap a row to choose it and drag a long
+list to scroll it; while a menu fills the screen the on-screen controls step aside.
+
+Pressing a control or tapping a menu gives a short tick, the same one as the keyboard, and follows
+your phone's touch feedback setting. **Settings → Vibration** (Android only) turns it off for the game.
+Volume has **−** and **+** either side of its bars, and tapping a bar jumps to that level.
 
 Leaving the app saves the game and a Resume state; coming back opens the pause menu.
 

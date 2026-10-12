@@ -97,7 +97,7 @@ wine build-win/test_native_tas.exe
 Same game, two frontends:
 
 - **`oracles-native`** — the real port, and what ships. No CPU emulator. On first launch it reads a
-  ROM (argument, or the launcher's ADD ROM dialog), checks its SHA1 against the two known games,
+  ROM (argument, or the main menu's Add ROM row), checks its SHA1 against the two known games,
   builds the cycle table from the original bytes, zeroes the code bytes and writes the result to the
   per-user cache; later launches load the cache and never see the ROM again.
 
@@ -130,7 +130,8 @@ oracles-native [ROM] [--game ages|seasons [--file 1-3]] [--cache DIR] [--frames 
 testing a first launch), and `--frames N` exits after N frames. Tests drive the app under
 `SDL_VIDEO_DRIVER=dummy` with `ORACLES_TEST_KEYS` for scripted input and `ORACLES_SHOT="tick:path.png"`
 for screenshots. `ORACLES_TOUCH=1 ./build/oracles-native` shows the phone's touch controls on the
-desktop, with the mouse as a finger.
+desktop, with the mouse as a finger, and `ORACLES_TEST_HAPTICS=1` prints `haptic` to stderr for
+each tick a phone would vibrate.
 
 ## Verification
 
@@ -223,7 +224,8 @@ cd android
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-The build runs this repo's CMake with SDL 3.4.16 from source (its Java glue is vendored in
+A debug APK is `org.oracles.test`, named "Oracles test": it installs beside a released copy, with
+its own saves. The build runs this repo's CMake with SDL 3.4.16 from source (its Java glue is vendored in
 `android/app/src/main/java/org/libsdl/app`, same release) and optimises the engine in debug APKs too.
 Push a ROM somewhere the picker can reach it, e.g. `adb push ROM /sdcard/Download/`.
 `adb logcat -s oracles` shows the engine's messages.
@@ -246,8 +248,15 @@ warning, when they are missing).
 - `src/rt/`: the native runtime (no interpreter).
 - `src/platform/`: the SDL apps and the headless runner; `archive.c` reads the ROM, unpacking a zip
   or gz with its own inflate so the apps need no compression library.
-- `src/ui/`: the launcher, menus and overlays, drawn with the ROM's own font -- plus a small
-  built-in one (`font_builtin.c`) for the launcher before any ROM is installed.
+- `src/ui/`: the menus' state machines (`home.c` is the main menu, `menu.c` pause and slots,
+  `settings.c`, `controls.c`, `syncui.c`), the touch controls' layout and hit areas (`touch.c`, in
+  game pixels), and the screen filters. Keys, pads and taps all go through the same `*_press` functions.
+- `src/gui/`: the menus drawn at the screen's resolution, over the game: Clay lays them out, SDL
+  draws them in VT323 (`gui.c`). `widgets.c` holds the shared pieces (rows, headers, tabs, pages,
+  lists); each screen has its own file (`pause.c` also has the message and the sync wait,
+  `home.c`, `slots.c`, `settings.c`, `controls.c`, `sync.c`), `pad.c` draws the touch controls,
+  and `screens.h` is what the app calls. A tap moves the selection and becomes the same button a key would give. Tests tap rows
+  with `^Element.index` in `ORACLES_TEST_KEYS`.
 - `src/wide/`: the widescreen renderer, the ROM room decoder, and `item.c`, which decodes an
   item's status-bar icon from the ROM so the X and Y slots can be shown beside the bar.
 - `src/sync/`: the save-sync client.
@@ -260,7 +269,10 @@ warning, when they are missing).
   current-room address against the engine's (`test_room.c`'s `record_cb`) rather than by convention.
 - `third_party/lua/`: Lua 5.4.9 (MIT), the mod runtime.
 - `third_party/xbrz/`, `third_party/hqx/`: the two pixel-art scalers (GPLv3 and LGPL 2.1) behind
-  the XBRZ and HQX screen filters, wrapped by `src/ui/upscale.cpp`. Each folder's `README.md`
+  the XBRZ and HQX screen filters, wrapped by `src/ui/upscale.cpp`.
+- `third_party/clay/`, `third_party/stb/`, `third_party/fonts/`: the layout library (zlib), the
+  font rasteriser (public domain) and VT323 (OFL) behind `src/gui/`; the font is embedded at build
+  time by `cmake/embed.cmake`. Each folder's `README.md`
   lists what was changed locally.
 - `tools/`: generators and the audits run on every change.
 - `tas/`: input movies and reference hashes.
