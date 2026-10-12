@@ -24,3 +24,29 @@ jobs:
         run: cmake --build build
       - name: Test
         run: ctest --test-dir build --output-on-failure
+
+  # release.yml is the only other place Windows gets built and it only runs on main, so without this
+  # a Windows-only break is invisible until it has already merged -- which is how the Oracles.exe
+  # link stayed broken on main for every push between the mod runtime landing and 98ed058. Nothing
+  # here runs the tests: there is no Windows runner in this workflow, and the break this catches is
+  # a link error, not a behaviour change.
+  windows-cross:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends mingw-w64 ninja-build cmake
+      - name: Thread model
+        # Ubuntu's mingw-w64 is win32-model where Homebrew's is posix-model, and that difference is
+        # what hides a winpthreads-only symbol (clock_gettime, say) from a cross-build on a dev
+        # machine. Printed so a failure here can be read against the local toolchain from the log.
+        # Warn rather than fail: a diagnostic should not break the build, but if Ubuntu ever ships
+        # a posix-model mingw this job quietly stops catching the class of break it exists for.
+        run: |
+          x86_64-w64-mingw32-gcc -v 2>&1 | grep "Thread model" || true
+          x86_64-w64-mingw32-gcc -v 2>&1 | grep -q "Thread model: win32" ||
+            echo "::warning::mingw-w64 is no longer win32-model, so winpthreads-only symbols may link here and still fail elsewhere"
+      - name: Build (x64, MinGW-w64)
+        run: |
+          cmake -S . -B build-win -G Ninja -DCMAKE_BUILD_TYPE=Release -DORACLES_SDL_VENDORED=ON \
+            -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-w64-x86_64.cmake
+          cmake --build build-win --target oracles-native
