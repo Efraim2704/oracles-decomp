@@ -162,6 +162,7 @@ list to scroll it; while a menu fills the screen the on-screen controls step asi
 
 Pressing a control or tapping a menu gives a short tick, the same one as the keyboard, and follows
 your phone's touch feedback setting. **Settings → Vibration** (Android only) turns it off for the game.
+Volume has **−** and **+** either side of its bars, and tapping a bar jumps to that level.
 
 Leaving the app saves the game and a Resume state; coming back opens the pause menu.
 

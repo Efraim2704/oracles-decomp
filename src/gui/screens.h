@@ -27,8 +27,8 @@ int gui_pause(PauseMenu *m, const GuiTheme *t, const GuiFrame *f);
 // thumbnails do.
 int gui_slots(SlotsMenu *m, const GuiTheme *t, const GuiFrame *f, uint32_t stamp);
 
-// A tap in a settings list: the row (or GUI_NONE) and the button it amounts to; a tap on a volume
-// bar sets volume (0..10) instead.
+// A tap in a settings list: the row (or GUI_NONE) and the button it amounts to (GUI_NONE when it
+// only selects the row); a tap on a volume bar sets volume (1..10) instead.
 typedef struct { int row; UiButton button; int volume; } GuiSettingsTap;
 
 // The settings page from the pause menu. Returns true when Back was tapped.

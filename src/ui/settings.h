@@ -31,7 +31,8 @@ typedef enum { SET_VOLUME, SET_SCREEN, SET_SCALE, SET_WIDESCREEN, SET_DIM_SIDES,
 
 typedef struct {
   SettingsRow sel;
-  bool haptics_row;             // the Vibration row is shown (phones only: nothing else can vibrate)
+  bool phone;                   // Android: Vibration is shown (nothing else vibrates) and Fullscreen
+                                // is not (the app always fills the screen there)
 } SettingsMenu;
 
 void settings_default(Settings *s);
@@ -40,8 +41,8 @@ void settings_parse(Settings *s, const char *text);
 // Writes "key=value" lines; returns the number of bytes (as snprintf).
 int settings_format(const Settings *s, char *out, size_t size);
 
-void settings_menu_open(SettingsMenu *m, bool haptics_row);
-// The row is in the list (SET_HAPTICS only with haptics_row); keys skip the others.
+void settings_menu_open(SettingsMenu *m, bool phone);
+// The row is in the list (SET_HAPTICS only on a phone, SET_FULLSCREEN never); keys skip the others.
 bool settings_row_shown(const SettingsMenu *m, SettingsRow r);
 // Left/right change the highlighted value in s; accept on CONTROLS or SYNC returns MENU_PICK with that row.
 MenuAction settings_press(SettingsMenu *m, Settings *s, UiButton b, SettingsRow *picked);

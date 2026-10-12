@@ -33,6 +33,12 @@
 #include "gui/screens.h"
 #include "platform/sync_client.h"
 #include "platform/haptic.h"
+
+#ifdef __ANDROID__
+#define ON_PHONE true           // the settings show Vibration and leave out Fullscreen
+#else
+#define ON_PHONE false
+#endif
 #include "wide/wide.h"
 #include <stdio.h>
 #include <time.h>
@@ -864,7 +870,7 @@ static void push_settings_tap(const GuiSettingsTap *tap) {
 
 static bool run_settings_page(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, const uint8_t *game_rgb, SDL_AudioStream *audio) {
   SettingsMenu m;
-  settings_menu_open(&m, HAS_HAPTICS);
+  settings_menu_open(&m, ON_PHONE);
   settings_ui.menu = &m;
   for (;;) {
     test_keys();
@@ -1169,7 +1175,7 @@ static bool run_home(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, const
   home_scan(&h, cache);
   home_init(&h, UI_GAME_SEASONS);
   static SettingsMenu settings_menu;
-  settings_menu_open(&settings_menu, HAS_HAPTICS);
+  settings_menu_open(&settings_menu, ON_PHONE);
   home_ui.home = &h;
   home_ui.settings = &settings_menu;
   if (sync_cfg.code[0] && !sync_busy()) sync_start(&sync_cfg, cache, SYNC_ALL_GAMES);

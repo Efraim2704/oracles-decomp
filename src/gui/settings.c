@@ -43,25 +43,43 @@ static Clay_String value_of(const Settings *s, const char *sync_label, int r, in
   }
 }
 
-// Volume: ten bars, each its own target (tall enough to hit, drawn as a short block). Returns the
-// bar tapped (1..10), or 0.
+// Volume: - and + either side of ten bars. On a phone a bar is a small target, so the buttons are
+// the easy way down and up; a bar still sets that level directly.
+enum { VOL_NONE, VOL_DOWN, VOL_UP, VOL_BAR };   // VOL_BAR + n: bar n (0..9)
+
+static int volume_step(const GuiTheme *t, const char *id, const char *sign, bool sel) {
+  Clay_ElementId bid = Clay_GetElementId((Clay_String){.length = (int32_t)SDL_strlen(id), .chars = id});
+  bool tapped = gui_tapped(bid);
+  CLAY({.id = bid, .layout = {.sizing = {CLAY_SIZING_FIXED(gui_px(40)), CLAY_SIZING_FIXED(gui_px(ROW_H))},
+                              .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}}}) {
+    CLAY({.layout = {.sizing = {CLAY_SIZING_FIXED(gui_px(30)), CLAY_SIZING_FIXED(gui_px(30))}, .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}},
+          .border = {.color = gui_rgb(sel ? t->on_hi : t->line_strong), .width = CLAY_BORDER_OUTSIDE(1)}}) {
+      label(sign, TEXT, sel ? t->on_hi : t->paper);
+    }
+  }
+  return tapped;
+}
+
 static int volume_row(const GuiTheme *t, Clay_ElementId id, int volume, bool sel) {
-  int set = 0;
+  int hit = VOL_NONE;
   ROW(t, id, sel) {
     label("Volume", TEXT, row_fg(t, sel, true));
     spacer();
-    CLAY({.layout = {.childGap = gui_px(3), .childAlignment = {.y = CLAY_ALIGN_Y_CENTER}}}) {
+    if (volume_step(t, "VolumeDown", "-", sel)) hit = VOL_DOWN;
+    CLAY({.layout = {.childAlignment = {.y = CLAY_ALIGN_Y_CENTER}}}) {
       for (int i = 0; i < 10; i++) {
         Clay_ElementId bar = CLAY_IDI("Volume", i);
-        if (gui_tapped(bar)) set = i + 1;
+        if (gui_tapped(bar)) hit = VOL_BAR + i;
         UiColor c = i < volume ? (sel ? t->on_hi : t->accent) : (sel ? t->hi_dim : t->line);
-        CLAY({.id = bar, .layout = {.sizing = {CLAY_SIZING_FIXED(gui_px(10)), CLAY_SIZING_FIXED(gui_px(ROW_H))}, .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}}}) {
-          CLAY({.layout = {.sizing = {CLAY_SIZING_FIXED(gui_px(7)), CLAY_SIZING_FIXED(gui_px(16))}}, .backgroundColor = gui_rgb(c)}) {}
+        // each bar is its own target: tall enough to hit, drawn as a short block
+        CLAY({.id = bar, .layout = {.sizing = {CLAY_SIZING_FIXED(gui_px(11)), CLAY_SIZING_FIXED(gui_px(ROW_H))}, .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}}}) {
+          CLAY({.layout = {.sizing = {CLAY_SIZING_FIXED(gui_px(8)), CLAY_SIZING_FIXED(gui_px(16))}}, .backgroundColor = gui_rgb(c)}) {}
         }
       }
     }
+    if (volume_step(t, "VolumeUp", "+", sel)) hit = VOL_UP;
   }
-  return set;
+  return hit;
 }
 
 void settings_rows(SettingsMenu *m, const Settings *s, const char *sync_label, const GuiTheme *t, bool focused, GuiSettingsTap *tap) {
@@ -74,11 +92,13 @@ void settings_rows(SettingsMenu *m, const Settings *s, const char *sync_label, c
     if (sec) section(t, sec);
     Clay_ElementId id = CLAY_IDI("Setting", r);
     if (r == SET_VOLUME) {
-      // a bar sets the volume; the rest of the row steps it up, as Right does
+      // - and + step it as Left and Right do, a bar sets its level, the rest of the row just selects it
       bool row_tapped = pick(id, true, &sel, r);
-      int bar = volume_row(t, id, s->volume, focused && sel == r);
-      if (bar) { sel = r; tap->row = r; tap->volume = bar; }
-      else if (row_tapped) { tap->row = r; tap->button = UI_RIGHT; }
+      int hit = volume_row(t, id, s->volume, focused && sel == r);
+      if (hit != VOL_NONE || row_tapped) { sel = r; tap->row = r; tap->button = (UiButton)GUI_NONE; }
+      if (hit == VOL_DOWN) tap->button = UI_LEFT;
+      if (hit == VOL_UP) tap->button = UI_RIGHT;
+      if (hit >= VOL_BAR) tap->volume = hit - VOL_BAR + 1;
       continue;
     }
     int tg = toggle_of(s, r);

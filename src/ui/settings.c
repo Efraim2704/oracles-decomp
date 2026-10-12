@@ -58,12 +58,16 @@ int settings_format(const Settings *s, char *out, size_t size) {
   return n;
 }
 
-void settings_menu_open(SettingsMenu *m, bool haptics_row) {
+void settings_menu_open(SettingsMenu *m, bool phone) {
   m->sel = SET_VOLUME;
-  m->haptics_row = haptics_row;
+  m->phone = phone;
 }
 
-bool settings_row_shown(const SettingsMenu *m, SettingsRow r) { return r != SET_HAPTICS || m->haptics_row; }
+bool settings_row_shown(const SettingsMenu *m, SettingsRow r) {
+  if (r == SET_HAPTICS) return m->phone;
+  if (r == SET_FULLSCREEN) return !m->phone;
+  return true;
+}
 
 static void step(SettingsMenu *m, int dir) {
   do m->sel = (SettingsRow)((m->sel + dir + SET_ROWS) % SET_ROWS);

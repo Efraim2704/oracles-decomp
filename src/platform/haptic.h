@@ -3,10 +3,4 @@
 // Android only: it follows the system's touch feedback setting. Elsewhere nothing vibrates.
 #include <stdbool.h>
 
-#ifdef __ANDROID__
-#define HAS_HAPTICS true
-#else
-#define HAS_HAPTICS false
-#endif
-
 void haptic_tick(void);

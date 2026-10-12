@@ -166,7 +166,7 @@ static void settings_menu_changes_values(void) {
   Settings s;
   SettingsMenu m;
   settings_default(&s);
-  settings_menu_open(&m, false);                        // no Vibration row: keys step past it
+  settings_menu_open(&m, false);                        // a computer: no Vibration row, keys step past it
   SettingsRow row;
   settings_press(&m, &s, UI_RIGHT, &row);
   ASSERT_EQ(s.volume, 10);                              // capped
@@ -207,7 +207,7 @@ static void settings_menu_changes_values(void) {
   ASSERT_EQ(settings_press(&m, &s, UI_BACK, &row), MENU_BACK);
 }
 
-static void settings_vibration_row_only_where_it_vibrates(void) {
+static void settings_rows_follow_the_device(void) {
   Settings s;
   SettingsMenu m;
   SettingsRow row;
@@ -217,8 +217,13 @@ static void settings_vibration_row_only_where_it_vibrates(void) {
   m.sel = SET_FOUR_SLOTS;
   settings_press(&m, &s, UI_DOWN, &row);
   ASSERT_EQ(m.sel, SET_CONTROLS);
-  settings_menu_open(&m, true);                         // a phone
+  ASSERT(settings_row_shown(&m, SET_FULLSCREEN));
+  settings_menu_open(&m, true);                         // a phone: Vibration, and no Fullscreen
   ASSERT(settings_row_shown(&m, SET_HAPTICS));
+  ASSERT(!settings_row_shown(&m, SET_FULLSCREEN));
+  m.sel = SET_COLOURS;
+  settings_press(&m, &s, UI_DOWN, &row);
+  ASSERT_EQ(m.sel, SET_FAST_TEXT);
   m.sel = SET_FOUR_SLOTS;
   settings_press(&m, &s, UI_DOWN, &row);
   ASSERT_EQ(m.sel, SET_HAPTICS);
@@ -597,7 +602,7 @@ int main(void) {
   RUN(themes_come_from_the_title_palettes);
   RUN(settings_round_trip);
   RUN(settings_menu_changes_values);
-  RUN(settings_vibration_row_only_where_it_vibrates);
+  RUN(settings_rows_follow_the_device);
   RUN(filters_keep_pixel_alignment);
   RUN(upscalers_fill_the_whole_picture);
   RUN(upscalers_smooth_a_diagonal);
