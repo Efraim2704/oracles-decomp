@@ -36,6 +36,7 @@ static void ambi_add_double_index(GB *gb, uint16_t return_address) {
 }
 
 void interactionCode4d_hook(GB *gb);
+void interactionCode4d__afterCall6122_hook(GB *gb);
 void ambi_state1_hook(GB *gb);
 void ambi_updateAnimationAndRunScript_hook(GB *gb);
 void ambi_runSubid01_hook(GB *gb);
@@ -167,6 +168,17 @@ subida:
   CYC(b_+212, b_+215); ambi_loadScript_hook(gb);
 }
 
+// the tail of state0 after @initSubid returns, shared by both of its entries
+static void ambi_state0_mark_solid(GB *gb) {
+  BASE(interactionCode4d);
+  CYC(b_+20, b_+22); E = 0x40;
+  CYC(b_+22, b_+23); A = mem_rd(gb, DE);
+  CYC(b_+23, b_+24); alu_or(gb, A);
+  if (!(F & FZ)) { CYCT(b_+24, b_+27); objectMarkSolidPosition_hook(gb); return; }
+  CYC(b_+24, b_+27);
+  CYC(b_+27, b_+28); ret_effect(gb);
+}
+
 void interactionCode4d_hook(GB *gb) {
   BASE(interactionCode4d);
   uint16_t sp0_ = gb->sp; (void)sp0_;
@@ -185,12 +197,14 @@ state0:
   CALL_C(b_+11, interactionInitGraphics_hook, SYM(interactionInitGraphics), b_+14);
   CALL_C(b_+14, objectSetVisiblec2_hook, SYM(objectSetVisiblec2), b_+17);
   CYC(b_+17, b_+20); push_effect(gb, b_+20); ambi_init_subid(gb, sp0_);
-  CYC(b_+20, b_+22); E = 0x40;
-  CYC(b_+22, b_+23); A = mem_rd(gb, DE);
-  CYC(b_+23, b_+24); alu_or(gb, A);
-  if (!(F & FZ)) { CYCT(b_+24, b_+27); objectMarkSolidPosition_hook(gb); return; }
-  CYC(b_+24, b_+27);
-  CYC(b_+27, b_+28); ret_effect(gb);
+  ambi_state0_mark_solid(gb);
+}
+
+// 09:6122, the `ld e,Interaction.enabled` after `call @initSubid`. The engine can resume a thread
+// here with the return address still on its stack rather than inside this routine's C, so the
+// native build needs a hook at the address; without one, Ambi's room (Ages 1:16) stopped the engine.
+void interactionCode4d__afterCall6122_hook(GB *gb) {
+  ambi_state0_mark_solid(gb);
 }
 
 void ambi_state1_hook(GB *gb) {

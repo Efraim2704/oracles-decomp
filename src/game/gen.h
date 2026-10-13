@@ -5073,6 +5073,7 @@ void forestFairy_subid0e_hook(GB *gb);
 void bird_runSubid4_hook(GB *gb);
 void bird_hop_hook(GB *gb);
 void interactionCode4d_hook(GB *gb);
+void interactionCode4d__afterCall6122_hook(GB *gb);
 void ambi_state1_hook(GB *gb);
 void ambi_updateAnimationAndRunScript_hook(GB *gb);
 void ambi_runSubid01_hook(GB *gb);
