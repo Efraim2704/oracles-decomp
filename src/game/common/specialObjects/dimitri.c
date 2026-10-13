@@ -658,23 +658,27 @@ check_hazards:
   CYC((SYM(dimitriUpdateMovement__checkHazards) + 8), (SYM(dimitriUpdateMovement__checkHazards) + 9));
   CYC((SYM(dimitriUpdateMovement__checkHazards) + 9), (SYM(dimitriUpdateMovement__checkHazards) + 11)); L = 0x04;
   CYC((SYM(dimitriUpdateMovement__checkHazards) + 11), (SYM(dimitriUpdateMovement__checkHazards) + 13)); mem_wr(gb, HL, 0x05);
-  CYC((SYM(dimitriUpdateMovement__checkHazards) + 13), (SYM(dimitriUpdateMovement__checkHazards) + 16)); A = W8(wLinkForceState);
-  CYC((SYM(dimitriUpdateMovement__checkHazards) + 16), (SYM(dimitriUpdateMovement__checkHazards) + 18)); alu_cp(gb, 0x02);
-  if (!(F & FZ)) {
-    CYCT((SYM(dimitriUpdateMovement__checkHazards) + 18), (SYM(dimitriUpdateMovement__checkHazards) + 20));
-    goto waterfall;
+  if (!game_seasons) {
+    CYC((SYM(dimitriUpdateMovement__checkHazards) + 13), (SYM(dimitriUpdateMovement__checkHazards) + 16)); A = W8(wLinkForceState);
+    CYC((SYM(dimitriUpdateMovement__checkHazards) + 16), (SYM(dimitriUpdateMovement__checkHazards) + 18)); alu_cp(gb, 0x02);
+    if (!(F & FZ)) {
+      CYCT((SYM(dimitriUpdateMovement__checkHazards) + 18), (SYM(dimitriUpdateMovement__checkHazards) + 20));
+      goto waterfall;
+    }
+    CYC((SYM(dimitriUpdateMovement__checkHazards) + 18), (SYM(dimitriUpdateMovement__checkHazards) + 20));
+    CYC((SYM(dimitriUpdateMovement__checkHazards) + 20), (SYM(dimitriUpdateMovement__checkHazards) + 21)); alu_xor(gb, A);
+    CYC((SYM(dimitriUpdateMovement__checkHazards) + 21), (SYM(dimitriUpdateMovement__checkHazards) + 24)); W8(wLinkForceState) = A;
+    CYC((SYM(dimitriUpdateMovement__checkHazards) + 24), (SYM(dimitriUpdateMovement__checkHazards) + 27)); companionGotoHazardHandlingState_hook(gb);
+    return;
   }
-  CYC((SYM(dimitriUpdateMovement__checkHazards) + 18), (SYM(dimitriUpdateMovement__checkHazards) + 20));
-  CYC((SYM(dimitriUpdateMovement__checkHazards) + 20), (SYM(dimitriUpdateMovement__checkHazards) + 21)); alu_xor(gb, A);
-  CYC((SYM(dimitriUpdateMovement__checkHazards) + 21), (SYM(dimitriUpdateMovement__checkHazards) + 24)); W8(wLinkForceState) = A;
-  CYC((SYM(dimitriUpdateMovement__checkHazards) + 24), (SYM(dimitriUpdateMovement__checkHazards) + 27)); companionGotoHazardHandlingState_hook(gb);
-  return;
 
-waterfall:
-  CALL_C((SYM(dimitriUpdateMovement__checkHazards) + 27), dimitriAddWaterfallResistance_hook, SYM(dimitriAddWaterfallResistance), (SYM(dimitriUpdateMovement__checkHazards) + 30));
-  CYC((SYM(dimitriUpdateMovement__checkHazards) + 30), (SYM(dimitriUpdateMovement__checkHazards) + 32)); B = 0x04;
-  CYC((SYM(dimitriUpdateMovement__checkHazards) + 32), (SYM(dimitriUpdateMovement__checkHazards) + 34));
+waterfall: {
+  uint16_t w_ = SYM(dimitriUpdateMovement__checkHazards) + GV(27, 13);
+  CALL_C(w_, dimitriAddWaterfallResistance_hook, SYM(dimitriAddWaterfallResistance), w_ + 3);
+  CYC(w_ + 3, w_ + 5); B = 0x04;
+  CYC(w_ + 5, w_ + 7);
   goto set_water_status;
+}
 
 not_in_water:
   CYC(SYM(dimitriUpdateMovement__setNotInWater), (SYM(dimitriUpdateMovement__setNotInWater) + 2)); B = 0x00;
