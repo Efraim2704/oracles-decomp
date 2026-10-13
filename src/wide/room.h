@@ -25,6 +25,7 @@ typedef struct {
   int group, room;
   int season;                   // Seasons: 0 spring .. 3 winter (wRoomStateModifier)
   uint8_t room_flags;           // the room's flag byte (Ages: bit 0 swaps the layout for the underwater one)
+  int tileset_add;              // Ages checkTilesetOverride: added to the room's tileset index
 } WideRoomKey;
 
 bool wide_decode_room(const uint8_t *rom, size_t size, bool seasons, const WideRoomKey *key, WideRoom *out);

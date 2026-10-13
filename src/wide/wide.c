@@ -8,9 +8,10 @@
 typedef struct {
   uint16_t tileset_flags, lcd_behaviour, camera_y, camera_x;
   uint16_t group, room, modifier, pack, dungeon_index, map_position, floor, dungeon_properties, dungeon_flags_h, game_over;
-  int room_packs, pack_seasons;       // Seasons ROM: roomPackData (bank 4), roomPackSeasonTable (bank 1)
+  int room_packs, pack_seasons;       // roomPackData (bank 4; Ages a page per group), Seasons roomPackSeasonTable (bank 1)
 } GameRam;
-static const GameRam ages_ram = {0xcc34, 0xff9b, 0xffaa, 0xffac, 0xcc2d, 0xcc30, 0xcc32, 0xcc31, 0xcc39, 0xcc3a, 0xcc3b, 0xcc3c, 0xcc3d, 0xcdd6, 0, 0};
+static const GameRam ages_ram = {0xcc34, 0xff9b, 0xffaa, 0xffac, 0xcc2d, 0xcc30, 0xcc32, 0xcc31, 0xcc39, 0xcc3a, 0xcc3b, 0xcc3c, 0xcc3d, 0xcdd6,
+                                 4 * 0x4000 + 0x075c, 0};
 static const GameRam seasons_ram = {0xcc50, 0xff99, 0xffa8, 0xffaa, 0xcc49, 0xcc4c, 0xcc4e, 0xcc4d, 0xcc55, 0xcc56, 0xcc57, 0xcc58, 0xcc59, 0xcc35,
                                     4 * 0x4000 + 0x073c, 1 * 0x4000 + 0x3e50};
 enum {
@@ -38,6 +39,8 @@ typedef struct {
 } View;
 
 enum { W_TRANSITION_DIRECTION = 0xcd02, W_TRANSITION_STATE = 0xcd04 };
+enum { AGES_ANIMAL_COMPANION = 0xc610, AGES_JABU_WATER_LEVEL = 0xc6e9, AGES_PAST_ROOM_FLAGS = 0xc800,
+       SPECIALOBJECT_RICKY = 0x0b, SPECIALOBJECT_MOOSH = 0x0d, ROOMPACK_NUUN = 0x7f };
 
 static View view_of(const GBSample *s, const GameRam *r) {
   View v = {false, false, 0, 0};
@@ -115,6 +118,23 @@ int wide_room_pixel(const GBSample *s, bool seasons, int x, int y) {
 
 // --- the rooms around ---------------------------------------------------------------------------
 
+// Ages checkTilesetOverride: Nuun Highlands takes the companion's tileset, the Maku Tree's room
+// its saved one, and Jabu-Jabu's flooded floors the underwater one.
+static int ages_tileset_add(const GBSample *s, const WideOptions *o, const GameRam *r, int group, int room) {
+  if (group == 0) {
+    if (room == 0x38 && (rd(s, AGES_PAST_ROOM_FLAGS + 0x48) & 0x01)) return 2;
+    int companion = rd(s, AGES_ANIMAL_COMPANION);
+    if (o->rom_size > (size_t)r->room_packs + 0x100 && o->rom[r->room_packs + room] == ROOMPACK_NUUN &&
+        companion > SPECIALOBJECT_RICKY && companion <= SPECIALOBJECT_MOOSH)
+      return companion - SPECIALOBJECT_RICKY;
+    return 0;
+  }
+  static const uint8_t jabu_floors[3] = {0x00, 0x01, 0x03};
+  int level = rd(s, AGES_JABU_WATER_LEVEL) & 7, floor = rd(s, r->floor);
+  if (rd(s, r->dungeon_index) == 0x07 && level < 3 && floor < 8 && (jabu_floors[level] >> floor & 1)) return 1;
+  return 0;
+}
+
 // The room at grid step (tx, ty) from the current one, or false where there is none to show: on
 // the overworld's grid (Ages 14 wide, Seasons 16) any room; in a dungeon the current room, while
 // moving the one it came from, and otherwise the rooms beside it through a doorway once visited.
@@ -130,6 +150,7 @@ static bool room_at(const GBSample *s, const WideOptions *o, const View *v, int 
     if (col < 0 || col > last || row < 0 || row > 15) return false;
     key->room = row * 16 + col;
     key->room_flags = rd(s, (uint16_t)(0xc700 + group * 0x100 + key->room));
+    if (!o->seasons) key->tileset_add = ages_tileset_add(s, o, r, group, key->room);
     if (o->seasons && group == 0 && key->room != room && o->rom_size > (size_t)r->room_packs + 0x100) {
       int here = rd(s, r->pack), there = o->rom[r->room_packs + key->room];
       // another area starts in its own season (determineSeasonForRoomPack); while "always spring"
@@ -143,6 +164,7 @@ static bool room_at(const GBSample *s, const WideOptions *o, const View *v, int 
   if (rd(s, r->dungeon_index) == 0xff || !(rd(s, r->tileset_flags) & TILESETFLAG_DUNGEON)) return false;
   int pos = rd(s, r->map_position), floor = rd(s, r->floor), flags_page = rd(s, r->dungeon_flags_h) << 8;
   if (floor > 15 || flags_page < 0xc000 || flags_page > 0xcf00) return false;
+  if (!o->seasons) key->tileset_add = ages_tileset_add(s, o, r, group, room);
   if (!tx && !ty) { key->room = room; return true; }
   bool back = v->moving && tx == -v->dx && ty == -v->dy;
   bool beside = !v->moving && !ty && (tx == 1 || tx == -1);
