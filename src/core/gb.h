@@ -31,6 +31,12 @@ extern int64_t gb_grid_offset;
 #define FB_W 160
 #define FB_H 144
 
+// Sprites the game culled for being off the 160x144 screen, at their full screen position (top-left,
+// OAM y - 16 and x - 8), for widescreen. Not emulated state: the engine reports them beside the OAM.
+#define OFFSCREEN_MAX 64
+typedef struct { int16_t y, x; uint8_t tile, attr; } OffscreenSprite;
+typedef struct { uint8_t n; OffscreenSprite s[OFFSCREEN_MAX]; } OffscreenSprites;
+
 typedef struct {
   uint64_t frame;
   uint8_t wram[8][4096], hram[127], vram[2][8192], oam[160], io[128], bg_pal[64], ob_pal[64], ie, ram_bank;
@@ -42,6 +48,7 @@ typedef struct {
   // VRAM and BG palettes at the start of the last two LCD frames, and which of the two each line
   // was drawn from (the sample is taken mid-LCD-frame, so its lines can come from both)
   uint8_t drawn_vram[2][2][8192], drawn_bg_pal[2][64], drawn_oam[2][160], line_drawn[FB_H];
+  OffscreenSprites drawn_offscreen[2];     // beside drawn_oam
 } GBSample;
 
 typedef struct { uint16_t bank, addr; const char *name; uint64_t mcycles; } DispatchRec;

@@ -40,6 +40,7 @@ void render_scanline(GB *gb) {
     memcpy(lines->vram[lines->current], gb->vram, sizeof lines->vram[0]);
     memcpy(lines->bg_pal[lines->current], gb->bg_pal, sizeof lines->bg_pal[0]);
     memcpy(lines->oam[lines->current], gb->oam, sizeof lines->oam[0]);
+    lines->offscreen[lines->current] = lines->offscreen_dma;
   }
   lines->drawn[ly] = lines->current;
   uint16_t *row = &gb->framebuffer[ly * FB_W];

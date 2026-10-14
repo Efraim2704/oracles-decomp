@@ -64,9 +64,13 @@ static bool room_shown(const GBSample *s, const GameRam *r) {
 // A register difference as a small signed offset (the camera plus the screen shake of up to 3)
 static int wrap_offset(int v) { v &= 0xff; return v > 200 ? v - 256 : v; }
 
+// What a background pixel does to the sprites over it: bit 0 a colour other than 0 (which a sprite
+// with OAM priority goes behind), bit 7 the tile's own priority (every sprite goes behind).
+static uint8_t bg_cover(int ci, uint8_t attr) { return ci ? (uint8_t)(1 | (attr & 0x80)) : 0; }
+
 // The background pixel the PPU would draw at screen (x, y) if the screen were wider: the same scroll
 // and map, so VRAM-only changes (text, door animations) show exactly as in the middle. RGB555.
-static int bg_pixel(const GBSample *s, int x, int y) {
+static int bg_pixel(const GBSample *s, int x, int y, uint8_t *cover) {
   uint8_t lcdc = s->line_lcdc[y];
   int d = s->line_drawn[y];
   int px = (x + s->line_scx[y]) & 0xff, py = (y + s->line_scy[y]) & 0xff;
@@ -79,6 +83,7 @@ static int bg_pixel(const GBSample *s, int x, int y) {
   const uint8_t *td = &s->drawn_vram[d][(attr >> 3) & 1][base + fy * 2];
   int bit = 7 - fx, ci = (((td[1] >> bit) & 1) << 1) | ((td[0] >> bit) & 1);
   int i = (attr & 7) * 8 + ci * 2;
+  if (cover) *cover = bg_cover(ci, attr);
   return s->drawn_bg_pal[d][i] | (s->drawn_bg_pal[d][i + 1] << 8);
 }
 
@@ -108,7 +113,7 @@ static int room_or_outside(const GBSample *s, bool seasons, int x, int y, int *r
   int width = rd(s, W_ROOM_WIDTH), height = rd(s, W_ROOM_HEIGHT);
   if (width > 32 || height > 32 || *ry < 0 || *ry >= height * 8) return NOTHING;
   if (*rx < 0 || *rx >= width * 8) return OUTSIDE;
-  return bg_pixel(s, x, y);
+  return bg_pixel(s, x, y, NULL);
 }
 
 int wide_room_pixel(const GBSample *s, bool seasons, int x, int y) {
@@ -253,7 +258,7 @@ static void learn_curve(const GBSample *s, int line, uint8_t curve[3][32]) {
 }
 
 // A neighbour's pixel at its room-local (nx, ny) on screen line y
-static int neighbour_pixel(const GBSample *s, const Neighbour *n, int nx, int ny, int y) {
+static int neighbour_pixel(const GBSample *s, const Neighbour *n, int nx, int ny, int y, uint8_t *cover) {
   const WideRoom *w = n->room;
   if (nx < 0 || ny < 0 || nx >= w->width * 8 || ny >= w->height * 8) return NOTHING;
   int k = (ny >> 3) * 32 + (nx >> 3), d = s->line_drawn[y];
@@ -263,6 +268,7 @@ static int neighbour_pixel(const GBSample *s, const Neighbour *n, int nx, int ny
   if (attr & 0x40) fy = 7 - fy;
   const uint8_t *td = (!n->live && w->vram_set[bank][addr / 16]) ? &w->vram[bank][addr + fy * 2] : &s->drawn_vram[d][bank][addr + fy * 2];
   int bit = 7 - fx, ci = (((td[1] >> bit) & 1) << 1) | ((td[0] >> bit) & 1), p = attr & 7;
+  *cover = bg_cover(ci, attr);
   if (n->live || !w->pal_set[p]) return s->drawn_bg_pal[d][p * 8 + ci * 2] | (s->drawn_bg_pal[d][p * 8 + ci * 2 + 1] << 8);
   int stored = w->bg_pal[p * 8 + ci * 2] | (w->bg_pal[p * 8 + ci * 2 + 1] << 8);
   return n->curve[0][stored & 31] | n->curve[1][stored >> 5 & 31] << 5 | n->curve[2][stored >> 10 & 31] << 10;
@@ -300,6 +306,43 @@ static const Neighbour *around_cell(Around *a, int gx, int gy) {
     }
   }
   return n->room ? n : NULL;
+}
+
+// --- sprites in the strips ------------------------------------------------------------------------
+
+// One line of sprite pixels across the strips: the parts of the OAM's sprites that hang past the
+// screen's edges, then the sprites the game left out for being off the screen (the engine reports
+// them, OffscreenSprites), in that order of priority as the PPU gives lower OAM entries.
+typedef struct { int16_t c[WIDE_W]; bool behind[WIDE_W]; } SpriteLine;
+
+static void sprite_line_put(const GBSample *s, int d, int sx, int sy, uint8_t tile, uint8_t attr, int y, SpriteLine *out) {
+  int h = (s->line_lcdc[y] & 0x04) ? 16 : 8, row = y - sy;
+  if (row < 0 || row >= h) return;
+  if (h == 16) tile &= 0xfe;
+  if (attr & 0x40) row = h - 1 - row;
+  const uint8_t *td = &s->drawn_vram[d][(attr >> 3) & 1][tile * 16 + row * 2];
+  for (int i = 0; i < 8; i++) {
+    int wx = sx + i + WIDE_SIDE;
+    if (wx < 0 || wx >= WIDE_W || (wx >= WIDE_SIDE && wx < WIDE_SIDE + FB_W) || out->c[wx] >= 0) continue;
+    int bit = (attr & 0x20) ? i : 7 - i, ci = (((td[1] >> bit) & 1) << 1) | ((td[0] >> bit) & 1);
+    if (!ci) continue;
+    int p = (attr & 7) * 8 + ci * 2;
+    out->c[wx] = (int16_t)(s->ob_pal[p] | (s->ob_pal[p + 1] << 8));
+    out->behind[wx] = attr & 0x80;
+  }
+}
+
+static void sprite_line(const GBSample *s, int y, SpriteLine *out) {
+  for (int x = 0; x < WIDE_W; x++) out->c[x] = -1;
+  if (!(s->line_lcdc[y] & 0x02)) return;
+  int d = s->line_drawn[y];
+  const uint8_t *oam = s->drawn_oam[d];
+  for (int i = 0; i < 40; i++) {
+    int sx = oam[i * 4 + 1] - 8;
+    if (sx < 0 || sx > FB_W - 8) sprite_line_put(s, d, sx, oam[i * 4] - 16, oam[i * 4 + 2], oam[i * 4 + 3], y, out);
+  }
+  const OffscreenSprites *off = &s->drawn_offscreen[d];
+  for (int i = 0; i < off->n; i++) sprite_line_put(s, d, off->s[i].x, off->s[i].y, off->s[i].tile, off->s[i].attr, y, out);
 }
 
 // The X and Y items, which the game has no boxes for. They go at the left end of the status bar and
@@ -462,17 +505,21 @@ void wide_render(const GBSample *s, const WideOptions *o, uint8_t *out) {
     // the offset from the reference room's origin: a left or upward scroll only goes negative
     ox = a.v.moving && a.v.dx < 0 ? (ox ? ox - 256 : 0) : wrap_offset(ox);
     oy = a.v.moving && a.v.dy < 0 ? oy - 256 : wrap_offset(oy);
+    static SpriteLine sprites;
+    if (line) sprite_line(s, y, &sprites);
     for (int x = 0; x < WIDE_W; x++) {
       if (x == WIDE_SIDE) x += FB_W;
       if (x >= WIDE_W) break;
       int c = NOTHING;
       if (line) {
         int rx = ox + x - WIDE_SIDE, ry = oy + y, gx = floor_div(rx, width), gy = floor_div(ry, height);
-        if (!a.v.moving && !gx && !gy) c = bg_pixel(s, x - WIDE_SIDE, y);
+        uint8_t cover = 0;
+        if (!a.v.moving && !gx && !gy) c = bg_pixel(s, x - WIDE_SIDE, y, &cover);
         else {
           const Neighbour *n = around_cell(&a, gx, gy);
-          if (n) c = neighbour_pixel(s, n, rx - gx * width, ry - gy * height, y);
+          if (n) c = neighbour_pixel(s, n, rx - gx * width, ry - gy * height, y, &cover);
         }
+        if (c >= 0 && sprites.c[x] >= 0 && !((cover & 0x80) || (sprites.behind[x] && (cover & 1)))) c = sprites.c[x];
       }
       // LCD off: blank white, as in the middle -- and never dimmed, or the strips would turn grey
       // against a white middle every time the game blanks the screen between menus.

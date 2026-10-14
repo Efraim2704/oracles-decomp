@@ -233,6 +233,42 @@ static void ages_room_pixels_match_the_ppu(void) {
               TAS_DIR "/ages-boot.state", 289518, false);
 }
 
+// Sprites past the screen's edges (#21): when the screen has scrolled left, Impa is put at x 167,
+// just past the right edge, and walks back in; the GBC drops her sprites there and the strip shows
+// them instead, in step with the half the GBC still draws.
+typedef struct { int frames, seen; } ImpaCheck;
+
+static void impa_cb(GB *gb, const GBSample *s, void *ctx) {
+  (void)gb;
+  ImpaCheck *c = ctx;
+  if (s->frame < 2348 || s->frame > 2352) return;
+  c->frames++;
+  const OffscreenSprites *o = &s->drawn_offscreen[s->line_drawn[100]];
+  for (int i = 0; i < o->n; i++)
+    if (o->s[i].x >= FB_W && o->s[i].x < FB_W + 16 && o->s[i].y > 80 && o->s[i].y < 112) { c->seen++; break; }
+}
+
+static void ages_strips_show_impa_past_the_edge(void) {
+  size_t n;
+  uint8_t *rom = oracles_read_file(GAME_ROM_DIR "/Legend of Zelda, The - Oracle of Ages (USA, Australia).gbc", &n);
+  if (!rom) SKIP("ROM not present");
+  Tas t;
+  if (!tas_load(&t, TAS_DIR "/ages-consoleverified.inputs")) SKIP("inputs missing");
+  GB *gb = calloc(1, sizeof *gb);
+  gb_init(gb);
+  ASSERT(gb_load_rom(gb, rom, n));
+  gb->cyctab = cyctab_alloc(rom, n);
+  assets_zero_code(rom, n);
+  gb_reset(gb);
+  if (!oracles_load_boot_state(gb, TAS_DIR "/ages-boot.state")) SKIP("boot state missing");
+  ImpaCheck c = {0, 0};
+  gb->input_at = tas_cb; gb->input_ctx = &t;
+  gb->frame_cb = impa_cb; gb->frame_ctx = &c;
+  for (int i = 0; i < 2360 && !gb->hung; i++) gb_run_frame(gb);
+  ASSERT_EQ(c.frames, 5);
+  ASSERT_EQ(c.seen, 5);
+}
+
 // The X and Y item icons, which the game never draws: decoded straight from the ROM, so the values
 // here are the ones in data/seasons/treasureDisplayData.s.
 static int icon_colours(const WideItemIcon *ic) {
@@ -278,6 +314,7 @@ int main(void) {
     RUN(ages_room_pixels_match_the_ppu);
   }
   RUN(item_icons_decode_from_the_rom);
+  RUN(ages_strips_show_impa_past_the_edge);
   RUN(seasons_neighbours_match_the_rooms);
   RUN(ages_neighbours_match_the_rooms);
   return 0;

@@ -138,6 +138,7 @@ void gb_tick(GB *gb) {
       memcpy(sm->drawn_bg_pal, lines->bg_pal, sizeof sm->drawn_bg_pal);
       memcpy(sm->line_drawn, lines->drawn, FB_H);
       memcpy(sm->drawn_oam, lines->oam, sizeof sm->drawn_oam);
+      memcpy(sm->drawn_offscreen, lines->offscreen, sizeof sm->drawn_offscreen);
       sm->ie = gb->ie; sm->rom_bank = gb->rom_bank; sm->ram_bank = gb->ram_bank;
       sm->joy_latched = gb->joy_latched; sm->joy_read = gb->joy_read;
       gb->sample_count++;

@@ -1,6 +1,8 @@
 // OAM DMA and the HDMA/GDMA engines.
 #include "core/bus.h"
 #include "hw/hw.h"
+#include "hw/render.h"
+#include <string.h>
 #include <stdio.h>
 
 int dbg_log_dma;
@@ -9,6 +11,9 @@ void oam_dma(GB *gb, uint8_t page) {
   if (dbg_log_dma) printf("  OURS OAM DMA write %02x at %llu mc %llu\n", page, (unsigned long long)((gb->cycles % FRAME_CYCLES) / 2), (unsigned long long)gb->mcycles);
   uint16_t src = (uint16_t)page << 8;
   for (int i = 0; i < 160; i++) gb->oam[i] = bus_read(gb, src + i);
+  RenderLineRegs *lines = render_line_regs(gb);
+  if (!memcmp(lines->pending_oam, gb->oam, sizeof gb->oam)) lines->offscreen_dma = lines->offscreen_pending;
+  else lines->offscreen_dma.n = 0;
 }
 
 uint64_t dbg_dma_bytes, dbg_dma_calls, dbg_hblank_chunks;

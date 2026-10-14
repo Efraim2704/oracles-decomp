@@ -1,6 +1,7 @@
 #include "game/game.h"
 #include "rt/fibers.h"
 #include "game/gen.h"
+#include "game/offscreen.h"
 void s_seasonsFunc_2678_hook(GB *gb);
 
 static void thread_yield(GB *gb);
@@ -11747,6 +11748,7 @@ static void draw_all_sprites_unconditionally(GB *gb) {
     CYC(b_+O(124), b_+OE(125)); A = mem_rd(gb, HL); SET_HL(HL + 1);
     CYC(b_+O(125), b_+OE(127)); H8(hFF93) = A;
   }
+  offscreen_sprites_capture(gb);
   SET_HL(wObjectsToDraw);
   CYC(b_+O(127), b_+OE(130));
   for (;;) {
@@ -11809,6 +11811,7 @@ static void draw_all_sprites_unconditionally(GB *gb) {
       break;
     }
   }
+  offscreen_sprites_commit(gb);
   if (!game_seasons) {
     CYC(b_+190, b_+193); A = W8(wLinkRaisedFloorOffset);
     alu_cpl(gb);
