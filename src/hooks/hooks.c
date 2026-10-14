@@ -23,10 +23,12 @@ static Hook hooks_seasons[] = {
 static Hook *hooks = hooks_ages;
 static size_t NHOOKS = sizeof hooks_ages / sizeof hooks_ages[0];
 static int16_t first_at[65536];
-static int depth;
-static jmp_buf hook_jmp_main[128];
-static jmp_buf *hook_jmp = hook_jmp_main;
-static int hook_jmp_depth;
+// Per thread: widescreen runs a copy of the game on a thread of its own (wide/npcs.c).
+static _Thread_local int depth;
+static _Thread_local jmp_buf hook_jmp_main[128];
+static _Thread_local jmp_buf *hook_jmp;
+static _Thread_local int hook_jmp_depth;
+static jmp_buf *jmps(void) { return hook_jmp ? hook_jmp : (hook_jmp = hook_jmp_main); }
 
 void hook_ctx_init(HookCtx *c) { c->depth = c->jmp_depth = 0; c->jmp = calloc(128, sizeof(jmp_buf)); }
 void hook_ctx_switch(HookCtx *save, const HookCtx *load) {
@@ -36,7 +38,7 @@ void hook_ctx_switch(HookCtx *save, const HookCtx *load) {
 
 void hook_handoff(GB *gb, uint16_t pc) {
   gb->pc = pc;
-  if (hook_jmp_depth > 0 && hook_mode != HOOK_MODE_OFF) longjmp(hook_jmp[hook_jmp_depth - 1], 1);
+  if (hook_jmp_depth > 0 && hook_mode != HOOK_MODE_OFF) longjmp(jmps()[hook_jmp_depth - 1], 1);
 }
 static bool inited;
 
@@ -168,7 +170,7 @@ static void verify(GB *gb, Hook *h) {
   depth++;
   hook_in_verify++;
   hook_suppress_interrupts++;
-  if (hook_jmp_depth < 128) { hook_jmp_depth++; if (setjmp(hook_jmp[hook_jmp_depth - 1]) == 0) h->fn(gb); hook_jmp_depth--; } else h->fn(gb);
+  if (hook_jmp_depth < 128) { hook_jmp_depth++; if (setjmp(jmps()[hook_jmp_depth - 1]) == 0) h->fn(gb); hook_jmp_depth--; } else h->fn(gb);
   hook_in_verify = hiv0;
   depth = depth0;
   hook_suppress_interrupts--;
@@ -236,7 +238,7 @@ static void report_mismatch(Hook *h, const char *bad, size_t off, const GB *c, c
 static void shadow(GB *gb, Hook *h) {
   static const char *only; static int only_init;
   if (!only_init) { only_init = 1; only = getenv("SHADOW_ONLY"); }
-  if (only && strcmp(only, h->name) != 0) { if (hook_jmp_depth < 128) { hook_jmp_depth++; if (setjmp(hook_jmp[hook_jmp_depth - 1]) == 0) h->fn(gb); hook_jmp_depth--; } else h->fn(gb); return; }
+  if (only && strcmp(only, h->name) != 0) { if (hook_jmp_depth < 128) { hook_jmp_depth++; if (setjmp(jmps()[hook_jmp_depth - 1]) == 0) h->fn(gb); hook_jmp_depth--; } else h->fn(gb); return; }
   const int my = verify_depth;
   if (my >= 16) { h->fn(gb); return; }
   if (!snap_pool[my][0]) { snap_pool[my][0] = malloc(sizeof(GB)); snap_pool[my][1] = malloc(sizeof(GB)); }
@@ -248,7 +250,7 @@ static void shadow(GB *gb, Hook *h) {
   static int vlog = -1; if (vlog < 0) vlog = getenv("VERIFYLOG") != NULL;
   if (vlog) fprintf(stderr, "VERIFY> %s frame %llu mc %llu sp %04x\n", h->name, (unsigned long long)GRID_FRAME(gb->cycles), (unsigned long long)gb->mcycles, gb->sp);
   verify_depth = my + 1;
-  if (hook_jmp_depth < 128) { hook_jmp_depth++; if (setjmp(hook_jmp[hook_jmp_depth - 1]) == 0) h->fn(gb); hook_jmp_depth--; } else h->fn(gb);
+  if (hook_jmp_depth < 128) { hook_jmp_depth++; if (setjmp(jmps()[hook_jmp_depth - 1]) == 0) h->fn(gb); hook_jmp_depth--; } else h->fn(gb);
   verify_depth = my;
   uint64_t cyc_c = gb->mcycles - c0;
   // only calls that ran to their `ret` without an interrupt are comparable: the original code is
@@ -337,7 +339,7 @@ bool hook_dispatch(GB *gb) {
   int depth0 = depth;
   depth++;
   if (hook_shadow) shadow(gb, h);
-  else if (hook_jmp_depth < 128) { hook_jmp_depth++; if (setjmp(hook_jmp[hook_jmp_depth - 1]) == 0) h->fn(gb); hook_jmp_depth--; } else h->fn(gb);
+  else if (hook_jmp_depth < 128) { hook_jmp_depth++; if (setjmp(jmps()[hook_jmp_depth - 1]) == 0) h->fn(gb); hook_jmp_depth--; } else h->fn(gb);
   depth = depth0;
   if (hooklog) fprintf(stderr, "HOOK< %s mc %llu frame %llu sp %04x pc %04x ime %d\n", h->name, (unsigned long long)gb->mcycles, (unsigned long long)GRID_FRAME(gb->cycles), gb->sp, gb->pc, gb->ime);
   return true;

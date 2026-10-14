@@ -121,7 +121,7 @@ set_target_properties(oraclesui PROPERTIES LINKER_LANGUAGE CXX)
 # pulls in framebuffer_to_rgb (and so the engine). Do not merge this back into oracleswide.
 add_library(oraclesitem STATIC src/wide/item.c)
 target_include_directories(oraclesitem PUBLIC src)
-add_library(oracleswide STATIC src/wide/wide.c src/wide/room.c)
+add_library(oracleswide STATIC src/wide/wide.c src/wide/room.c src/wide/npcs.c)
 target_include_directories(oracleswide PUBLIC src)
 target_link_libraries(oracleswide PUBLIC oraclesitem)
 add_library(oraclessync STATIC src/sync/sha256.c src/sync/sync.c src/sync/http_common.c)

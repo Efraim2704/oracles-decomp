@@ -33,7 +33,7 @@ extern int64_t gb_grid_offset;
 
 // Sprites the game culled for being off the 160x144 screen, at their full screen position (top-left,
 // OAM y - 16 and x - 8), for widescreen. Not emulated state: the engine reports them beside the OAM.
-#define OFFSCREEN_MAX 64
+#define OFFSCREEN_MAX 128
 typedef struct { int16_t y, x; uint8_t tile, attr; } OffscreenSprite;
 typedef struct { uint8_t n; OffscreenSprite s[OFFSCREEN_MAX]; } OffscreenSprites;
 

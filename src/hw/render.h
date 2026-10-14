@@ -15,6 +15,15 @@ typedef struct {
   // exactly that buffer, then kept per LCD frame like oam
   OffscreenSprites offscreen_pending, offscreen_dma, offscreen[2];
   uint8_t pending_oam[160];
+  // a copy of the game standing in a neighbouring room (wide/npcs.c): the list holds every sprite
+  // of the room's own objects, on the screen or not, and none of Link's
+  bool offscreen_room_objects;
+  // objects of the room being left that the game stopped drawing during this screen transition
+  // (one bit per object slot), still drawn past the screen's edges until it ends
+  uint64_t offscreen_hidden;
+  // enemies the room's object list placed at a random spot: a copy leaves them out, since Link
+  // entering would find them elsewhere
+  uint64_t offscreen_random;
 } RenderLineRegs;
 RenderLineRegs *render_line_regs(const struct GB *gb);
 // The LCD went off: the picture is blank (white) until lines are drawn again.

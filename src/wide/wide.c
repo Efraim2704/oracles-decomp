@@ -116,6 +116,10 @@ static int room_or_outside(const GBSample *s, bool seasons, int x, int y, int *r
   return bg_pixel(s, x, y, NULL);
 }
 
+bool wide_room_origin(const GBSample *s, bool seasons, int y, int *rx, int *ry) {
+  return room_or_outside(s, seasons, 0, y, rx, ry) != NOTHING;
+}
+
 int wide_room_pixel(const GBSample *s, bool seasons, int x, int y) {
   int rx, ry, c = room_or_outside(s, seasons, x, y, &rx, &ry);
   return c < 0 ? -1 : c;
@@ -214,6 +218,7 @@ typedef struct {
   const WideRoom *room;
   bool live;                    // same tileset gfx and palettes as the current room: draw with live VRAM
   const uint8_t (*curve)[32];   // how the game turns stored colours into the ones on screen
+  const WideRoomSprites *sprites;   // its characters, from a copy of the game that went in
 } Neighbour;
 
 // On a GBA the game brightens every colour channel through this table (gbaModePaletteData,
@@ -302,6 +307,9 @@ static const Neighbour *around_cell(Around *a, int gx, int gy) {
         n->room = w;
         n->live = !a->v.moving && c && w->tileset[3] == c->tileset[3] && w->tileset[4] == c->tileset[4] && w->unique == c->unique;
         n->curve = a->curve;
+        // the rooms Link is in and is leaving have their own objects, drawn live
+        bool live_objects = (!gx && !gy) || (gx == a->v.dx && gy == a->v.dy);
+        if (a->o->room_sprites && !live_objects) n->sprites = a->o->room_sprites(key.group, key.room);
       }
     }
   }
@@ -315,7 +323,7 @@ static const Neighbour *around_cell(Around *a, int gx, int gy) {
 // them, OffscreenSprites), in that order of priority as the PPU gives lower OAM entries.
 typedef struct { int16_t c[WIDE_W]; bool behind[WIDE_W]; } SpriteLine;
 
-static void sprite_line_put(const GBSample *s, int d, int sx, int sy, uint8_t tile, uint8_t attr, int y, SpriteLine *out) {
+static void sprite_line_put(const GBSample *s, int d, int sx, int sy, uint8_t tile, uint8_t attr, int y, bool middle, SpriteLine *out) {
   int h = (s->line_lcdc[y] & 0x04) ? 16 : 8, row = y - sy;
   if (row < 0 || row >= h) return;
   if (h == 16) tile &= 0xfe;
@@ -323,7 +331,7 @@ static void sprite_line_put(const GBSample *s, int d, int sx, int sy, uint8_t ti
   const uint8_t *td = &s->drawn_vram[d][(attr >> 3) & 1][tile * 16 + row * 2];
   for (int i = 0; i < 8; i++) {
     int wx = sx + i + WIDE_SIDE;
-    if (wx < 0 || wx >= WIDE_W || (wx >= WIDE_SIDE && wx < WIDE_SIDE + FB_W) || out->c[wx] >= 0) continue;
+    if (wx < 0 || wx >= WIDE_W || (!middle && wx >= WIDE_SIDE && wx < WIDE_SIDE + FB_W) || out->c[wx] >= 0) continue;
     int bit = (attr & 0x20) ? i : 7 - i, ci = (((td[1] >> bit) & 1) << 1) | ((td[0] >> bit) & 1);
     if (!ci) continue;
     int p = (attr & 7) * 8 + ci * 2;
@@ -332,17 +340,25 @@ static void sprite_line_put(const GBSample *s, int d, int sx, int sy, uint8_t ti
   }
 }
 
-static void sprite_line(const GBSample *s, int y, SpriteLine *out) {
+// list_only: the off-screen list across the whole width and not the OAM (a copy's room objects)
+static void sprite_line(const GBSample *s, int y, bool list_only, SpriteLine *out) {
   for (int x = 0; x < WIDE_W; x++) out->c[x] = -1;
   if (!(s->line_lcdc[y] & 0x02)) return;
   int d = s->line_drawn[y];
   const uint8_t *oam = s->drawn_oam[d];
-  for (int i = 0; i < 40; i++) {
+  for (int i = 0; i < 40 && !list_only; i++) {
     int sx = oam[i * 4 + 1] - 8;
-    if (sx < 0 || sx > FB_W - 8) sprite_line_put(s, d, sx, oam[i * 4] - 16, oam[i * 4 + 2], oam[i * 4 + 3], y, out);
+    if (sx < 0 || sx > FB_W - 8) sprite_line_put(s, d, sx, oam[i * 4] - 16, oam[i * 4 + 2], oam[i * 4 + 3], y, false, out);
   }
   const OffscreenSprites *off = &s->drawn_offscreen[d];
-  for (int i = 0; i < off->n; i++) sprite_line_put(s, d, off->s[i].x, off->s[i].y, off->s[i].tile, off->s[i].attr, y, out);
+  for (int i = 0; i < off->n; i++) sprite_line_put(s, d, off->s[i].x, off->s[i].y, off->s[i].tile, off->s[i].attr, y, list_only, out);
+}
+
+void wide_sprite_row(const GBSample *s, int y, int16_t c[WIDE_W], bool behind[WIDE_W]) {
+  static SpriteLine line;
+  sprite_line(s, y, true, &line);
+  memcpy(c, line.c, sizeof line.c);
+  memcpy(behind, line.behind, sizeof line.behind);
 }
 
 // The X and Y items, which the game has no boxes for. They go at the left end of the status bar and
@@ -506,7 +522,7 @@ void wide_render(const GBSample *s, const WideOptions *o, uint8_t *out) {
     ox = a.v.moving && a.v.dx < 0 ? (ox ? ox - 256 : 0) : wrap_offset(ox);
     oy = a.v.moving && a.v.dy < 0 ? oy - 256 : wrap_offset(oy);
     static SpriteLine sprites;
-    if (line) sprite_line(s, y, &sprites);
+    if (line) sprite_line(s, y, false, &sprites);
     for (int x = 0; x < WIDE_W; x++) {
       if (x == WIDE_SIDE) x += FB_W;
       if (x >= WIDE_W) break;
@@ -517,7 +533,12 @@ void wide_render(const GBSample *s, const WideOptions *o, uint8_t *out) {
         if (!a.v.moving && !gx && !gy) c = bg_pixel(s, x - WIDE_SIDE, y, &cover);
         else {
           const Neighbour *n = around_cell(&a, gx, gy);
-          if (n) c = neighbour_pixel(s, n, rx - gx * width, ry - gy * height, y, &cover);
+          int nx = rx - gx * width, ny = ry - gy * height;
+          if (n) c = neighbour_pixel(s, n, nx, ny, y, &cover);
+          if (c >= 0 && n->sprites && nx >= 0 && nx < 256 && ny >= 0 && ny < 176) {
+            int sc = n->sprites->c[ny][nx];
+            if (sc >= 0 && !((cover & 0x80) || (n->sprites->behind[ny][nx] && (cover & 1)))) c = sc;
+          }
         }
         if (c >= 0 && sprites.c[x] >= 0 && !((cover & 0x80) || (sprites.behind[x] && (cover & 1)))) c = sprites.c[x];
       }

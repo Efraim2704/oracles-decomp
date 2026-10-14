@@ -40,6 +40,7 @@
 #define ON_PHONE false
 #endif
 #include "wide/wide.h"
+#include "wide/npcs.h"
 #include "mods/mods.h"
 #include <stdio.h>
 #include <time.h>
@@ -275,7 +276,36 @@ static bool slot_load(GB *gb, const char *dir, int slot) {
   slot_path(path, sizeof path, dir, slot, "");
   if (!oracles_load_boot_state(gb, path)) return false;
   fibers_reset(gb);
+  wide_npcs_reset();
   return true;
+}
+
+// The copies of the game that walk into the rooms beside the screen (wide/npcs.h) run here, so
+// the game never waits for one.
+static SDL_Semaphore *npcs_wake;
+
+static int npcs_thread(void *arg) {
+  (void)arg;
+  SDL_SetCurrentThreadPriority(SDL_THREAD_PRIORITY_LOW);
+  for (;;) {
+    SDL_WaitSemaphore(npcs_wake);
+    wide_npcs_work();
+  }
+  return 0;
+}
+
+static void npcs_signal(void) {
+  if (!npcs_wake) {
+    npcs_wake = SDL_CreateSemaphore(0);
+    // the copy's kernel runs on this stack as the game's does on the main thread's
+    SDL_PropertiesID props = SDL_CreateProperties();
+    SDL_SetPointerProperty(props, SDL_PROP_THREAD_CREATE_ENTRY_FUNCTION_POINTER, (void *)npcs_thread);
+    SDL_SetStringProperty(props, SDL_PROP_THREAD_CREATE_NAME_STRING, "npcs");
+    SDL_SetNumberProperty(props, SDL_PROP_THREAD_CREATE_STACKSIZE_NUMBER, 8 << 20);
+    SDL_DetachThread(SDL_CreateThreadWithProperties(props));
+    SDL_DestroyProperties(props);
+  }
+  SDL_SignalSemaphore(npcs_wake);
 }
 
 // A state file's time and thumbnail (black when it has none).
@@ -635,7 +665,7 @@ static void present_game(SDL_Renderer *ren, SDL_Texture *tex, const GBSample *sa
   // The X and Y items go in the space widescreen adds beside the status bar; the game has nowhere to
   // put them, so without the wider picture there is no room to show them in.
   WideOptions o = {seasons, settings.dim_sides, {overlay_theme.bg.r, overlay_theme.bg.g, overlay_theme.bg.b}, rom, rom_size,
-                   settings.four_slots, {features.slot_item[0], features.slot_item[1]}};
+                   settings.four_slots, {features.slot_item[0], features.slot_item[1]}, wide_npcs_room};
   wide_render(sample, &o, wide);
   for (int y = 0; y < FB_H; y++)
     for (int x = 0; x < ov->width; x++)
@@ -1435,6 +1465,7 @@ static GameEnd run_game(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, co
   gb->code_bits = assets_code_bits(rom, rom_size);
 #endif
   gb_reset(gb);
+  wide_npcs_reset();
   char sav[1300];
   snprintf(sav, sizeof sav, "%s/sram.sav", dir);
   load_sram(gb, sav);
@@ -1634,6 +1665,8 @@ static GameEnd run_game(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, co
       frames++;
     }
 
+    if (settings.widescreen && mode == MODE_PLAY && boot.phase == BOOT_OFF && wide_npcs_update(gb)) npcs_signal();
+
     // pausing and quitting wait for a frame the state can be saved at
     if (mode == MODE_PAUSING || mode == MODE_QUITTING) {
       parked = threads_parked(gb);
@@ -1683,6 +1716,7 @@ static GameEnd run_game(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, co
   // entirely if the player picks one next. main()'s loop re-scans game-agnostically before the
   // launcher is shown again, and the next run_game re-inits for whichever game is actually picked.
   mods_shutdown();
+  wide_npcs_stop();
   free(gb); free(rom); free(tab);
   return end;
 }

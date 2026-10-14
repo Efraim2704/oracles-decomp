@@ -2,7 +2,7 @@
 // is drawn by wide_room_pixel over the middle 160 columns too, and must equal the emulator's
 // picture wherever no sprite covers it. Then the neighbours: what a strip showed of the next room
 // against that room's own picture once the movie is in it. (Skipped without the ROM.)
-// WIDE_PNG=frame:path saves a widescreen frame (any frame, room changes included); WIDE_ONLY_NEIGHBOURS=1 runs only the neighbour
+// WIDE_ONLY_SPRITES=1 runs only the sprite checks. WIDE_PNG=frame:path saves a widescreen frame (any frame, room changes included); WIDE_ONLY_NEIGHBOURS=1 runs only the neighbour
 // checks, WIDE_PAIRS=1 lists each pair, WIDE_PAIR_PNG=room:season:path (WIDE_PAIR_AGES=1 for Ages)
 // saves a pair's strips beside the real columns; WIDE_TIME=1 prints the renderer's cost per frame.
 #include "unit.h"
@@ -13,6 +13,7 @@
 #include "assets/assets.h"
 #include "wide/wide.h"
 #include "wide/item.h"
+#include "wide/npcs.h"
 #include "platform/png.h"
 #include <stdlib.h>
 #include <time.h>
@@ -269,6 +270,62 @@ static void ages_strips_show_impa_past_the_edge(void) {
   ASSERT_EQ(c.seen, 5);
 }
 
+// The characters of the rooms beside the screen: a copy of the game goes into each one. In the
+// past's Lynna village (1:49) two villagers of 1:48 stand within the strip's 48 pixels of the shared
+// edge. The copies must leave the game itself exactly as it was.
+static uint64_t run_ages_to(uint64_t frames, bool npcs, int *edge_pixels, int *random_pixels) {
+  size_t n;
+  uint8_t *rom = oracles_read_file(GAME_ROM_DIR "/Legend of Zelda, The - Oracle of Ages (USA, Australia).gbc", &n);
+  if (!rom) SKIP("ROM not present");
+  static Tas t;
+  if (!tas_load(&t, TAS_DIR "/ages-consoleverified.inputs")) SKIP("inputs missing");
+  GB *gb = calloc(1, sizeof *gb);
+  gb_init(gb);
+  ASSERT(gb_load_rom(gb, rom, n));
+  gb->cyctab = cyctab_alloc(rom, n);
+  assets_zero_code(rom, n);
+  gb_reset(gb);
+  if (!oracles_load_boot_state(gb, TAS_DIR "/ages-boot.state")) SKIP("boot state missing");
+  gb->input_at = tas_cb; gb->input_ctx = &t;
+  wide_npcs_reset();
+  for (uint64_t i = 0; i < frames && !gb->hung; i++) {
+    gb_run_frame(gb);
+    if (npcs && wide_npcs_update(gb)) wide_npcs_work();
+  }
+  if (edge_pixels) {
+    *edge_pixels = 0;
+    const WideRoomSprites *r = wide_npcs_room(1, 0x48);
+    for (int y = 0; r && y < 128; y++)
+      for (int x = FB_W - WIDE_SIDE; x < FB_W; x++) *edge_pixels += r->c[y][x] >= 0;
+  }
+  if (random_pixels) {
+    // room $54 of the past holds only enemies its object list places at random
+    *random_pixels = -1;
+    const WideRoomSprites *r = wide_npcs_room(1, 0x54);
+    if (!r) r = wide_npcs_room(0, 0x54);
+    if (r) {
+      *random_pixels = 0;
+      for (int y = 0; y < 176; y++)
+        for (int x = 0; x < 256; x++) *random_pixels += r->c[y][x] >= 0;
+    }
+  }
+  uint64_t h = gb_state_hash(gb);
+  wide_npcs_stop();
+  return h;
+}
+
+static void ages_strips_show_the_neighbours_characters(void) {
+  int pixels, random;
+  uint64_t with = run_ages_to(19300, true, &pixels, NULL), without = run_ages_to(19300, false, NULL, NULL);
+  printf("  %d pixels of 1:48's characters by the edge\n", pixels);
+  ASSERT(pixels > 100);
+  ASSERT_EQ(with, without);
+  // enemies placed at a random spot would stand elsewhere once Link walks in: never shown
+  run_ages_to(20000, true, NULL, &random);
+  printf("  room $54's randomly placed enemies: %d pixels\n", random);
+  ASSERT_EQ(random, 0);
+}
+
 // The X and Y item icons, which the game never draws: decoded straight from the ROM, so the values
 // here are the ones in data/seasons/treasureDisplayData.s.
 static int icon_colours(const WideItemIcon *ic) {
@@ -309,12 +366,18 @@ static void item_icons_decode_from_the_rom(void) {
 }
 
 int main(void) {
+  if (getenv("WIDE_ONLY_SPRITES")) {
+    RUN(ages_strips_show_impa_past_the_edge);
+    RUN(ages_strips_show_the_neighbours_characters);
+    return 0;
+  }
   if (!getenv("WIDE_ONLY_NEIGHBOURS")) {
     RUN(seasons_room_pixels_match_the_ppu);
     RUN(ages_room_pixels_match_the_ppu);
   }
   RUN(item_icons_decode_from_the_rom);
   RUN(ages_strips_show_impa_past_the_edge);
+  RUN(ages_strips_show_the_neighbours_characters);
   RUN(seasons_neighbours_match_the_rooms);
   RUN(ages_neighbours_match_the_rooms);
   return 0;

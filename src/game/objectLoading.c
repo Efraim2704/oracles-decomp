@@ -1,5 +1,6 @@
 #include "game/game.h"
 #include "game/gen.h"
+#include "game/offscreen.h"
 
 #undef CYC
 #undef CYCT
@@ -130,6 +131,7 @@ void assignRandomPositionToEnemy_hook(GB *gb) {
   CYC(b_+11, b_+13); H = H8(hFF91);
   CYC(b_+13, b_+16); L = 0x8b;
   CALL_C(b_+16, setShortPosition_paramC_hook, SYM(setShortPosition_paramC), b_+19);
+  offscreen_random_placed(gb, H8(hFF91));
   CYC(b_+19, b_+20); alu_xor(gb, A);
   RET(b_+20);
 }

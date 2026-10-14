@@ -28,7 +28,7 @@ static void timer_step(GB *gb) {
 // access. timer_tick keeps the state from before its step; reads see it, and writes apply to it and
 // redo the step. The state only lives from a step to the access in the same M-cycle, so it stays out of
 // the GB struct (and out of save states).
-static struct { uint16_t div; uint8_t tima, if_timer; int reload; } pre;
+static _Thread_local struct { uint16_t div; uint8_t tima, if_timer; int reload; } pre;
 
 void timer_tick(GB *gb) {
   pre.div = gb->div_counter;
