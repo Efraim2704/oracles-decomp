@@ -25,14 +25,16 @@ typedef struct {
   bool haptics;                 // a tick when a finger presses a control or taps a menu (Android)
   Bindings bindings;
   char sync_label[12];          // the SYNC row's value, kept by the app (sync.ini, not settings.ini)
+  bool portable;                // portable.txt beside the app, kept by the app (not settings.ini)
 } Settings;
 
-typedef enum { SET_VOLUME, SET_SCREEN, SET_SCALE, SET_WIDESCREEN, SET_DIM_SIDES, SET_COLOURS, SET_FULLSCREEN, SET_FAST_TEXT, SET_FAST_MENUS, SET_QUICK_SWAP, SET_FOUR_SLOTS, SET_HAPTICS, SET_CONTROLS, SET_SYNC, SET_ROWS } SettingsRow;
+typedef enum { SET_VOLUME, SET_SCREEN, SET_SCALE, SET_WIDESCREEN, SET_DIM_SIDES, SET_COLOURS, SET_FULLSCREEN, SET_FAST_TEXT, SET_FAST_MENUS, SET_QUICK_SWAP, SET_FOUR_SLOTS, SET_HAPTICS, SET_CONTROLS, SET_SYNC, SET_PORTABLE, SET_ROWS } SettingsRow;
 
 typedef struct {
   SettingsRow sel;
-  bool phone;                   // Android: Vibration is shown (nothing else vibrates) and Fullscreen
-                                // is not (the app always fills the screen there)
+  bool phone;                   // Android: Vibration is shown (nothing else vibrates); Fullscreen
+                                // and Portable are not (the app always fills the screen, and has
+                                // no folder of its own to keep data in)
 } SettingsMenu;
 
 void settings_default(Settings *s);
@@ -42,7 +44,7 @@ void settings_parse(Settings *s, const char *text);
 int settings_format(const Settings *s, char *out, size_t size);
 
 void settings_menu_open(SettingsMenu *m, bool phone);
-// The row is in the list (SET_HAPTICS only on a phone, SET_FULLSCREEN never); keys skip the others.
+// The row is in the list (SET_HAPTICS only on a phone, SET_FULLSCREEN and SET_PORTABLE never); keys skip the others.
 bool settings_row_shown(const SettingsMenu *m, SettingsRow r);
 // Left/right change the highlighted value in s; accept on CONTROLS or SYNC returns MENU_PICK with that row.
 MenuAction settings_press(SettingsMenu *m, Settings *s, UiButton b, SettingsRow *picked);

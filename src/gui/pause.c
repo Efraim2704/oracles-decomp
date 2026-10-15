@@ -29,22 +29,22 @@ int gui_pause(PauseMenu *m, const GuiTheme *t, const GuiFrame *f) {
   return tapped;
 }
 
-bool gui_toast(const char *msg, bool undo, const GuiTheme *t, const GuiFrame *f) {
-  Clay_ElementId u = CLAY_ID("Undo");
-  bool tapped = undo && gui_tapped(u);
+bool gui_toast(const char *msg, const char *action, const GuiTheme *t, const GuiFrame *f) {
+  Clay_ElementId u = CLAY_ID("ToastAction");
+  bool tapped = action && gui_tapped(u);
   CLAY({.id = CLAY_ID("Toast"),
         .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .zIndex = 100,
                      .offset = {f->game.x + f->game.w / 2, f->game.y + f->game.h - gui_px(14)},
                      .attachPoints = {.element = CLAY_ATTACH_POINT_CENTER_BOTTOM, .parent = CLAY_ATTACH_POINT_LEFT_TOP}},
-        .layout = {.sizing = {CLAY_SIZING_FIT(0), CLAY_SIZING_FIXED(gui_px(ROW_H))}, .padding = {gui_px(16), gui_px(undo ? 4 : 16), 0, 0},
+        .layout = {.sizing = {CLAY_SIZING_FIT(0), CLAY_SIZING_FIXED(gui_px(ROW_H))}, .padding = {gui_px(16), gui_px(action ? 4 : 16), 0, 0},
                    .childGap = gui_px(14), .childAlignment = {.y = CLAY_ALIGN_Y_CENTER}},
         .backgroundColor = gui_rgb(t->ink),
         .border = {.color = gui_rgb(t->line_strong), .width = CLAY_BORDER_OUTSIDE(1)}}) {
     mark(true, t->accent);
     label(msg, 22, t->paper);
-    if (undo)
+    if (action)
       CLAY({.id = u, .layout = {.sizing = {CLAY_SIZING_FIT(0), CLAY_SIZING_GROW(0)}, .padding = {gui_px(12), gui_px(12), 0, 0}, .childAlignment = {.y = CLAY_ALIGN_Y_CENTER}}}) {
-        label("Undo", 22, t->accent);
+        label(action, 22, t->accent);
       }
   }
   return tapped;

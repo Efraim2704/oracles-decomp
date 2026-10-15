@@ -98,7 +98,7 @@ From the launcher or the pause menu: volume, screen filter (sharp, scanlines, LC
 two pixel-art scalers XBRZ and HQX, which round off jagged diagonals instead of turning each pixel
 into a square — they are two different algorithms, so it is worth trying both), scale
 (**pixel** for whole-pixel steps, **fill** for the largest size that fits), Game Boy Color colours,
-fullscreen and controls.
+fullscreen, controls and [portable mode](#portable-mode).
 
 There are also quality-of-life toggles, **all off by default**:
 
@@ -180,6 +180,31 @@ per-user folder:
 | Android | the app's own storage (removed when you uninstall) |
 
 Deleting that folder resets the app; you'll be asked for your ROM again.
+
+### Portable mode
+
+To keep everything next to the app instead (on a USB stick or external drive, or shared between
+computers), turn on **Settings → Portable** and choose **Restart** on the message that appears. The
+app writes an empty `portable.txt` beside itself and, from then on, keeps its data in an
+`oracles-data` folder there:
+
+| System | Beside |
+|---|---|
+| macOS | `Oracles.app` (never inside it) |
+| Windows | `Oracles.exe` |
+| Linux | the `.AppImage` file |
+
+Creating `portable.txt` by hand does the same, so a folder holding the app, `portable.txt` and
+`oracles-data` can be copied anywhere as it is.
+
+On the first start in the new place, the app copies your current data across, so your saves come
+with you. It never overwrites: if the folder it switches to already holds data, that data is used as
+it is, and the folder it left stays untouched as a backup. Turning Portable off again goes back to
+the per-user folder, as it was when you left it.
+
+The app needs to be able to write where it sits. On macOS, a freshly downloaded app runs from a
+read-only copy until it has been moved once, so drag it to its final place first. Portable mode
+isn't offered on Android.
 
 ## Reporting problems
 

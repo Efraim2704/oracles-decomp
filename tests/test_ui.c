@@ -191,7 +191,11 @@ static void settings_menu_changes_values(void) {
   settings_press(&m, &s, UI_UP, &row);
   settings_press(&m, &s, UI_UP, &row);
   settings_press(&m, &s, UI_UP, &row);
-  ASSERT_EQ(m.sel, SET_SYNC);                           // the last row
+  ASSERT_EQ(m.sel, SET_PORTABLE);                       // the last row
+  ASSERT_EQ(settings_press(&m, &s, UI_ACCEPT, &row), MENU_NONE);
+  ASSERT(s.portable);
+  settings_press(&m, &s, UI_UP, &row);
+  ASSERT_EQ(m.sel, SET_SYNC);
   ASSERT_EQ(settings_press(&m, &s, UI_ACCEPT, &row), MENU_PICK);
   ASSERT_EQ(row, SET_SYNC);
   settings_press(&m, &s, UI_UP, &row);
@@ -228,9 +232,11 @@ static void settings_rows_follow_the_device(void) {
   settings_press(&m, &s, UI_DOWN, &row);
   ASSERT_EQ(m.sel, SET_CONTROLS);
   ASSERT(settings_row_shown(&m, SET_FULLSCREEN));
+  ASSERT(settings_row_shown(&m, SET_PORTABLE));
   settings_menu_open(&m, true);                         // a phone: Vibration, and no Fullscreen
   ASSERT(settings_row_shown(&m, SET_HAPTICS));
   ASSERT(!settings_row_shown(&m, SET_FULLSCREEN));
+  ASSERT(!settings_row_shown(&m, SET_PORTABLE));        // Android keeps its data where the system says
   m.sel = SET_COLOURS;
   settings_press(&m, &s, UI_DOWN, &row);
   ASSERT_EQ(m.sel, SET_FAST_TEXT);
