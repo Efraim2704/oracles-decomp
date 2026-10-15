@@ -30,7 +30,7 @@ int gui_pause(PauseMenu *m, const GuiTheme *t, const GuiFrame *f) {
 }
 
 bool gui_toast(const char *msg, const char *action, const GuiTheme *t, const GuiFrame *f) {
-  Clay_ElementId u = CLAY_ID("ToastAction");
+  Clay_ElementId u = Clay_GetElementId((Clay_String){.length = action ? (int32_t)SDL_strlen(action) : 0, .chars = action ? action : ""});
   bool tapped = action && gui_tapped(u);
   CLAY({.id = CLAY_ID("Toast"),
         .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .zIndex = 100,
