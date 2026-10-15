@@ -842,7 +842,6 @@ substate5:
   if (F & FZ) { CYCT(b_+145, b_+147); goto unlinked; } // jr z
   CYC(b_+145, b_+147);
 
-linked:
   CYC(b_+147, b_+149); E = ENEMY_BASE + OBJ_HEALTH;
   CYC(b_+149, b_+150); alu_xor(gb, A);
   CYC(b_+150, b_+151); mem_wr(gb, DE, A);
@@ -882,7 +881,7 @@ L_592e:
 
 void vire_mainForm_stateF_initBat_hook(GB *gb) {
   BASE(vire_mainForm_stateF);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   CYC(b_+61, b_+62); L = alu_inc8(gb, L);
   CYC(b_+62, b_+63); mem_wr(gb, HL, A); // [var03] = a
   CYC(b_+63, b_+64); alu_rrca(gb);
@@ -1160,7 +1159,7 @@ void vire_mainForm_leftScreen_hook(GB *gb) {
 // @param[out] cflag c if left screen
 void vire_checkOffScreen_hook(GB *gb) {
   BASE(vire_checkOffScreen);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   CYC(b_+0, b_+2); E = ENEMY_BASE + OBJ_YH;
   CYC(b_+2, b_+3); A = mem_rd(gb, DE);
   CYC(b_+3, b_+5); alu_cp(gb, 0xb8);
@@ -1258,7 +1257,7 @@ void vire_mainForm_applySpeedAndAnimate_hook(GB *gb) {
 // @param[out] cflag c if Link is too close (Vire will flee)
 void vire_mainForm_checkLinkTooClose_hook(GB *gb) {
   BASE(vire_mainForm_checkLinkTooClose);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   CYC(b_+0, b_+1); H = D;
   CYC(b_+1, b_+3); L = ENEMY_BASE + OBJ_YH;
   CYC(b_+3, b_+5); A = mem_rd(gb, hEnemyTargetY); // hEnemyTargetY

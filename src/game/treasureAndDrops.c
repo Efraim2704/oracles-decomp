@@ -610,7 +610,7 @@ unavailable:
 
 void checkItemDropAvailable_body_hook(GB *gb) {
   BASE(checkItemDropAvailable_body);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   if (game_seasons) {
     CYC(b_+S(0), b_+S(3)); A = W8(wMinimapGroup);
     CYC(b_+S(3), b_+S(4)); A = alu_dec8(gb, A);

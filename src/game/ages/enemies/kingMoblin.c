@@ -313,7 +313,7 @@ void kingMoblin_stateB_hook(GB *gb) {
 
 void kingMoblin_initBombPickupAnimation_hook(GB *gb) {
   BASE(kingMoblin_initBombPickupAnimation);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   CYC(b_+0, b_+2); E = ENEMY_BASE + OBJ_HEALTH;
   CYC(b_+2, b_+3); A = mem_rd(gb, DE);
   CYC(b_+3, b_+4); A = alu_dec8(gb, A);
@@ -659,7 +659,7 @@ void kingMoblin_checkMoveToCentre_hook(GB *gb) {
 
 void kingMoblin_moveToCentre_hook(GB *gb) {
   BASE(kingMoblin_moveToCentre);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   CYC(b_+0, b_+1); H = D;
   CYC(b_+1, b_+3); L = ENEMY_BASE + OBJ_XH;
   CYC(b_+3, b_+4); A = mem_rd(gb, HL);
@@ -681,7 +681,7 @@ moveTowardCentre:
 
 void kingMoblin_setAngleStateAndAnimation_hook(GB *gb) {
   BASE(kingMoblin_setAngleStateAndAnimation);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   CYC(b_+0, b_+2); A = 0x08; // ANGLE_RIGHT
   if (!(F & FC)) { CYCT(b_+2, b_+4); goto L_7f82; } // jr nc
   CYC(b_+2, b_+4);

@@ -72,7 +72,6 @@ void impaNpc_subid00_hook(GB *gb) {
   CALL_C(b_+0, checkInteractionState_hook, SYM(checkInteractionState), b_+3);
   if (F & FZ) { CYCT(b_+3, b_+5); goto state0; }
   CYC(b_+3, b_+5);
-state1:
   CALL_C(b_+5, interactionRunScript_hook, SYM(interactionRunScript), b_+8);
   CYC(b_+8, b_+10); E = INTERACTION_BASE + OBJ_VAR03;
   CYC(b_+10, b_+11); A = mem_rd(gb, DE);

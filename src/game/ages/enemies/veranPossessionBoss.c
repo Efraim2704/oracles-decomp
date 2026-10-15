@@ -465,7 +465,7 @@ void veranPossessionBoss_nayruAmbi_stateF_hook(GB *gb) {
 // just returned to nayru/ambi's body.
 void veranPossessionBoss_nayruAmbi_state10_hook(GB *gb) {
   BASE(veranPossessionBoss_nayruAmbi_state10);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   CYC(b_+0, b_+1); H = D;
   CYC(b_+1, b_+2); L = E;
   CYC(b_+2, b_+3); mem_wr(gb, HL, alu_inc8(gb, mem_rd(gb, HL))); // [state]
@@ -967,7 +967,7 @@ state9:
 // 0e:7b11, bare global; called from enemyCode61.
 void veranPossessionBoss_wasHit_hook(GB *gb) {
   BASE(veranPossessionBoss_wasHit);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   CYC(b_+0, b_+1); H = D;
   CYC(b_+1, b_+3); L = ENEMY_BASE + OBJ_KNOCKBACK_COUNTER;
   CYC(b_+3, b_+5); mem_wr(gb, HL, 0x00);

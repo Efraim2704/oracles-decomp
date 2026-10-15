@@ -208,7 +208,6 @@ func_5d31_call1:
 resume_5d2f:
   CYC(b_+211, b_+213); B = 0x03;
 
-func_5d31_call2:
   CALL_C(b_+213, getFreePartSlot_hook, SYM(getFreePartSlot), b_+216);
   if (!(F & FZ)) { RET_TAKEN(b_+216); return; } // ret nz
   CYC(b_+216, b_+217);

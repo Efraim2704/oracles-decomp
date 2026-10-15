@@ -461,7 +461,7 @@ void blueStalfos_main_state12_hook(GB *gb) {
 // Moving down toward baby Link before attacking with sickle
 void blueStalfos_main_state13_hook(GB *gb) {
   BASE(blueStalfos_main_state13);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   CYC(b_+0, b_+1); H = D;
   CYC(b_+1, b_+3); L = ENEMY_BASE + OBJ_YH;
   CYC(b_+3, b_+5); A = mem_rd(gb, hEnemyTargetY); // hEnemyTargetY
@@ -833,7 +833,7 @@ skipX:
 
 void blueStalfos_main_accelerate_hook(GB *gb) {
   BASE(blueStalfos_main_accelerate);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   CYC(b_+0, b_+2); E = ENEMY_BASE + OBJ_COUNTER1;
   CYC(b_+2, b_+3); A = mem_rd(gb, DE);
   CYC(b_+3, b_+4); alu_or(gb, A);

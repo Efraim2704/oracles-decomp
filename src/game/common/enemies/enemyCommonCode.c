@@ -453,7 +453,6 @@ void ecom_applyGivenVelocityGivenAdjacentWalls_b10_hook(GB *gb) {
   CALL_C(b_+3, getPositionOffsetForVelocity_hook, SYM(getPositionOffsetForVelocity), b_+6);
   CYC(b_+6, b_+7); alu_xor(gb, A);
   CYC(b_+7, b_+9); mem_wr(gb, hFF8D, A);
-component1:
   CYC(b_+9, b_+11); E = ENEMY_BASE + OBJ_Y;
   CYC(b_+11, b_+13); A = mem_rd(gb, hFF8B);
   CYC(b_+13, b_+15); alu_and(gb, 0x0c);
@@ -1669,7 +1668,6 @@ void ecom_applyGivenVelocityGivenAdjacentWalls_b0d_hook(GB *gb) {
   CALL_C(b_+3, getPositionOffsetForVelocity_hook, SYM(getPositionOffsetForVelocity), b_+6);
   CYC(b_+6, b_+7); alu_xor(gb, A);
   CYC(b_+7, b_+9); mem_wr(gb, hFF8D, A);
-component1:
   CYC(b_+9, b_+11); E = ENEMY_BASE + OBJ_Y;
   CYC(b_+11, b_+13); A = mem_rd(gb, hFF8B);
   CYC(b_+13, b_+15); alu_and(gb, 0x0c);
@@ -2886,7 +2884,6 @@ void ecom_applyGivenVelocityGivenAdjacentWalls_b0e_hook(GB *gb) {
   CALL_C(b_+3, getPositionOffsetForVelocity_hook, SYM(getPositionOffsetForVelocity), b_+6);
   CYC(b_+6, b_+7); alu_xor(gb, A);
   CYC(b_+7, b_+9); mem_wr(gb, hFF8D, A);
-component1:
   CYC(b_+9, b_+11); E = ENEMY_BASE + OBJ_Y;
   CYC(b_+11, b_+13); A = mem_rd(gb, hFF8B);
   CYC(b_+13, b_+15); alu_and(gb, 0x0c);
@@ -4103,7 +4100,6 @@ void ecom_applyGivenVelocityGivenAdjacentWalls_b0f_hook(GB *gb) {
   CALL_C(b_+3, getPositionOffsetForVelocity_hook, SYM(getPositionOffsetForVelocity), b_+6);
   CYC(b_+6, b_+7); alu_xor(gb, A);
   CYC(b_+7, b_+9); mem_wr(gb, hFF8D, A);
-component1:
   CYC(b_+9, b_+11); E = ENEMY_BASE + OBJ_Y;
   CYC(b_+11, b_+13); A = mem_rd(gb, hFF8B);
   CYC(b_+13, b_+15); alu_and(gb, 0x0c);

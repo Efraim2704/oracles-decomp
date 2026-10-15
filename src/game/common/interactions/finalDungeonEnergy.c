@@ -87,7 +87,7 @@ after_force_state:
 
 void interactionCodeb5__substate2_hook(GB *gb) {
   BASE(interactionCodeb5);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   CYC(b_+O(105), b_+OE(108)); A = mem_rd(gb, wPaletteThread_mode);
   CYC(b_+O(108), b_+OE(109)); alu_or(gb, A);
   if (!(F & FZ)) { CYCT(b_+O(109), b_+OE(110)); ret_effect(gb); return; }

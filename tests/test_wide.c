@@ -46,7 +46,7 @@ static void check_cb(GB *gb, const GBSample *s, void *ctx) {
     static uint8_t wide[WIDE_W * FB_H * 3];
     static double total, worst;
     static int n;
-    WideOptions o = {c->seasons, true, {40, 32, 16}, c->rom, c->rom_size, false, {0, 0}};
+    WideOptions o = {c->seasons, true, {40, 32, 16}, c->rom, c->rom_size, false, {0, 0}, NULL};
     struct timespec t0, t1;
     clock_gettime(CLOCK_MONOTONIC, &t0);
     wide_render(s, &o, wide);
@@ -61,7 +61,7 @@ static void check_cb(GB *gb, const GBSample *s, void *ctx) {
   char path[400];
   if (png && sscanf(png, "%llu:%399s", &at, path) == 2 && s->frame >= at && !c->saved) {
     static uint8_t wide[WIDE_W * FB_H * 3];
-    WideOptions o = {c->seasons, true, {40, 32, 16}, c->rom, c->rom_size, false, {0, 0}};
+    WideOptions o = {c->seasons, true, {40, 32, 16}, c->rom, c->rom_size, false, {0, 0}, NULL};
     wide_render(s, &o, wide);
     char full[440];
     snprintf(full, sizeof full, "%s-%s.png", path, c->seasons ? "seasons" : "ages");
@@ -140,7 +140,7 @@ static void neighbour_cb(GB *gb, const GBSample *s, void *ctx) {
   RoomView *v = &c->views[c->n++];
   v->group = group; v->room = room; v->modifier = modifier; v->have_view = true;
   static uint8_t wide[WIDE_W * FB_H * 3];
-  WideOptions o = {c->seasons, false, {1, 2, 3}, c->rom, c->rom_size, false, {0, 0}};
+  WideOptions o = {c->seasons, false, {1, 2, 3}, c->rom, c->rom_size, false, {0, 0}, NULL};
   wide_render(s, &o, wide);
   for (int y = 0; y < FB_H; y++)
     for (int x = 0; x < WIDE_SIDE; x++)
@@ -170,7 +170,7 @@ static void neighbours_match(const char *rom_path, const char *inputs, const cha
   gb->input_at = tas_cb; gb->input_ctx = &t;
   gb->frame_cb = neighbour_cb; gb->frame_ctx = &c;
   for (uint64_t i = 0; i < frames && !gb->hung; i++) gb_run_frame(gb);
-  long pairs = 0, shown = 0, same = 0, compared = 0;
+  long pairs = 0, same = 0, compared = 0;
   for (int i = 0; i < c.n; i++)
     for (int j = 0; j < c.n; j++) {
       const RoomView *a = &c.views[i], *b = &c.views[j];
@@ -183,7 +183,6 @@ static void neighbours_match(const char *rom_path, const char *inputs, const cha
           uint16_t checks[2][2] = {{a->strip[1][y][x], b->edge[0][y][x]}, {b->strip[0][y][x], a->edge[1][y][x]}};
           for (int k = 0; k < 2; k++) {
             if (checks[k][0] == 0x8000 || checks[k][1] == 0x8000) continue;
-            shown++;
             compared++;
             pair_n++;
             if ((checks[k][0] & 0x7fff) == (checks[k][1] & 0x7fff)) { same++; pair_same++; }
@@ -375,7 +374,7 @@ static void map_cb(GB *gb, const GBSample *s, void *ctx) {
   MapCheck *c = ctx;
   if (s->wram[0][0xbcb] != 0x02 || s->line_lcdc[0] != s->line_lcdc[16]) return;
   static uint8_t with[WIDE_W * FB_H * 3], without[WIDE_W * FB_H * 3];
-  WideOptions on = {true, true, {40, 32, 16}, c->rom, c->rom_size, true, {0x05, 0x06}};
+  WideOptions on = {true, true, {40, 32, 16}, c->rom, c->rom_size, true, {0x05, 0x06}, NULL};
   WideOptions off = on;
   off.slots = false;
   wide_render(s, &on, with);

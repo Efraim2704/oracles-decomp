@@ -97,7 +97,6 @@ justHit:
   if (F & FZ) { CYCT(b_+24, b_+26); goto fishHit; } // jr z
   CYC(b_+24, b_+26);
 
-antennaHit:
   CYC(b_+26, b_+28); A = OBJ_INVINCIBILITY_COUNTER;
   CALL_C(b_+28, objectGetRelatedObject1Var_hook, SYM(objectGetRelatedObject1Var), b_+31);
   CYC(b_+31, b_+32); E = L;
@@ -339,7 +338,7 @@ void anglerFish_applySpeed_hook(GB *gb) {
 
 void anglerFish_updateAnimation_hook(GB *gb) {
   BASE(anglerFish_updateAnimation);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   CYC(b_+0, b_+2); E = ENEMY_BASE + OBJ_DIRECTION;
   CYC(b_+2, b_+3); A = mem_rd(gb, DE);
   CYC(b_+3, b_+5); alu_xor(gb, 0x01);
@@ -449,7 +448,6 @@ void anglerFish_antenna_hook(GB *gb) {
   if (F & FZ) { CYCT(b_+3, b_+5); goto state8; } // jr z
   CYC(b_+3, b_+5);
 
-state9:
   CYC(b_+5, b_+7); A = OBJ_DIRECTION;
   CALL_C(b_+7, objectGetRelatedObject1Var_hook, SYM(objectGetRelatedObject1Var), b_+10);
   CYC(b_+10, b_+11); A = mem_rd(gb, HL);
@@ -495,7 +493,7 @@ state8:
 // Changes state to $0c if conditions are appropriate to fire a projectile.
 void anglerFish_main_checkFireProjectile_hook(GB *gb) {
   BASE(anglerFish_main_checkFireProjectile);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   CYC(b_+0, b_+2); E = ENEMY_BASE + OBJ_YH;
   CYC(b_+2, b_+3); A = mem_rd(gb, DE);
   CYC(b_+3, b_+5); alu_cp(gb, 0x5c);

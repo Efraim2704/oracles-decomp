@@ -117,7 +117,6 @@ L_5506:
 void interactionCode44__subid0_hook(GB *gb) {
   BASE(interactionCode44);
   uint16_t sp0_ = gb->sp; (void)sp0_;
-L_5492:
   CALL_C(b_+14, checkInteractionState_hook, SYM(checkInteractionState), b_+17);
   if (!(F & FZ)) { CYCT(b_+17, b_+19); goto L_54a2; } CYC(b_+17, b_+19);
   CYC(b_+19, b_+21); A = 0x14;
@@ -133,7 +132,6 @@ L_54a2:
 void interactionCode44__subid0__initialized_hook(GB *gb) {
   BASE(interactionCode44);
   uint16_t sp0_ = gb->sp; (void)sp0_;
-L_54a2:
   CALL_C(b_+30, interactionRunScript_hook, SYM(interactionRunScript), b_+33);
   if ((F & FC)) { CYCT(b_+33, b_+36); if (hook_is(gb, SYM(interactionDelete), interactionDelete_hook)) { interactionDelete_hook(gb); return; } HANDOFF(SYM(interactionDelete)); } CYC(b_+33, b_+36);
   CYC(b_+36, b_+39); if (hook_is(gb, SYM(interactionAnimateAsNpc), interactionAnimateAsNpc_hook)) { interactionAnimateAsNpc_hook(gb); return; } HANDOFF(SYM(interactionAnimateAsNpc));
@@ -142,7 +140,6 @@ L_54a2:
 void interactionCode44__subid1_hook(GB *gb) {
   BASE(interactionCode44);
   uint16_t sp0_ = gb->sp; (void)sp0_;
-L_54ab:
   CALL_C(b_+39, checkInteractionState_hook, SYM(checkInteractionState), b_+42);
   if (!(F & FZ)) { CYCT(b_+42, b_+44); goto L_54b3; } CYC(b_+42, b_+44);
   CALL_L(b_+44, interactionCode44__initGraphicsIncStateAndLoadScript_hook, b_+47);
@@ -154,7 +151,6 @@ L_54b3:
 void interactionCode44__afterCall54b3_hook(GB *gb) {
   BASE(interactionCode44);
   uint16_t sp0_ = gb->sp; (void)sp0_;
-L_54b3:
   CALL_C(b_+47, interactionRunScript_hook, SYM(interactionRunScript), b_+50);
   CYC(b_+50, b_+53); if (hook_is(gb, SYM(interactionAnimateBasedOnSpeed), interactionAnimateBasedOnSpeed_hook)) { interactionAnimateBasedOnSpeed_hook(gb); return; } HANDOFF(SYM(interactionAnimateBasedOnSpeed));
 }
@@ -162,7 +158,6 @@ L_54b3:
 void interactionCode44__subid2_hook(GB *gb) {
   BASE(interactionCode44);
   uint16_t sp0_ = gb->sp; (void)sp0_;
-L_54b9:
   CALL_C(b_+53, checkInteractionState_hook, SYM(checkInteractionState), b_+56);
   if (!(F & FZ)) { CYCT(b_+56, b_+58); goto L_54d9; } CYC(b_+56, b_+58);
   CALL_C(b_+58, getGameProgress_1_hook, SYM(getGameProgress_1), b_+61);
@@ -187,7 +182,6 @@ L_54d9:
 void interactionCode44__subid3__initialized_hook(GB *gb) {
   BASE(interactionCode44);
   uint16_t sp0_ = gb->sp; (void)sp0_;
-L_54d9:
   CALL_C(b_+85, interactionRunScript_hook, SYM(interactionRunScript), b_+88);
   CYC(b_+88, b_+91); if (hook_is(gb, SYM(interactionAnimateAsNpc), interactionAnimateAsNpc_hook)) { interactionAnimateAsNpc_hook(gb); return; } HANDOFF(SYM(interactionAnimateAsNpc));
 }
@@ -195,7 +189,6 @@ L_54d9:
 void interactionCode44__subid4_hook(GB *gb) {
   BASE(interactionCode44);
   uint16_t sp0_ = gb->sp; (void)sp0_;
-L_54df:
   CALL_C(b_+91, checkInteractionState_hook, SYM(checkInteractionState), b_+94);
   if (!(F & FZ)) { CYCT(b_+94, b_+96); goto L_5506; } CYC(b_+94, b_+96);
   CALL_C(b_+96, getGameProgress_2_hook, SYM(getGameProgress_2), b_+99);
@@ -224,7 +217,6 @@ L_5506:
 void interactionCode44__subid4__initialized_hook(GB *gb) {
   BASE(interactionCode44);
   uint16_t sp0_ = gb->sp; (void)sp0_;
-L_5506:
   CALL_C(b_+130, interactionRunScript_hook, SYM(interactionRunScript), b_+133);
   CYC(b_+133, b_+136); if (hook_is(gb, SYM(interactionAnimateAsNpc), interactionAnimateAsNpc_hook)) { interactionAnimateAsNpc_hook(gb); return; } HANDOFF(SYM(interactionAnimateAsNpc));
 }
@@ -232,7 +224,6 @@ L_5506:
 void interactionCode44__initGraphicsAndIncState_hook(GB *gb) {
   BASE(interactionCode44);
   uint16_t sp0_ = gb->sp; (void)sp0_;
-L_550c:
   CALL_C(b_+136, interactionInitGraphics_hook, SYM(interactionInitGraphics), b_+139);
   CALL_C(b_+139, objectMarkSolidPosition_hook, SYM(objectMarkSolidPosition), b_+142);
   CYC(b_+142, b_+145); if (hook_is(gb, SYM(interactionIncState), interactionIncState_hook)) { interactionIncState_hook(gb); return; } HANDOFF(SYM(interactionIncState));
@@ -241,7 +232,6 @@ L_550c:
 void interactionCode44__initGraphicsIncStateAndLoadScript_hook(GB *gb) {
   BASE(interactionCode44);
   uint16_t sp0_ = gb->sp; (void)sp0_;
-L_5515:
   CALL_C(b_+145, interactionInitGraphics_hook, SYM(interactionInitGraphics), b_+148);
   CALL_C(b_+148, objectMarkSolidPosition_hook, SYM(objectMarkSolidPosition), b_+151);
   CYC(b_+151, b_+153); E = 0x42;
@@ -291,7 +281,6 @@ L_5556:
 void getGameProgress_1__noEssences_hook(GB *gb) {
   BASE(getGameProgress_1);
   uint16_t sp0_ = gb->sp; (void)sp0_;
-L_5556:
   CYC(b_+43, b_+45); B = 0x00;
   CYC(b_+45, b_+46); ret_effect(gb); return;
 }
@@ -342,7 +331,6 @@ L_5595:
 void getGameProgress_2__noEssences_hook(GB *gb) {
   BASE(getGameProgress_2);
   uint16_t sp0_ = gb->sp; (void)sp0_;
-L_5595:
   CYC(b_+60, b_+62); B = 0x00;
   CYC(b_+62, b_+63); ret_effect(gb); return;
 }

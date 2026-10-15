@@ -151,7 +151,6 @@ void wizzrobe_state_uninitialized_hook(GB *gb) {
   if (!(F & FZ)) { CYCT(b_+12, b_+14); goto subid1Or2; } // jr nz
   CYC(b_+12, b_+14);
 
-subid0:
   CYC(b_+14, b_+16); mem_wr(gb, HL, 0x08); // [state]
   CYC(b_+16, b_+18); L = ENEMY_BASE + OBJ_COUNTER1;
   CYC(b_+18, b_+20); mem_wr(gb, HL, 0x50);
@@ -162,7 +161,6 @@ subid1Or2:
   if (!(F & FZ)) { CYCT(b_+22, b_+24); goto subid2; } // jr nz
   CYC(b_+22, b_+24);
 
-subid1:
   CYC(b_+24, b_+26); mem_wr(gb, HL, 0x08); // [state]
   CYC(b_+26, b_+29); SET_HL(wWizzrobePositionReservations);
   CYC(b_+29, b_+31); B = 0x10;
@@ -301,7 +299,7 @@ phaseOut:
 // 0e:5994, bare global; jump-table target from wizzrobe_subid0. Phasing out.
 void wizzrobe_subid0_stateB_hook(GB *gb) {
   BASE(wizzrobe_subid0_stateB);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   CYC(b_+0, b_+1); H = D;
   CYC(b_+1, b_+3); L = ENEMY_BASE + OBJ_COUNTER1;
   CYC(b_+3, b_+4); mem_wr(gb, HL, alu_inc8(gb, mem_rd(gb, HL)));

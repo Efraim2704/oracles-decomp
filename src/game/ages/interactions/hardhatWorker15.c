@@ -81,7 +81,7 @@ void soldierSetSpeed80AndVar3fTo01_hook(GB *gb) {
 
 void hardhatWorker_setPatrolDirection_hook(GB *gb) {
   BASE(hardhatWorker_setPatrolDirection);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   CYC(b_+0, b_+1); H = D;
   CYC(b_+1, b_+3); L = INTERACTION_BASE + OBJ_VAR3E;
   CYC(b_+3, b_+4); mem_wr(gb, HL, A);

@@ -683,7 +683,6 @@ void veranFinal_spiderForm_rushAttack_hook(GB *gb) {
   CYC(b_+0, b_+1); A = mem_rd(gb, DE);  // ld a,(de)
   CYC(b_+1, b_+2); alu_or(gb, A);  // or a
   if ((F & FZ)) { CYCT(b_+2, b_+4); goto substate0; } CYC(b_+2, b_+4);  // jr z,@substate0
-substate1:
   CALL_C(b_+4, ecom_decCounter1_b10_hook, SYM(ecom_decCounter1_b10), b_+7);
   if ((F & FZ)) { CYCT(b_+7, b_+9); veranFinal_spiderForm_setCounter2AndInitState2_hook(gb); return; } CYC(b_+7, b_+9);  // jr z,veranFinal_spiderForm_setCounter2AndInitState2
   CALL_C(b_+9, veranFinal_spiderForm_updateMovement_hook, SYM(veranFinal_spiderForm_updateMovement), b_+12);
@@ -1401,7 +1400,6 @@ void veranFinal_spiderForm_decideWhetherToAttack_hook(GB *gb) {
   uint16_t sp0_ = gb->sp; (void)sp0_;
   CALL_C(b_+0, objectGetAngleTowardLink_hook, SYM(objectGetAngleTowardLink), b_+3);
   CYC(b_+3, b_+4); E = A;  // ld e,a
-considerRushAttack:
   CYC(b_+4, b_+6); B = 0x60;  // ld b,$60
   CALL_C(b_+6, veranFinal_spiderForm_checkLinkWithinDistance_hook, SYM(veranFinal_spiderForm_checkLinkWithinDistance), b_+9);
   if (!(F & FC)) { CYCT(b_+9, b_+11); goto considerJumpAttack; } CYC(b_+9, b_+11);  // jr nc,@considerJumpAttack

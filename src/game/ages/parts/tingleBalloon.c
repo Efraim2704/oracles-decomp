@@ -18,7 +18,6 @@ void partCode44_hook(GB *gb) {
   if (!(F & FZ)) { CYCT(b_+6, b_+8); goto state1; } // jr nz
   CYC(b_+6, b_+8);
 
-state0:
   CYC(b_+8, b_+9); H = D;
   CYC(b_+9, b_+10); L = E;
   CYC(b_+10, b_+11); mem_wr(gb, HL, alu_inc8(gb, mem_rd(gb, HL)));

@@ -1388,7 +1388,6 @@ void pumpkinHead_noHealth_hook(GB *gb) {
   if (F & FZ) { CYCT(b_+7, b_+9); goto ghostHealthZero; } // jr z
   CYC(b_+7, b_+9);
 
-headHealthZero:
   CALL_C(b_+9, objectCreatePuff_hook, SYM(objectCreatePuff), b_+12);
   CYC(b_+12, b_+13); H = D;
   CYC(b_+13, b_+15); L = ENEMY_BASE + OBJ_STATE;

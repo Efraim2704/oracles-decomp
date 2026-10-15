@@ -24,7 +24,6 @@ void partCode43_hook(GB *gb) {
   if (F & FZ) { CYCT(b_+16, b_+18); goto state0; } // jr z
   CYC(b_+16, b_+18);
 
-state1:
   CYC(b_+18, b_+20); L = 0xb2; // Enemy.var32
   CYC(b_+20, b_+22); E = 0xc2; // Part.subid
   CYC(b_+22, b_+23); A = mem_rd(gb, DE);

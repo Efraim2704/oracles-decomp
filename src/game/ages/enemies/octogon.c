@@ -1319,7 +1319,6 @@ void octogon_getClosestTargetPositionIndex_hook(GB *gb) {
   BASE(octogon_getClosestTargetPositionIndex);
   CYC(b_+0, b_+2); E = 0x00;
 
-checkY:
   CYC(b_+2, b_+3); A = B;
   CYC(b_+3, b_+5); alu_cp(gb, 0x40);
   if (F & FC) { CYCT(b_+5, b_+7); goto checkX; } // jr c

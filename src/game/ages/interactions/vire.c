@@ -51,7 +51,6 @@ void vire_subid0_hook(GB *gb) {
   CALL_C(b_+0, checkInteractionState_hook, SYM(checkInteractionState), b_+3);
   if (F & FZ) { CYCT(b_+3, b_+5); goto state0; }
   CYC(b_+3, b_+5);
-state1:
   CYC(b_+5, b_+7); E = 0x78;
   CYC(b_+7, b_+8); A = mem_rd(gb, DE);
   CYC(b_+8, b_+9); alu_or(gb, A);
@@ -258,6 +257,6 @@ void vire_deleteAndReturnControl_hook(GB *gb) {
 
 void vire_returnControl_hook(GB *gb) {
   BASE(vire_returnControl);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   CYC(b_+0, b_+1); alu_xor(gb, A); CYC(b_+1, b_+4); mem_wr(gb, wDisabledObjects, A); CYC(b_+4, b_+7); mem_wr(gb, wMenuDisabled, A); RET(b_+7); return;
 }

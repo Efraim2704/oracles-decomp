@@ -256,7 +256,7 @@ nextOffset:
 // @param hl Pointer to counter1
 void waterTektike_setSpeedFromCounter1_hook(GB *gb) {
   BASE(waterTektike_setSpeedFromCounter1);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   CYC(b_+0, b_+1); A = mem_rd(gb, HL);
   CYC(b_+1, b_+3); A = alu_srl(gb, A);
   CYC(b_+3, b_+5); A = alu_srl(gb, A);

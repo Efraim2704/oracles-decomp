@@ -617,7 +617,7 @@ void shadowHag_updateReturningToGround_hook(GB *gb) {
 // Sets state to 9 & initializes stuff
 void shadowHag_beginReturningToGround_hook(GB *gb) {
   BASE(shadowHag_beginReturningToGround);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   CYC(b_+0, b_+1); H = D;
   CYC(b_+1, b_+3); L = ENEMY_BASE + OBJ_STATE;
   CYC(b_+3, b_+5); mem_wr(gb, HL, 0x09);
@@ -640,7 +640,7 @@ void shadowHag_beginReturningToGround_hook(GB *gb) {
 // @param[out] zflag nz if Link is too close to the wall to spawn in
 void shadowHag_chooseSpawnPosition_hook(GB *gb) {
   BASE(shadowHag_chooseSpawnPosition);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   CYC(b_+0, b_+3); A = mem_rd(gb, w1Link_direction);
   CYC(b_+3, b_+6); SET_HL(b_+40); // @spawnOffsets
   CYC(b_+6, b_+7); shadowHag_addDoubleIndexToHl_from_rst(gb, b_+7);

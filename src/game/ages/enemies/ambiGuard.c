@@ -568,7 +568,7 @@ stillCountingDown:
 //           "var35" to make them patrol faster.
 void ambiGuard_alertAllGuards_hook(GB *gb) {
   BASE(ambiGuard_alertAllGuards);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   CYC(b_+0, b_+3); SET_HL((w1ReservedInteraction0_var3f + 1)); // FIRST_ENEMY_INDEX,Enemy.enabled
 
 nextGuard:
@@ -733,7 +733,7 @@ haventSeenLinkYet:
 // several other states.
 void ambiGuard_createExclamationMark_hook(GB *gb) {
   BASE(ambiGuard_createExclamationMark);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   CYC(b_+0, b_+2); A = 0x2d;
   CYC(b_+2, b_+5); SET_BC(0xf408);
   CYC(b_+5, b_+8); TAIL(objectCreateExclamationMark); // jp
@@ -742,7 +742,7 @@ void ambiGuard_createExclamationMark_hook(GB *gb) {
 // 0e:7357, bare global; called from enemyCode54.
 void ambiGuard_collisionOccured_hook(GB *gb) {
   BASE(ambiGuard_collisionOccured);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   CYC(b_+0, b_+2); E = ENEMY_BASE + OBJ_VAR34;
   CYC(b_+2, b_+3); A = mem_rd(gb, DE);
   CYC(b_+3, b_+4); alu_or(gb, A);
@@ -791,7 +791,7 @@ void ambiGuard_setAngle_hook(GB *gb) {
 // Link's direct attacks (sword, fist, etc) occurred; the guard notices Link right away.
 void ambiGuard_directAttackOccurred_hook(GB *gb) {
   BASE(ambiGuard_directAttackOccurred);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   CYC(b_+0, b_+2); E = ENEMY_BASE + OBJ_VAR34;
   CYC(b_+2, b_+4); A = 0x01;
   CYC(b_+4, b_+5); mem_wr(gb, DE, A);

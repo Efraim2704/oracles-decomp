@@ -12,7 +12,7 @@ void writeFlagsTocddb_hook(GB *gb);
 
 void toiletHand_checkLinkIsClose_hook(GB *gb) {
   BASE(toiletHand_checkLinkIsClose);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   // Get Link's position, quantized to a 4x4 grid and packed into one byte.
   CYC(b_+0, b_+3); SET_HL(w1Link_yh);
   CYC(b_+3, b_+4); A = mem_rd(gb, HL); SET_HL(HL + 1);
@@ -46,7 +46,7 @@ void toiletHand_retreatIntoToilet_hook(GB *gb);
 
 void toiletHand_retreatIntoToiletIfNotAlready_hook(GB *gb) {
   BASE(toiletHand_retreatIntoToiletIfNotAlready);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   CYC(b_+0, b_+2); E = INTERACTION_BASE + OBJ_DIRECTION;
   CYC(b_+2, b_+3); A = mem_rd(gb, DE);
   CYC(b_+3, b_+5); alu_cp(gb, 0x02);

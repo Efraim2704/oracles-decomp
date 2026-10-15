@@ -357,7 +357,6 @@ void vineSprout_updateTileAtPosition_hook(GB *gb) {
   CYC(b_+22, b_+24); A = 0x01;
   CYC(b_+24, b_+25); mem_wr(gb, DE, A); // [var33] = 1
 
-fixVerticalBoundary:
   CYC(b_+25, b_+26); A = L;
   CYC(b_+26, b_+28); alu_and(gb, 0xf0);
   if (!(F & FZ)) { CYCT(b_+28, b_+30); goto fixHorizontalBoundary; } // jr nz

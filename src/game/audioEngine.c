@@ -371,7 +371,7 @@ ret:
 // 39:4127, bare global.
 void updateSound_hook(GB *gb) {
   BASE(updateSound);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   PUSH(b_+0, BC);
   PUSH(b_+1, DE);
   PUSH(b_+2, HL);
@@ -407,7 +407,7 @@ notDisabled:
 // 39:4156, @-local sub-label of updateSound.
 void updateSound__decVolume_hook(GB *gb) {
   BASE(updateSound);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   CYC(b_+47, b_+50); A = mem_rd(gb, wSoundVolume);
   CYC(b_+50, b_+52); alu_cp(gb, 0x00);
   if (F & FZ) { CYCT(b_+52, b_+54); updateSound__stopSound_hook(gb); return; } // jr z
@@ -420,7 +420,7 @@ void updateSound__decVolume_hook(GB *gb) {
 // 39:4165, @-local sub-label of updateSound.
 void updateSound__incVolume_hook(GB *gb) {
   BASE(updateSound);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   CYC(b_+62, b_+65); A = mem_rd(gb, wSoundVolume);
   CYC(b_+65, b_+67); alu_cp(gb, 0x77);
   if (F & FZ) { CYCT(b_+67, b_+69); updateSound__clearFadeVariables_hook(gb); return; } // jr z
@@ -441,7 +441,7 @@ void updateSound__stopSound_hook(GB *gb) {
 // 39:4177, @-local sub-label of updateSound.
 void updateSound__clearFadeVariables_hook(GB *gb) {
   BASE(updateSound);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   CYC(b_+80, b_+82); A = 0x00;
   CYC(b_+82, b_+85); mem_wr(gb, wSoundFadeCounter, A);
   CYC(b_+85, b_+88); mem_wr(gb, wSoundFadeDirection, A);
@@ -451,7 +451,7 @@ void updateSound__clearFadeVariables_hook(GB *gb) {
 // 39:417f, @-local sub-label of updateSound.
 void updateSound__updateChannels_hook(GB *gb) {
   BASE(updateSound);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   CYC(b_+88, b_+90); A = 0x00;
   TAIL(updateSound__channelLoop); // fallthrough
 }
@@ -494,7 +494,7 @@ void updateSound__continueSound_hook(GB *gb) {
 // 39:41aa, @-local sub-label of updateSound.
 void updateSound__nextChannel_hook(GB *gb) {
   BASE(updateSound);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   CYC(b_+131, b_+134); A = mem_rd(gb, wSoundChannel);
   CYC(b_+134, b_+135); A = alu_inc8(gb, A);
   CYC(b_+135, b_+137); alu_cp(gb, 0x08);
@@ -512,7 +512,7 @@ void updateSound__nextChannel_hook(GB *gb) {
 // 39:41be, @-local sub-label of updateSound.
 void updateSound__ret_hook(GB *gb) {
   BASE(updateSound);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   SET_HL(POP(b_+151));
   SET_DE(POP(b_+152));
   SET_BC(POP(b_+153));
@@ -558,7 +558,7 @@ skipEnvelopes:
 // 39:41f2, @-local sub-label of continuePlayingSound.
 void continuePlayingSound__ret_hook(GB *gb) {
   BASE(continuePlayingSound);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   RET(b_+48); return; // ret
 }
 
@@ -625,7 +625,7 @@ sweepDeReady:
 // 39:423c, @-local sub-label of updateSoundFrequencyAndPlay.
 void updateSoundFrequencyAndPlay__handleVibrato_hook(GB *gb) {
   BASE(updateSoundFrequencyAndPlay);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   CYC(b_+73, b_+76); SET_HL(wChannelVibratoActive);
   CYC(b_+76, b_+79); A = mem_rd(gb, wSoundChannel);
   CYC(b_+79, b_+80); E = A;
@@ -660,7 +660,7 @@ void updateSoundFrequencyAndPlay__handleVibrato_hook(GB *gb) {
 // 39:426e, @-local sub-label of updateSoundFrequencyAndPlay.
 void updateSoundFrequencyAndPlay__endVibratoWait_hook(GB *gb) {
   BASE(updateSoundFrequencyAndPlay);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   CYC(b_+123, b_+125); A = 0x10;
   CYC(b_+125, b_+128); SET_HL(wChannelVibratoActive);
   PUSH(b_+128, AF);
@@ -685,7 +685,7 @@ void updateSoundFrequencyAndPlay__endVibratoWait_hook(GB *gb) {
 // 39:428c, @-local sub-label of updateSoundFrequencyAndPlay.
 void updateSoundFrequencyAndPlay__useVibrato_hook(GB *gb) {
   BASE(updateSoundFrequencyAndPlay);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   CYC(b_+153, b_+156); SET_HL(wChannelVibratoCounters);
   CYC(b_+156, b_+159); A = mem_rd(gb, wSoundChannel);
   CYC(b_+159, b_+160); E = A;
@@ -738,7 +738,7 @@ void updateSoundFrequencyAndPlay__determineFrequencyOffset_hook(GB *gb) {
 // 39:42d1, @-local sub-label of updateSoundFrequencyAndPlay.
 void updateSoundFrequencyAndPlay__updateSoundFrequencyWithOffset_hook(GB *gb) {
   BASE(updateSoundFrequencyAndPlay);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   CYC(b_+222, b_+225); A = mem_rd(gb, wSoundChannel);
   CYC(b_+225, b_+227); A = alu_sla(gb, A);
   CYC(b_+227, b_+228); B = A;
@@ -763,7 +763,7 @@ void updateSoundFrequencyAndPlay__updateSoundFrequencyWithOffset_hook(GB *gb) {
 // wSoundFrequencyL,H and is written to NR33 and NR34.
 void updatePlayedFrequency_hook(GB *gb) {
   BASE(updatePlayedFrequency);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   CYC(b_+0, b_+3); A = mem_rd(gb, wSoundChannel);
   CYC(b_+3, b_+4); alu_scf(gb);
   CYC(b_+4, b_+5); alu_ccf(gb);
@@ -841,7 +841,7 @@ void updatePlayedFrequency__wave_hook(GB *gb) {
 // 39:434a, @-local sub-label of updatePlayedFrequency.
 void updatePlayedFrequency__ret_hook(GB *gb) {
   BASE(updatePlayedFrequency);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   RET(b_+96); return; // ret
 }
 
@@ -850,7 +850,7 @@ void updatePlayedFrequency__ret_hook(GB *gb) {
 // @param[out] a Whether wave channel registers may be written to (0 or 1)
 void isWaveChannelUnavailable_hook(GB *gb) {
   BASE(isWaveChannelUnavailable);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   CYC(b_+0, b_+3); A = mem_rd(gb, wSoundChannel);
   CYC(b_+3, b_+5); alu_cp(gb, 0x05);
   if (F & FZ) { CYCT(b_+5, b_+7); isWaveChannelUnavailable__available_hook(gb); return; } // jr z
@@ -869,7 +869,7 @@ void isWaveChannelUnavailable_hook(GB *gb) {
 // 39:4360, @-local sub-label of isWaveChannelUnavailable.
 void isWaveChannelUnavailable__available_hook(GB *gb) {
   BASE(isWaveChannelUnavailable);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   CYC(b_+21, b_+23); A = 0x00;
   RET(b_+23); return; // ret
 }
@@ -877,7 +877,7 @@ void isWaveChannelUnavailable__available_hook(GB *gb) {
 // 39:4363, @-local sub-label of isWaveChannelUnavailable.
 void isWaveChannelUnavailable__unavailable_hook(GB *gb) {
   BASE(isWaveChannelUnavailable);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   CYC(b_+24, b_+26); A = 0x01;
   RET(b_+26); return; // ret
 }
@@ -1155,7 +1155,7 @@ void channelCmdf0_hook(GB *gb) {
 // 39:4498, @-local sub-label of channelCmdf0.
 void channelCmdf0__disableLengthTimer_hook(GB *gb) {
   BASE(channelCmdf0);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   SET_AF(POP(b_+47));
   CYC(b_+48, b_+50); alu_and(gb, 0xc0);
   CYC(b_+50, b_+53); SET_HL(wChannelDutyCycles);
@@ -1195,7 +1195,7 @@ void channelCmdf0__channel7_hook(GB *gb) {
 // value, does nothing for channel 4 (and is also useless for channel 5).
 void cmdVolume_hook(GB *gb) {
   BASE(cmdVolume);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   PUSH(b_+0, AF);
   CYC(b_+1, b_+4); A = mem_rd(gb, wSoundChannel);
   CYC(b_+4, b_+6); alu_cp(gb, 0x04);
@@ -1217,7 +1217,7 @@ void cmdVolume_hook(GB *gb) {
 // 39:44e6, @-local sub-label of cmdVolume.
 void cmdVolume__next_hook(GB *gb) {
   BASE(cmdVolume);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   SET_AF(POP(b_+27));
   CYC(b_+28, b_+31); TAIL(doNextChannelCommand); // jp
 }

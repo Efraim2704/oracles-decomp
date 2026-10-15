@@ -724,9 +724,11 @@ if names and names[0] == '--out':
         for b, a, cn, fl in generated: h.write(f'void {cn}(GB *gb);\n')
         if SEASONS:     # a routine that became a shared hook keeps its s_ name for the hand-written Seasons files
             gen_names = set(cn for b, a, cn, fl in generated)
+            defines = {}
             for (b, a), hook in sorted(shared_hooks.items()):
                 for n in alias_names.get((b, a), []):
-                    if cname(n) not in gen_names: h.write(f'#define {cname(n)} {hook}\n')
+                    if cname(n) not in gen_names: defines[cname(n)] = hook
+            for n, hook in defines.items(): h.write(f'#define {n} {hook}\n')
     with open('src/hooks/generated_seasons_gen.txt' if SEASONS else 'src/hooks/generated.txt', 'w') as g:
         for b, a, cn, fl in generated: g.write(f'{b:02x}:{a:04x} {cn} {fl}\n')
     print(f'{len(generated)} routines in {len(bank_outputs)} bank files' + (f'; {len(pruned)} unreachable entries into shared routines not generated' if pruned else ''))

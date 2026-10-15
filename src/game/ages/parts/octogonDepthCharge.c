@@ -71,7 +71,6 @@ void octogonDepthCharge_subid1_hook(GB *gb) {
   if (F & FZ) { CYCT(b_+2, b_+4); goto state0; } // jr z
   CYC(b_+2, b_+4);
 
-state1:
   CALL_C(b_+4, objectApplySpeed_hook, SYM(objectApplySpeed), b_+7);
   CALL_C(b_+7, partCommon_checkTileCollisionOrOutOfBounds_hook, SYM(partCommon_checkTileCollisionOrOutOfBounds), b_+10);
   if (!(F & FZ)) { CYCT(b_+10, b_+13); partAnimate_hook(gb); return; } // jp nz

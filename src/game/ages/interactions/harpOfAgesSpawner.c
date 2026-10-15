@@ -80,7 +80,7 @@ void interactionCodeb3__state1_hook(GB *gb) {
 
 void interactionCodeb3__state2_hook(GB *gb) {
   BASE(interactionCodeb3);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   CYC(b_+88, b_+91); A = mem_rd(gb, wOamEnd);
   CYC(b_+91, b_+92); alu_or(gb, A);
   if (F & FZ) { CYCT(b_+92, b_+93); ret_effect(gb); return; }

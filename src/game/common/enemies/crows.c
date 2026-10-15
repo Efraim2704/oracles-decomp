@@ -284,7 +284,7 @@ void crow_subid1_hook(GB *gb) {
 // charge in right now.
 void crow_subid1_state8_hook(GB *gb) {
   BASE(crow_subid1_state8);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   // Count the number of crows that are in state 9 or higher (number of crows that
   // are either about to or are already charging across the screen)
   CYC(b_+0, b_+3); SET_HL((w1ReservedInteraction0_var3f + 2)); // FIRST_ENEMY_INDEX, Enemy.id
@@ -583,7 +583,7 @@ moveToward:
 // For subid 1.
 void crow_updateSpeed_hook(GB *gb) {
   BASE(crow_updateSpeed);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   CYC(b_+0, b_+2); E = ENEMY_BASE + OBJ_COUNTER2;
   CYC(b_+2, b_+3); A = mem_rd(gb, DE);
   CYC(b_+3, b_+5); alu_cp(gb, 0x7f);

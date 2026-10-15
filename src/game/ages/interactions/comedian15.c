@@ -81,7 +81,7 @@ void comedian_disableMustache_hook(GB *gb) {
 // Turn to face link, accounting for the fact that he only faces left and right.
 void comedian_turnToFaceLink_hook(GB *gb) {
   BASE(comedian_turnToFaceLink);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   CYC(b_+0, b_+1); H = D;
   CYC(b_+1, b_+3); L = INTERACTION_BASE + OBJ_XH;
   CYC(b_+3, b_+6); A = W8(w1Link_xh);

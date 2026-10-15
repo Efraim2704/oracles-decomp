@@ -636,7 +636,6 @@ void ramrockArm_subid2_substate2_hook(GB *gb) {
   CYC(b_+17, b_+19); alu_cp(gb, 0x09);
   if (!(F & FZ)) { RET_TAKEN(b_+19); return; }
   CYC(b_+19, b_+20);
-relatedSubid09:
   CYC(b_+20, b_+21); H = D;
   CYC(b_+21, b_+23); L = ENEMY_BASE + OBJ_COLLISION_TYPE;
   CYC(b_+23, b_+25); mem_wr(gb, HL, (uint8_t)(mem_rd(gb, HL) | (1 << 7)));

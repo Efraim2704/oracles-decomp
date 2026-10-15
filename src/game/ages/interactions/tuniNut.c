@@ -8,7 +8,7 @@
 
 void interactionCodeb1_hook(GB *gb) {
   BASE(interactionCodeb1);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   CYC(b_+0, b_+3); SET_HL((SYM(interactiond7_makuSeed__state4Substate1) + 5));
   CYC(b_+3, b_+5); E = 0x3f;
   CYC(b_+5, b_+8); TAIL(interBankCall);
@@ -16,7 +16,7 @@ void interactionCodeb1_hook(GB *gb) {
 
 void interactionCodeb2__state0_hook(GB *gb) {
   BASE(interactionCodeb2);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   CYC(b_+60, b_+61); A = alu_inc8(gb, A);
   CYC(b_+61, b_+62); mem_wr(gb, DE, A);
   CYC(b_+62, b_+65); mem_wr(gb, wScreenShakeMagnitude, A);

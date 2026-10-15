@@ -446,7 +446,7 @@ void fireKeese_animate_hook(GB *gb) {
 // divebombing.
 void fireKeese_subid0_stateD_hook(GB *gb) {
   BASE(fireKeese_subid0_stateD);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   CYC(b_+0, b_+1); H = D;
   CYC(b_+1, b_+3); L = ENEMY_BASE + OBJ_Z;
   CYC(b_+3, b_+4); A = mem_rd(gb, HL);
@@ -601,7 +601,7 @@ slowSpeed:
 // in state $0d.
 void fireKeese_subid1_setSpeedAndAnimateBasedOnCounter1_hook(GB *gb) {
   BASE(fireKeese_subid1_setSpeedAndAnimateBasedOnCounter1);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   CYC(b_+0, b_+2); E = ENEMY_BASE + OBJ_COUNTER1;
   CYC(b_+2, b_+3); A = mem_rd(gb, DE);
   CYC(b_+3, b_+5); alu_and(gb, 0x0f);

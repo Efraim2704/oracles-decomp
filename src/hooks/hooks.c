@@ -12,7 +12,7 @@ int hook_mode = HOOK_MODE_REPLACE;
 uint64_t hook_verify_failures;
 bool hook_verify_abort = true;
 
-#define HOOK(bank, addr, name, flags) {bank, addr, #name, name, 0, flags},
+#define HOOK(bank, addr, name, flags) {bank, addr, #name, name, 0, flags, 0},
 static Hook hooks_ages[] = {
 #include "hooks/table.h"
 };

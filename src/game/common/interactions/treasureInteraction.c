@@ -43,7 +43,6 @@ L_4981:
   CYC(b_+O(42),b_+OE(43)); mem_wr(gb, HL, A);
 L_499e:
   CALL_C(b_+O(43), interactionInitGraphics_hook, SYM(interactionInitGraphics), b_+OE(46));
-L_49a1:
   CYC(b_+O(46),b_+OE(48)); E = 0x71;
   CYC(b_+O(48),b_+OE(49)); A = mem_rd(gb, DE);
   CYC(b_+O(49),b_+OE(50)); alu_or(gb, A);
@@ -371,7 +370,6 @@ L_4b97:
   if (!(F & FZ)) { CYCT(b_+O(552),b_+OE(554)); goto L_4bbd; } CYC(b_+O(552),b_+OE(554));
   CYC(b_+O(554),b_+OE(555)); A = alu_inc8(gb, A);
   CYC(b_+O(555),b_+OE(556)); mem_wr(gb, DE, A);
-L_4b9f:
   CYC(b_+O(556),b_+OE(558)); A = 0x04;
   CYC(b_+O(558),b_+OE(561)); mem_wr(gb, wLinkForceState, A);
   CYC(b_+O(561),b_+OE(562)); A = B;
@@ -456,7 +454,6 @@ L_4c2a:
 void interactionCode60__giveTreasure_hook(GB *gb) {
   BASE(interactionCode60);
   uint16_t sp0_ = gb->sp; (void)sp0_;
-L_4c32:
   CYC(b_+O(703),b_+OE(705)); E = 0x74;
   CYC(b_+O(705),b_+OE(706)); A = mem_rd(gb, DE);
   CYC(b_+O(706),b_+OE(707)); C = A;
@@ -515,7 +512,6 @@ L_4c7d:
 void interactionCode60__checkLinkTouched_hook(GB *gb) {
   BASE(interactionCode60);
   uint16_t sp0_ = gb->sp; (void)sp0_;
-L_4c88:
   CYC(b_+O(789),b_+OE(792)); A = mem_rd(gb, wLinkForceState);
   CYC(b_+O(792),b_+OE(793)); alu_or(gb, A);
   if (!(F & FZ)) { CYCT(b_+O(793),b_+O(793)+1);ret_effect(gb); return; } CYC(b_+O(793),b_+OE(794));

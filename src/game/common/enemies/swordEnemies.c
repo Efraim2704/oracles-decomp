@@ -343,7 +343,7 @@ normalStatus:
 // 0e:5680, bare global; jump-table target from enemyCode48_runState.
 void swordDarknut_state_uninitialized_hook(GB *gb) {
   BASE(swordDarknut_state_uninitialized);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   CYC(b_+0, b_+2); E = ENEMY_BASE + OBJ_SUBID;
   CYC(b_+2, b_+3); A = mem_rd(gb, DE);
   CYC(b_+3, b_+5); alu_cp(gb, 0x02);

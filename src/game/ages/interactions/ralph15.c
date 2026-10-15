@@ -58,7 +58,7 @@ void ralph_faceLinkAndCreateExclamationMark_hook(GB *gb) {
 
 void ralph_createExclamationMarkShiftedRight_hook(GB *gb) {
   BASE(ralph_createExclamationMarkShiftedRight);
-  uint16_t sp0_ = gb->sp;
+  uint16_t sp0_ = gb->sp; (void)sp0_;
   CYC(b_+0, b_+3); SET_BC(0xf30d);
   CYC(b_+3, b_+6); TAIL(objectCreateExclamationMark); // jp
 }

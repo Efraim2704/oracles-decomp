@@ -219,7 +219,6 @@ void goron_targetCarts_configureInventory_hook(GB *gb) {
   if (!(F & FZ)) { CYCT(b_+13, b_+15); goto equipToA; }
   CYC(b_+13, b_+15);
 
-equipToB:
   CYC(b_+15, b_+16); alu_xor(gb, A);
   CYC(b_+16, b_+17); mem_wr(gb, BC, A);
   CYC(b_+17, b_+18); C = alu_inc8(gb, C);

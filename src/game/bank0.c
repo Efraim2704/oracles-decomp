@@ -12881,7 +12881,6 @@ void parseGivenObjectData_b00_hook(GB *gb) {
 // frames at once, which leaves the parse returning with a stack CALL_C does not recognise, so it
 // hands off here and the native build needs a hook at the address.
 void parseGivenObjectData_b00__afterCall3181_hook(GB *gb) {
-  BASE(parseGivenObjectData_b00);
   parse_given_object_data_b00_restore(gb);
 }
 

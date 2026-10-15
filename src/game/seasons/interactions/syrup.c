@@ -47,17 +47,6 @@ static void syrup_add_a_to_hl(GB *gb, uint16_t return_address) {
   ret_effect(gb);
 }
 
-static void syrup_add_double_index(GB *gb, uint16_t return_address) {
-  push_effect(gb, return_address);
-  burn_rom(gb, 0x00, 0x0018, 0x0019, false); push_effect(gb, BC);
-  burn_rom(gb, 0x00, 0x0019, 0x001a, false); C = A;
-  burn_rom(gb, 0x00, 0x001a, 0x001c, false); B = 0x00;
-  burn_rom(gb, 0x00, 0x001c, 0x001d, false); alu_add_hl(gb, BC);
-  burn_rom(gb, 0x00, 0x001d, 0x001e, false); alu_add_hl(gb, BC);
-  burn_rom(gb, 0x00, 0x001e, 0x001f, false); SET_BC(pop_effect(gb));
-  burn_rom(gb, 0x00, 0x001f, 0x0020, false); ret_effect(gb);
-}
-
 // interactionCode43@runState
 static void syrup_runState(GB *gb) {
   BASE(interactionCode43);
