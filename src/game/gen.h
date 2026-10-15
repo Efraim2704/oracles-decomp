@@ -5196,6 +5196,8 @@ void goron_loadScriptAndInitGraphics__afterCall7d7b_hook(GB *gb);
 void goron_loadScriptFromTableAndInitGraphics__afterCall7d80_hook(GB *gb);
 void goronSubid01__afterCall7778_hook(GB *gb);
 void goronSubid00__afterCall7585_hook(GB *gb);
+void goronSubid00__afterCall76d8_hook(GB *gb);
+void goronSubid00__afterCall76de_hook(GB *gb);
 void interactionCode5e__afterCall6e68_hook(GB *gb);
 void interactionCode59__loadScriptAndInitGraphics_hook(GB *gb);
 void interactionCode59__afterCall6c0b_hook(GB *gb);

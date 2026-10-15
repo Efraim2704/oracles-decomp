@@ -6860,3 +6860,5 @@
 09:7780 goronSubid01__state1_hook -
 09:593f tokayThiefSubstate0__afterCall593f_hook -
 09:6122 interactionCode4d__afterCall6122_hook -
+09:76d8 goronSubid00__afterCall76d8_hook -
+09:76de goronSubid00__afterCall76de_hook -

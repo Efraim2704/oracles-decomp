@@ -57,6 +57,8 @@ void goronSubid01__afterCall7778_hook(GB *gb);
 void goronSubid02_hook(GB *gb);
 void goronSubid00_hook(GB *gb);
 void goronSubid00__afterCall7585_hook(GB *gb);
+void goronSubid00__afterCall76d8_hook(GB *gb);
+void goronSubid00__afterCall76de_hook(GB *gb);
 void goronDance_clearVariables_hook(GB *gb);
 void goronDance_restartGame_hook(GB *gb);
 void goronDance_initLinkPosition_hook(GB *gb);
@@ -1240,6 +1242,19 @@ state4_script:
 void goronSubid00__afterCall7585_hook(GB *gb) {
   uint16_t sp0_ = gb->sp;
   goron_subid00_run(gb, (SYM(goronSubid00__state0) + 3), sp0_);
+}
+
+// 09:76d8 and 09:76de, the `jp @pushLinkAway` after `call @nextRound` / `call @endDance`. The engine
+// can resume a thread here with the return address still on its stack, so the native build needs a
+// hook at each; without them, finishing a Goron dance round (Ages 2:ed) stopped the engine.
+void goronSubid00__afterCall76d8_hook(GB *gb) {
+  BASE(goronSubid00);
+  CYC(b_+356, b_+359); goron_subid00_push_link_away(gb);
+}
+
+void goronSubid00__afterCall76de_hook(GB *gb) {
+  BASE(goronSubid00);
+  CYC(b_+362, b_+365); goron_subid00_push_link_away(gb);
 }
 
 void goronSubid00_hook(GB *gb) {
