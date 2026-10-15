@@ -14,6 +14,7 @@
 #include "wide/wide.h"
 #include "wide/item.h"
 #include "wide/npcs.h"
+#include "wide/room.h"
 #include "platform/png.h"
 #include <stdlib.h>
 #include <time.h>
@@ -365,6 +366,77 @@ static void item_icons_decode_from_the_rom(void) {
   free(rom);
 }
 
+// The map (#24): a menu over the whole screen keeps the status bar's split flag but draws its own
+// top lines, so with the X and Y boxes on they must stay where the game put them.
+typedef struct { const uint8_t *rom; size_t rom_size; int maps, differ; } MapCheck;
+
+static void map_cb(GB *gb, const GBSample *s, void *ctx) {
+  (void)gb;
+  MapCheck *c = ctx;
+  if (s->wram[0][0xbcb] != 0x02 || s->line_lcdc[0] != s->line_lcdc[16]) return;
+  static uint8_t with[WIDE_W * FB_H * 3], without[WIDE_W * FB_H * 3];
+  WideOptions on = {true, true, {40, 32, 16}, c->rom, c->rom_size, true, {0x05, 0x06}};
+  WideOptions off = on;
+  off.slots = false;
+  wide_render(s, &on, with);
+  wide_render(s, &off, without);
+  c->maps++;
+  for (int y = 0; y < 16; y++)                          // the middle only: the strips' menu colour is held across calls
+    if (memcmp(with + ((size_t)y * WIDE_W + WIDE_SIDE) * 3, without + ((size_t)y * WIDE_W + WIDE_SIDE) * 3, FB_W * 3)) { c->differ++; break; }
+}
+
+static void seasons_map_has_no_status_bar(void) {
+  size_t n;
+  uint8_t *rom = oracles_read_file(GAME_ROM_DIR "/Legend of Zelda, The - Oracle of Seasons (USA, Australia).gbc", &n);
+  if (!rom) SKIP("ROM not present");
+  Tas t;
+  if (!tas_load(&t, TAS_DIR "/seasons-play.inputs")) SKIP("inputs missing");
+  GB *gb = calloc(1, sizeof *gb);
+  gb_init(gb);
+  ASSERT(gb_load_rom(gb, rom, n));
+  gb->cyctab = cyctab_alloc(rom, n);
+  assets_zero_code(rom, n);
+  gb_reset(gb);
+  if (!oracles_load_boot_state(gb, TAS_DIR "/seasons-boot.state")) SKIP("boot state missing");
+  MapCheck c = {rom, n, 0, 0};
+  gb->input_at = tas_cb; gb->input_ctx = &t;
+  gb->frame_cb = map_cb; gb->frame_ctx = &c;
+  for (uint64_t i = 0; i < 265064 && c.maps < 60 && !gb->hung; i++) gb_run_frame(gb);
+  printf("  %d map frames, %d with the bar drawn over them\n", c.maps, c.differ);
+  ASSERT(c.maps > 0);
+  ASSERT_EQ(c.differ, 0);
+}
+
+// Temple Remains once the volcano has erupted (#24): the game loads its lava layouts from rooms past
+// the end of the Subrosia map and takes the tileset from templeRemainsSeasons
+// (data/seasons/tilesets.s: $0f $01, mapping $16, layout group $04, animations $08), so a strip
+// beside one shows lava and not the grass it had before.
+static void seasons_temple_remains_after_the_eruption(void) {
+  size_t n;
+  uint8_t *rom = oracles_read_file(GAME_ROM_DIR "/Legend of Zelda, The - Oracle of Seasons (USA, Australia).gbc", &n);
+  if (!rom) SKIP("ROM not present");
+  static WideRoom before, after;
+  for (int season = 0; season < 4; season++) {
+    WideRoomKey k;
+    memset(&k, 0, sizeof k);
+    k.room = 0x25;
+    k.season = season;
+    ASSERT(wide_decode_room(rom, n, true, &k, &before));
+    k.remains_lava = true;
+    ASSERT(wide_decode_room(rom, n, true, &k, &after));
+    ASSERT_EQ(after.tileset[0], 0x0f);
+    ASSERT_EQ(after.tileset[5], 0x16);
+    ASSERT_EQ(after.tileset[6], 0x04);
+    ASSERT(memcmp(before.layout, after.layout, sizeof before.layout) != 0);
+    k.room = 0x18;                                       // outside the Remains: the flag changes nothing
+    ASSERT(wide_decode_room(rom, n, true, &k, &after));
+    k.remains_lava = false;
+    ASSERT(wide_decode_room(rom, n, true, &k, &before));
+    ASSERT(memcmp(&before, &after, sizeof before) == 0);
+  }
+  free(rom);
+}
+
 int main(void) {
   if (getenv("WIDE_ONLY_SPRITES")) {
     RUN(ages_strips_show_impa_past_the_edge);
@@ -376,6 +448,8 @@ int main(void) {
     RUN(ages_room_pixels_match_the_ppu);
   }
   RUN(item_icons_decode_from_the_rom);
+  RUN(seasons_temple_remains_after_the_eruption);
+  RUN(seasons_map_has_no_status_bar);
   RUN(ages_strips_show_impa_past_the_edge);
   RUN(ages_strips_show_the_neighbours_characters);
   RUN(seasons_neighbours_match_the_rooms);

@@ -281,6 +281,17 @@ static void load_palette_header(const Rom *r, int index, WideRoom *out) {
 
 // --- the room ------------------------------------------------------------------------------------
 
+static bool is_temple_remains(int room) {             // checkIsTempleRemains
+  return room >= 0x14 && room - 4 < 0x30 && ((room - 4) & 0x0f) < 4;
+}
+
+static bool is_moblin_keep(int room) {                // moblinKeepRooms
+  static const uint8_t rooms[5] = {0x5b, 0x5c, 0x6b, 0x6c, 0x7b};
+  for (int i = 0; i < 5; i++)
+    if (rooms[i] == room) return true;
+  return false;
+}
+
 bool wide_decode_room(const uint8_t *rom, size_t size, bool seasons, const WideRoomKey *key, WideRoom *out) {
   Rom r = {rom, size, seasons ? &seasons_tables : &ages_tables};
   memset(out, 0, sizeof *out);
@@ -292,6 +303,16 @@ bool wide_decode_room(const uint8_t *rom, size_t size, bool seasons, const WideR
     t = (t + key->tileset_add) & 0xff;
   size_t entry = at(4, r.t->tileset_data + (t & 0x7f) * 8);
   if (seasons && b(&r, entry) == 0xff) entry = at(4, le(&r, entry + 1) + (key->season & 3) * 8);
+  int layout_room = key->room;
+  if (seasons && key->group == 0 && key->remains_lava && is_temple_remains(key->room)) {   // getTempleRemainsSeasonsTilesetData
+    static const uint8_t season_offsets[4] = {0xbc, 0xc0, 0xc4, 0xc8};    // adjustLoadingRoomForTempleRemains
+    entry = at(4, r.t->temple_remains + (key->season & 3) * 8);
+    t = 0;
+    layout_room = (key->room + season_offsets[key->season & 3]) & 0xff;
+  } else if (seasons && key->group == 0 && key->keep_destroyed && is_moblin_keep(key->room)) {   // getMoblinKeepSeasonsTilesetData
+    entry = at(4, r.t->moblin_keep + ((key->companion - 0x0a) & 3) * 8);
+    t = 0;
+  }
   uint8_t *tileset = out->tileset;
   for (int i = 0; i < 8; i++) tileset[i] = b(&r, entry + (size_t)i);
   out->flags = tileset[1];
@@ -300,7 +321,7 @@ bool wide_decode_room(const uint8_t *rom, size_t size, bool seasons, const WideR
     if (b(&r, at(2, bits + key->room / 8)) & (1 << (key->room & 7))) out->flags |= TILESETFLAG_PAST;
   }
 
-  load_layout(&r, tileset[6], key->room, out);
+  load_layout(&r, tileset[6], layout_room, out);
   static uint8_t mapping[256][8];
   load_mapping(&r, tileset[5], mapping);
   int collisions = seasons ? tileset[0] >> 4 : (tileset[0] >> 4) & 7;

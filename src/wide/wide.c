@@ -39,7 +39,7 @@ typedef struct {
 } View;
 
 enum { W_TRANSITION_DIRECTION = 0xcd02, W_TRANSITION_STATE = 0xcd04 };
-enum { AGES_ANIMAL_COMPANION = 0xc610, AGES_JABU_WATER_LEVEL = 0xc6e9, AGES_PAST_ROOM_FLAGS = 0xc800,
+enum { AGES_ANIMAL_COMPANION = 0xc610, SEASONS_ANIMAL_COMPANION = 0xc610, AGES_JABU_WATER_LEVEL = 0xc6e9, AGES_PAST_ROOM_FLAGS = 0xc800,
        SPECIALOBJECT_RICKY = 0x0b, SPECIALOBJECT_MOOSH = 0x0d, ROOMPACK_NUUN = 0x7f };
 
 static View view_of(const GBSample *s, const GameRam *r) {
@@ -160,6 +160,11 @@ static bool room_at(const GBSample *s, const WideOptions *o, const View *v, int 
     key->room = row * 16 + col;
     key->room_flags = rd(s, (uint16_t)(0xc700 + group * 0x100 + key->room));
     if (!o->seasons) key->tileset_add = ages_tileset_add(s, o, r, group, key->room);
+    if (o->seasons && group == 0) {
+      key->remains_lava = s->wram[0][0x6ca + 2] & 0x20;          // global flags $15 and $16
+      key->keep_destroyed = s->wram[0][0x6ca + 2] & 0x40;
+      if (key->keep_destroyed) key->companion = rd(s, SEASONS_ANIMAL_COMPANION);
+    }
     if (o->seasons && group == 0 && key->room != room && o->rom_size > (size_t)r->room_packs + 0x100) {
       int here = rd(s, r->pack), there = o->rom[r->room_packs + key->room];
       // another area starts in its own season (determineSeasonForRoomPack); while "always spring"
@@ -483,7 +488,9 @@ void wide_render(const GBSample *s, const WideOptions *o, uint8_t *out) {
   // width in both. The strips below it follow the menu when there is one.
   bool menu = rd(s, W_OPENED_MENU) != 0;
   int split = rd(s, r->lcd_behaviour);
-  bool bar_shown = (split == 2 || split == 3) && (a.v.shown || menu);
+  // A menu drawn over the whole screen (the map) leaves the split flag set but never switches LCDC
+  // at the bar's end, so its top lines are its own picture, not a status bar.
+  bool bar_shown = (split == 2 || split == 3) && (a.v.shown || (menu && s->line_lcdc[0] != s->line_lcdc[STATUS_BAR_LINES]));
   // A menu's strips hold one steady colour. Between pages the game fades the screen to white and
   // then blanks it, and the frame the fade ends on is still white, so the colour is taken only from
   // a picture that has been settled for a couple of frames and kept the rest of the time -- strips
