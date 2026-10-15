@@ -1568,8 +1568,10 @@ const CodeRange codemap_ages[] = {
   {0x03c1ff, 52},
   {0x03c253, 11},
   {0x03c2de, 50},
-  {0x03c34f, 176},
-  {0x03c41f, 137},
+  {0x03c34f, 7},
+  {0x03c35e, 161},
+  {0x03c41f, 15},
+  {0x03c42f, 121},
   {0x03c4ac, 249},
   {0x03c5bb, 39},
   {0x03c5e8, 361},
@@ -2059,13 +2061,14 @@ const CodeRange codemap_ages[] = {
   {0x0ffa13, 50},
   {0x0ffa4f, 135},
   {0x0ffae2, 94},
+  {0x0ffb49, 11},
   {0x0ffb60, 4},
   {0x0ffb6e, 161},
   {0x0ffc1b, 122},
   {0x0ffca7, 2},
   {0x0ffcaf, 91},
 };
-const size_t codemap_ages_n = 2062;
+const size_t codemap_ages_n = 2065;
 
 const CodeRange codemap_seasons[] = {
   {0x000040, 7},

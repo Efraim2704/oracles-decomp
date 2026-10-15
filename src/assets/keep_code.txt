@@ -22,3 +22,6 @@ seasons 025618-025654       # interactionCode66@subid0@state0 (Explorer's Crypt 
 seasons 042e37-042e3b       # partCode3b indexes seasonsTable_10_6c5b with its parent's $88 byte; out of range it reads 4 bytes of func_6e37 (frame 270301 of the console-verified movie)
 seasons 03a0fb-03a0fe       # checkFlag called with hl inside enemyCode77@state0 (Frypolar) reads 60fb and 60fd (frames 270301, 270360 of the console-verified movie)
 seasons 000c81-000c82       # loadAnimationData@helper with an out-of-table animation group follows a counter pointer to $0c81 (frame 280607 of the console-verified movie)
+ages 03c356-03c35e          # smasher's ball released with angle $ff: ecom_getAdjacentWallsBitset reads the sideview table at +$f8, eight bytes into ecom_randomBitwiseAndBCE (issue #14)
+ages 03c41e-03c41f          # ...and ecom_bounceOffScreenBoundary indexes @angleTable (or +$10) with that $ff angle
+ages 03c42e-03c42f

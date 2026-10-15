@@ -913,8 +913,9 @@ commonState:
   CYC(b_+54, b_+55); push_effect(gb, b_+55);
   {
     uint16_t target = smasher_jump_table(gb);
-    if (target == SYM(smasher_state_grabbed)) { smasher_state_uninitialized_hook(gb); return; }
-    if (target == SYM(smasher_state_grabbed__justGrabbed) || target == b_+43 /*unused*/) { smasher_state_stub_hook(gb); return; }
+    if (target == SYM(smasher_state_uninitialized)) { smasher_state_uninitialized_hook(gb); return; }
+    if (target == SYM(smasher_state_grabbed)) { smasher_state_grabbed_hook(gb); return; }
+    if (target == SYM(smasher_state_stub)) { smasher_state_stub_hook(gb); return; }
     HANDOFF(target);
   }
 }
