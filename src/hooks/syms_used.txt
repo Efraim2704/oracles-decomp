@@ -10524,6 +10524,7 @@ receivePacketByte__gotPacketByte receivePacketByte@gotPacketByte 16:40d7
 receivePacketByte__gotPacketLength receivePacketByte@gotPacketLength 16:40d4
 rectangleData_02_7de1 rectangleData_02_7de1 02:7de1
 redSnake_generateRingSecret redSnake_generateRingSecret 15:4280
+blueSnake_linkOrFortune blueSnake_linkOrFortune 15:428b
 redSnake_openSecretInputMenu redSnake_openSecretInputMenu 15:427b
 refillSeedSatchel refillSeedSatchel 00:180c
 refreshDirtyPalettes refreshDirtyPalettes 3f:4016

@@ -6617,6 +6617,7 @@ ralph_flickerVisibility
 ralph_restoreMusic
 ralph_updateGravity
 redSnake_generateRingSecret
+blueSnake_linkOrFortune
 redSnake_openSecretInputMenu
 remoteMakuCutscene_checkinitUnderwaterWaves
 remoteMakuCutscene_fadeinFromBlackWithDelay

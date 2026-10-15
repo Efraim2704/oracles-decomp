@@ -5531,6 +5531,7 @@ vasu_giveRingBox
 vasu_openRingMenu
 redSnake_openSecretInputMenu
 redSnake_generateRingSecret
+blueSnake_linkOrFortune
 vasu_checkEarnedSpecialRing
 vasu_giveFriendshipRing
 vasu_giveHundredthRing

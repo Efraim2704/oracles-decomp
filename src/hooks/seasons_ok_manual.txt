@@ -106,3 +106,4 @@ enemyCode15@chooseNewDirection   # ld bc,$0718 is the same bytes (01 18 07) in b
 enemyCode58@checkDisableDestruction   # ENEMYCOLLISION_ROCK carried as GV(0x52, 0x4f)
 makeActiveObjectFollowLink_b00    # bank-switch trampoline; target via ROM_b01_makeActiveObjectFollowLink (SYM)
 makeActiveObjectFollowLink_b01    # same instructions; RAM operands by name
+blueSnake_linkOrFortune    # the bank-15 code; routine_equiv pairs the script label of the same name

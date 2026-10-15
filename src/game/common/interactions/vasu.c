@@ -51,6 +51,22 @@ static void interactionCode89_addAToHl_from_rst(GB *gb, uint16_t return_address)
 // interactionCode89@setScriptAndGotoState4 is reached two ways: falling straight through from
 // @loadLinkedScript with no extra push (so its ret resolves the outer 0x47c8/sp0_ case), and
 // the genuine call just described (so its ret also needs the 0x4954/sp1_ case).
+// the tail after @updateState returns, shared by the top-level path and by a thread that a
+// state-5 link wait parked inside @updateState and resumes on that call's return address
+static void vasu_after_update_state(GB *gb) {
+  BASE(interactionCode89);
+  CYC(b_+19, b_+21); E = INTERACTION_BASE + OBJ_SUBID;
+  CYC(b_+21, b_+22); A = mem_rd(gb, DE);
+  CYC(b_+22, b_+23); alu_or(gb, A);
+  if (!(F & FZ)) { CYCT(b_+23, b_+26); objectSetPriorityRelativeToLink_withTerrainEffects_hook(gb); return; } // jp nz
+  CYC(b_+23, b_+26);
+  CYC(b_+26, b_+29); TAIL(interactionPushLinkAwayAndUpdateDrawPriority); // jp
+}
+
+void interactionCode89__afterCall47c8_hook(GB *gb) {
+  vasu_after_update_state(gb);
+}
+
 void interactionCode89_hook(GB *gb) {
   BASE(interactionCode89);
   uint16_t sp0_ = gb->sp;
@@ -67,12 +83,8 @@ void interactionCode89_hook(GB *gb) {
 afterTextboxSetup:
   CYC(b_+16, b_+19); push_effect(gb, b_+19); goto updateState;
 afterUpdateState:
-  CYC(b_+19, b_+21); E = INTERACTION_BASE + OBJ_SUBID;
-  CYC(b_+21, b_+22); A = mem_rd(gb, DE);
-  CYC(b_+22, b_+23); alu_or(gb, A);
-  if (!(F & FZ)) { CYCT(b_+23, b_+26); objectSetPriorityRelativeToLink_withTerrainEffects_hook(gb); return; } // jp nz
-  CYC(b_+23, b_+26);
-  CYC(b_+26, b_+29); TAIL(interactionPushLinkAwayAndUpdateDrawPriority); // jp
+  vasu_after_update_state(gb);
+  return;
 
 updateState:
   sp1_ = gb->sp;

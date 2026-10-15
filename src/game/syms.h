@@ -10528,6 +10528,7 @@ enum {
   S_receivePacketByte__gotPacketLength,
   S_rectangleData_02_7de1,
   S_redSnake_generateRingSecret,
+  S_blueSnake_linkOrFortune,
   S_redSnake_openSecretInputMenu,
   S_refillSeedSatchel,
   S_refreshDirtyPalettes,

@@ -6862,3 +6862,5 @@
 09:6122 interactionCode4d__afterCall6122_hook -
 09:76d8 goronSubid00__afterCall76d8_hook -
 09:76de goronSubid00__afterCall76de_hook -
+15:428b blueSnake_linkOrFortune_hook -
+0a:47c8 interactionCode89__afterCall47c8_hook -

@@ -2164,6 +2164,7 @@
 09:65e5 spawnBridge_hook -
 09:6d3d companionScript_delete_hook -
 0a:4000 interactionCode89_hook -
+0a:4013 interactionCode89__afterCall47c8_hook -
 0a:41e7 interactionCode91_hook -
 0a:42a8 interactionCode98_hook -
 0a:42b0 interactionCode98__state0_hook -
@@ -3611,6 +3612,7 @@
 15:4927 vasu_openRingMenu_hook -
 15:4934 redSnake_openSecretInputMenu_hook -
 15:4939 redSnake_generateRingSecret_hook -
+15:4944 blueSnake_linkOrFortune_hook -
 15:496b vasu_checkEarnedSpecialRing_hook -
 15:49a6 vasu_giveFriendshipRing_hook -
 15:49aa vasu_giveHundredthRing_hook -

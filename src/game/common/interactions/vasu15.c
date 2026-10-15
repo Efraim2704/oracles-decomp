@@ -58,6 +58,35 @@ void redSnake_generateRingSecret_hook(GB *gb) {
   CYC(b_+8, b_+11); TAIL(secretFunctionCaller);
 }
 
+void blueSnake_linkOrFortune_hook(GB *gb) {
+  BASE(blueSnake_linkOrFortune);
+  uint16_t sp0_ = gb->sp; (void)sp0_;
+  CYC(b_+0, b_+2); E = 0x44;
+  CYC(b_+2, b_+4); A = 0x05;
+  CYC(b_+4, b_+5); mem_wr(gb, DE, A);
+  CYC(b_+5, b_+6); alu_xor(gb, A);
+  CYC(b_+6, b_+7); E = alu_inc8(gb, E);
+  CYC(b_+7, b_+8); mem_wr(gb, DE, A);
+  CYC(b_+8, b_+10); B = 0x03;
+  CALL_C(b_+10, secretFunctionCaller_hook, SYM(secretFunctionCaller), b_+13);
+  CALL_C(b_+13, serialFunc_0c85_hook, SYM(serialFunc_0c85), b_+16);
+  CYC(b_+16, b_+19); A = mem_rd(gb, wSelectedTextOption);
+  CYC(b_+19, b_+21); E = 0x79;
+  CYC(b_+21, b_+22); mem_wr(gb, DE, A);
+  CYC(b_+22, b_+25); SET_BC(0x300e);
+  CYC(b_+25, b_+26); alu_or(gb, A);
+  if (F & FZ) {
+    CYCT(b_+26, b_+28);
+  } else {
+    CYC(b_+26, b_+28);
+    CYC(b_+28, b_+30); E = 0x45;
+    CYC(b_+30, b_+32); A = 0x03;
+    CYC(b_+32, b_+33); mem_wr(gb, DE, A);
+    CYC(b_+33, b_+36); SET_BC(0x3028);
+  }
+  CYC(b_+36, b_+39); TAIL(showText);
+}
+
 static void vasu_checkFlagSet(GB *gb, uint16_t sp0_) {
   BASE(vasu_checkEarnedSpecialRing);
   CYC(b_+34, b_+35); C = A;

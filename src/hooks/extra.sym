@@ -1167,3 +1167,4 @@
 00:1a2c fileSelectThreadStart__nextFrame
 00:1b2a thread_1b10__nextFrame
 00:2d18 introThreadStart__nextFrame
+0a:47c8 interactionCode89__afterCall47c8
