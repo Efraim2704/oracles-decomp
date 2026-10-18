@@ -1,0 +1,61 @@
+# Seasons counterparts of the labels in extra.sym that both games share: interrupt vectors and
+# code that runs from RAM (bank:addr name [= source bank:addr the bytes are copied from])
+00:0040 vblankVector
+00:0048 lcdVector
+00:0050 timerVector
+00:0058 serialVector
+00:ff80 hramOamDmaFunction = 03:4091
+00:c000 wMusicReadFunction = 39:404b
+00:c4b7 wRamFunction extern
+00:0100 romEntry
+# the kernel's resume points, at the same offset into the same routine as in Ages
+00:016c resetGame__afterSp016c
+00:090f _nextThread__afterSp091a
+00:091a startGame__afterSp0925
+00:098d _countdownToRunThread__afterSp0998
+00:099f _initializeThread__afterSp09aa
+01:58ea func_5a60__afterCall5aad
+01:5a42 func_5c18__afterCall5c52
+# resume points after a call that switches threads, same offset into the paired routine
+3f:43d3 partLoadGraphicsAndProperties__afterCall43d3
+3f:440e interactionLoadGraphics__afterCall440e
+3f:442c itemLoadGraphics__afterCall442c
+3f:4252 updateTileIndexBaseForAllObjects__afterCall4252
+3f:4372 enemyLoadGraphicsAndProperties__afterCall4372
+3f:41f0 loadObjectGfxHeaderToSlot4_body__afterCall41f0
+01:5983 cutscene01__afterCall5b68
+01:5a12 cutscene03__afterCall5c03
+01:5a61 func_5c6b__afterCall5c74
+01:4c3f cutscene15__state1__substate2__afterCall4ca4
+01:4cc2 cutscene18__afterCall4d27
+01:5bbe func_5d31__afterCall5d34
+03:4d0c intro_gotoTitlescreen__afterCall4d09
+03:525c introCinematic_preTitlescreen_state0__afterCall52da
+0a:4b43 interactionCodec0__afterCall48c6
+0f:7705 interactionCoded2__afterCall4c5b
+0f:777a interactionCoded3__afterCall4cd0
+0f:7841 interactionCoded4__afterCall4d97
+0a:79a5 interactionCodec1__afterCall71ce
+0f:75dd interactionCodecf__afterCall4b19
+0a:4b32 interactionCodeb7__afterCall48b5
+03:4071 setCpuToDoubleSpeed extern
+02:55fd reloadGraphicsOnExitMenu_body__afterCall
+01:4c3f cutscene15__state1__substate2__afterCall4ca4
+00:33fe updateAllObjects__jump34ad
+02:4197 fileSelectMode1__subModes
+02:55ba menuStateFadeOutOfMenu__afterCall
+02:6d77 dungeonMap_checkCompassTile__treasure68e3
+02:6d7e dungeonMap_checkCompassTile__nothing68ea
+02:6d80 dungeonMap_checkCompassTile__ret68ec
+00:2d20 specialObjectCode_linkInCutscene__afterCall2cf6_b00
+07:4102 eraseFile__clearFile_b07
+11:58ce parseObjectData__afterCall58c7
+11:58d1 parseObjectData__afterCall58ca
+3f:4731 loadTreasureDisplayData__getTableIndices_b3f
+00:329e mainThreadStart__nextFrame
+00:3270 paletteFadeThreadStart__nextFrame
+00:18c6 textThreadStart__nextFrame
+00:1a1c fileSelectThreadStart__nextFrame
+00:1b1a thread_1b10__nextFrame
+00:2c89 introThreadStart__nextFrame
+0a:4013 interactionCode89__afterCall47c8

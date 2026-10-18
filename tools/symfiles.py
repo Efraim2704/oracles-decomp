@@ -33,16 +33,23 @@ def ram_map(sym, generated='src/hooks/generated.txt'):
     return ram
 
 
+def is_eu(sym):
+    """A European ROM's symbol file (tools/eu_sym.py writes ref/eu/<game>_eu.sym)."""
+    import os
+    return os.path.basename(sym).endswith('_eu.sym')
+
+
 def extra_sym_for(sym):
-    """The hand-written extra labels that go with a symbol file (vectors, code run from RAM)."""
-    return 'src/hooks/extra_seasons.sym' if 'seasons' in sym else 'src/hooks/extra.sym'
+    """The hand-written extra labels that go with a symbol file (vectors, code run from RAM); the
+    European files are the same labels carried over by tools/eu_sym.py."""
+    return ('src/hooks/extra_seasons' if 'seasons' in sym else 'src/hooks/extra') + ('_eu' if is_eu(sym) else '') + '.sym'
 
 
 def extra_labels(sym):
     """[(bank, addr, name, source (bank, addr) or None, extern)] from the extra file."""
     import os
     out = []
-    paths = [extra_sym_for(sym)] + (['src/hooks/alias_seasons.sym'] if 'seasons' in sym else [])
+    paths = [extra_sym_for(sym)] + ([f'src/hooks/alias_seasons{"_eu" if is_eu(sym) else ""}.sym'] if 'seasons' in sym else [])
     for path in paths:
         if not os.path.exists(path): continue
         for line in open(path):
