@@ -117,7 +117,10 @@ static void on_frame(GB *gb, const GBSample *sm, void *ctx) {
   {
     static uint64_t wd_a = 0, wd_b = 0; static bool wd_init = false;
     if (!wd_init) { wd_init = true; if (getenv("WRAMDUMP_AT")) { if (sscanf(getenv("WRAMDUMP_AT"), "%llu-%llu", (unsigned long long *)&wd_a, (unsigned long long *)&wd_b) < 2) wd_b = wd_a; } }
-    if (getenv("WRAMDUMP_AT") && movie_frame >= wd_a && movie_frame <= wd_b) {
+    // WRAMDUMP_AT=a-b dumps every frame of the range; a,b,c (a comma list) just those frames
+    const char *wl = getenv("WRAMDUMP_AT");
+    bool listed = wl && strchr(wl, ',') && screenshot_wanted(wl, movie_frame);
+    if (wl && (listed || (!strchr(wl, ',') && movie_frame >= wd_a && movie_frame <= wd_b))) {
       FILE *wf = fopen(getenv("WRAMDUMP_FILE") ? getenv("WRAMDUMP_FILE") : "wram_at.txt", "a");
       fprintf(wf, "FRAME %llu mcycles %llu cycles %llu ly %u\n", (unsigned long long)movie_frame, (unsigned long long)gb->mcycles, (unsigned long long)gb->cycles, gb->io[R_LY]);
       for (int b = 0; b < 8; b++) for (int i = 0; i < 4096; i++) fprintf(wf, "%02x", sm->wram[b][i]);
@@ -203,6 +206,14 @@ int main(int argc, char **argv) {
   if (init_ram && !oracles_load_init_ram(gb, init_ram)) { fprintf(stderr, "cannot read %s\n", init_ram); return 2; }
   gb_reset(gb);
   if ((p = arg_value(argc, argv, "--boot-state")) && !oracles_load_boot_state(gb, p)) { fprintf(stderr, "cannot read %s\n", p); return 2; }
+  // --sram FILE: battery RAM to start with (a save made elsewhere), as the app loads sram.sav
+  if ((p = arg_value(argc, argv, "--sram"))) {
+    size_t n;
+    uint8_t *s = oracles_read_file(p, &n);
+    if (!s) { fprintf(stderr, "cannot read %s\n", p); return 2; }
+    memcpy(gb->eram, s, n < gb->eram_size ? n : gb->eram_size);
+    free(s);
+  }
   uint64_t reload_at = (p = arg_value(argc, argv, "--reload-at")) ? strtoull(p, NULL, 10) : 0;
   uint64_t reload_every = (p = arg_value(argc, argv, "--reload-every")) ? strtoull(p, NULL, 10) : 0;     // at the first frame after each multiple whose threads are parked (as the app saves)
   bool reload_pending = false;

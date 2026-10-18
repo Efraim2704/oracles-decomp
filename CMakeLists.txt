@@ -251,6 +251,11 @@ add_executable(test_room tests/test_room.c)
 target_link_libraries(test_room oracleswide oraclesnative)
 target_compile_definitions(test_room PRIVATE GAME_ROM_DIR="${GAME_ROM_DIR}" TAS_DIR="${CMAKE_SOURCE_DIR}/tas")
 add_test(NAME room COMMAND test_room)
+add_executable(test_eu tests/test_eu.c)
+target_link_libraries(test_eu oracleswide oraclesnative)
+target_compile_definitions(test_eu PRIVATE GAME_ROM_DIR="${GAME_ROM_DIR}" TAS_DIR="${CMAKE_SOURCE_DIR}/tas")
+add_test(NAME eu COMMAND test_eu)
+set_tests_properties(eu PROPERTIES SKIP_RETURN_CODE 77 LABELS "rom")
 set_tests_properties(rooms PROPERTIES SKIP_RETURN_CODE 77 LABELS "rom")
 set_tests_properties(room PROPERTIES SKIP_RETURN_CODE 77 LABELS "rom")
 set_tests_properties(wide PROPERTIES SKIP_RETURN_CODE 77 LABELS "rom")
@@ -261,6 +266,10 @@ if(ORACLES_SDL)
   add_test(NAME app_menus COMMAND python3 ${CMAKE_SOURCE_DIR}/tests/test_app_menus.py $<TARGET_FILE:oracles-native>
     "${GAME_ROM_DIR}/Legend of Zelda, The - Oracle of Seasons (USA, Australia).gbc")
   set_tests_properties(app_menus PROPERTIES SKIP_RETURN_CODE 77 LABELS "rom")
+  add_test(NAME app_eu COMMAND python3 ${CMAKE_SOURCE_DIR}/tests/test_app_eu.py $<TARGET_FILE:oracles-native>
+    "${GAME_ROM_DIR}/Legend of Zelda, The - Oracle of Seasons (USA, Australia).gbc"
+    "${GAME_ROM_DIR}/Legend of Zelda, The - Oracle of Seasons (Europe) (En,Fr,De,Es,It).gbc")
+  set_tests_properties(app_eu PROPERTIES SKIP_RETURN_CODE 77 LABELS "rom")
   add_test(NAME sync_flow COMMAND python3 ${CMAKE_SOURCE_DIR}/tests/test_sync_flow.py $<TARGET_FILE:oracles-native>
     "${GAME_ROM_DIR}/Legend of Zelda, The - Oracle of Seasons (USA, Australia).gbc")
   set_tests_properties(sync_flow PROPERTIES SKIP_RETURN_CODE 77 LABELS "rom")
