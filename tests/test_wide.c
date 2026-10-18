@@ -54,7 +54,7 @@ static void check_first_step(FirstStepCheck *c, const GBSample *s) {
   if (c->have_prev && (w[0xd00] & 0x0f) == 4 && (p[0xd00] & 0x0f) == 1 && w[group] == p[group] && p[room] == p[loading] &&
       w[loading] == p[loading] && !w[0x4ab] && !p[0x4ab]) {
     static uint8_t before[WIDE_W * FB_H * 3], now[WIDE_W * FB_H * 3];
-    WideOptions o = {c->seasons, false, {1, 2, 3}, c->rom, c->rom_size, false, {0, 0}, NULL};
+    WideOptions o = {.seasons = c->seasons, .border = {1, 2, 3}, .rom = c->rom, .rom_size = c->rom_size};
     wide_render(&c->prev, &o, before);
     wide_render(s, &o, now);
     long compared = 0, same = 0;

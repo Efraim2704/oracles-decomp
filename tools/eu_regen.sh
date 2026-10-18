@@ -18,6 +18,12 @@ SEASONS_EU=$2
 [ -f "$AGES_EU" ] && [ -f "$SEASONS_EU" ] || { echo "usage: $0 AGES_EU.gbc SEASONS_EU.gbc" >&2; exit 2; }
 cd "$(dirname "$0")/.."
 R="roms/Legend of Zelda, The - Oracle of"
+# The labels eu_gen.py names in European code are read back by eu_hooks.py, so the last run's would
+# place a few USA hooks only because eu_gen.py named their entry once, and the two would swap each
+# run. Start every run without them.
+for g in "" _seasons; do
+  printf '# entry points tools/eu_gen.py names in European code (regenerated)\n' > "src/hooks/labels${g}_eu.sym"
+done
 python3 tools/eu_hooks.py ages "$R Ages (USA, Australia).gbc" "$AGES_EU"
 python3 tools/eu_hooks.py seasons "$R Seasons (USA, Australia).gbc" "$SEASONS_EU"
 python3 tools/eu_gen.py ages "$AGES_EU"
