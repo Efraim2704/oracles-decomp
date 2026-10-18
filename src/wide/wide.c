@@ -10,11 +10,12 @@ typedef struct {
   uint16_t group, room, modifier, pack, dungeon_index, map_position, floor, dungeon_properties, dungeon_flags_h, game_over, next_lcd_behaviour;
   int room_packs, pack_seasons;       // roomPackData (bank 4; Ages a page per group), Seasons roomPackSeasonTable (bank 1)
   int pack_seasons_eu;                // roomPackSeasonTable in the European ROM
+  uint16_t loading_room;              // wLoadingRoom: the room whose layout was loaded last
 } GameRam;
 static const GameRam ages_ram = {0xcc34, 0xff9b, 0xffaa, 0xffac, 0xcc2d, 0xcc30, 0xcc32, 0xcc31, 0xcc39, 0xcc3a, 0xcc3b, 0xcc3c, 0xcc3d, 0xcdd6, 0xff9d,
-                                 4 * 0x4000 + 0x075c, 0, 0};
+                                 4 * 0x4000 + 0x075c, 0, 0, 0xcc2f};
 static const GameRam seasons_ram = {0xcc50, 0xff99, 0xffa8, 0xffaa, 0xcc49, 0xcc4c, 0xcc4e, 0xcc4d, 0xcc55, 0xcc56, 0xcc57, 0xcc58, 0xcc59, 0xcc35, 0xff9b,
-                                    4 * 0x4000 + 0x073c, 1 * 0x4000 + 0x3e50, 1 * 0x4000 + 0x2a68};
+                                    4 * 0x4000 + 0x073c, 1 * 0x4000 + 0x3e50, 1 * 0x4000 + 0x2a68, 0xcc4b};
 enum {
   W_SCROLL_MODE = 0xcd00, W_OPENED_MENU = 0xcbcb, W_OFFSET_Y = 0xcd08, W_OFFSET_X = 0xcd09,
   W_PALETTE_FADE = 0xc4ab,            // wPaletteThread_mode: non-zero while a screen is fading
@@ -31,11 +32,20 @@ static uint8_t rd(const GBSample *s, uint16_t a) {
 // When the strips show rooms: the status bar split on, no menu open (the game-over screen is not
 // opened as a menu, so it has its own flag), and either normal play (scroll mode 1; bit 7 means the camera is moving) or a scrolling screen
 // transition (states 3-5), during which wActiveRoom is already the next room while the scroll and
-// wScreenOffsetX/Y still count from the previous one. Scroll mode 0 is a scripted scene.
+// wScreenOffsetX/Y still count from the previous one. Scroll mode 0 is a scripted scene. Scroll
+// mode 4 is a transition Link has only just asked for (state 3 and the direction already set): the
+// screen and the scroll are still the room he is leaving, so it shows as normal play in that room.
+// The game steps wActiveRoom (in a dungeon wDungeonMapPosition too) at the start of the main-loop
+// pass that loads the next room and sets mode 8 only once the tileset is in, so a frame can end
+// with either room in wActiveRoom; wLoadingRoom still holds the one on screen until the load. Taken
+// from the wrong room, the strips show the rooms beside another one for a frame (the European Ages
+// with Impa following lands samples on both sides of that step).
 typedef struct {
   bool shown;
   bool moving;                  // a scrolling transition: every strip pixel comes from decoded rooms
   int dx, dy;                   // the grid step from the previous room to the current one while moving
+  bool stepped;                 // scroll mode 4 with wActiveRoom already one step (bx, by) past the
+  int bx, by;                   // room on screen
 } View;
 
 enum { W_TRANSITION_DIRECTION = 0xcd02, W_TRANSITION_STATE = 0xcd04, W_ACTIVE_LANGUAGE = 0xc62a };
@@ -52,13 +62,34 @@ static int lcd_split(const GBSample *s, const GameRam *r) {
   return split < 2 ? rd(s, r->next_lcd_behaviour) : split;
 }
 
+// Whether the game has already moved wActiveRoom one grid step (dx, dy) on from wLoadingRoom, the
+// room on screen: on the overworld's grid the next room number, in a dungeon the room the step
+// left behind on the floor's layout. Rooms that load another room's layout (Seasons' Temple
+// Remains, Ages' D3 spinner) keep the two apart without being a step apart, and stay as they are.
+static bool stepped_on(const GBSample *s, const GameRam *r, int dx, int dy) {
+  int room = rd(s, r->room), loading = rd(s, r->loading_room);
+  if (room == loading) return false;
+  if (rd(s, r->group) <= 1) return ((loading + dy * 16 + dx) & 0xff) == room;
+  int pos = rd(s, r->map_position) - dy * 8 - dx, floor = rd(s, r->floor);
+  if (pos < 0 || pos > 63 || floor > 15) return false;
+  return s->wram[2][W2_DUNGEON_LAYOUT + floor * 0x40 + pos] == loading;
+}
+
 static View view_of(const GBSample *s, const GameRam *r) {
-  View v = {false, false, 0, 0};
+  View v = {false, false, 0, 0, false, 0, 0};
   int split = lcd_split(s, r), mode = rd(s, W_SCROLL_MODE) & 0x0f;
   if (!(split == 2 || split == 3) || rd(s, W_OPENED_MENU) || rd(s, r->game_over)) return v;
-  if (mode == 0x01) { v.shown = true; return v; }
   int state = rd(s, W_TRANSITION_STATE), dir = rd(s, W_TRANSITION_DIRECTION);
   static const int step[4][2] = {{0, -1}, {1, 0}, {0, 1}, {-1, 0}};  // up, right, down, left
+  if (mode == 0x01 || mode == 0x04) {
+    v.shown = true;
+    if (mode == 0x04 && dir <= 3 && stepped_on(s, r, step[dir][0], step[dir][1])) {
+      v.stepped = true;
+      v.bx = step[dir][0];
+      v.by = step[dir][1];
+    }
+    return v;
+  }
   if (!(mode & 0x0e) || state < 3 || state > 5 || dir > 3) return v;
   v.shown = v.moving = true;
   v.dx = step[dir][0];
@@ -160,7 +191,7 @@ static int ages_tileset_add(const GBSample *s, const WideOptions *o, const GameR
 // Houses, caves and the other groups show nothing around the room.
 static bool room_at(const GBSample *s, const WideOptions *o, const View *v, int tx, int ty, WideRoomKey *key) {
   const GameRam *r = o->seasons ? &seasons_ram : &ages_ram;
-  int group = rd(s, r->group), room = rd(s, r->room);
+  int group = rd(s, r->group), room = rd(s, v->stepped ? r->loading_room : r->room);
   memset(key, 0, sizeof *key);                   // keys are compared as bytes, padding included
   key->group = group;
   key->season = rd(s, r->modifier) & 3;
@@ -188,7 +219,7 @@ static bool room_at(const GBSample *s, const WideOptions *o, const View *v, int 
     return true;
   }
   if (rd(s, r->dungeon_index) == 0xff || !(rd(s, r->tileset_flags) & TILESETFLAG_DUNGEON)) return false;
-  int pos = rd(s, r->map_position), floor = rd(s, r->floor), flags_page = rd(s, r->dungeon_flags_h) << 8;
+  int pos = rd(s, r->map_position) - (v->stepped ? v->by * 8 + v->bx : 0), floor = rd(s, r->floor), flags_page = rd(s, r->dungeon_flags_h) << 8;
   if (floor > 15 || flags_page < 0xc000 || flags_page > 0xcf00) return false;
   if (!o->seasons) key->tileset_add = ages_tileset_add(s, o, r, group, room);
   if (!tx && !ty) { key->room = room; return true; }

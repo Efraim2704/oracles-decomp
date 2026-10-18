@@ -1,6 +1,7 @@
 // Widescreen's room renderer against the PPU: through a movie, every sampled frame in normal play
 // is drawn by wide_room_pixel over the middle 160 columns too, and must equal the emulator's
-// picture wherever no sprite covers it. Then the neighbours: what a strip showed of the next room
+// picture wherever no sprite covers it, and each screen transition's first frame keeps the strips
+// of the frame before. Then the neighbours: what a strip showed of the next room
 // against that room's own picture once the movie is in it. (Skipped without the ROM.)
 // WIDE_ONLY_SPRITES=1 runs only the sprite checks. WIDE_PNG=frame:path saves a widescreen frame (any frame, room changes included); WIDE_ONLY_NEIGHBOURS=1 runs only the neighbour
 // checks, WIDE_PAIRS=1 lists each pair, WIDE_PAIR_PNG=room:season:path (WIDE_PAIR_AGES=1 for Ages)
@@ -21,12 +22,72 @@
 
 static uint8_t tas_cb(void *ctx, uint64_t frame) { return tas_input_at((const Tas *)ctx, frame); }
 
+// A screen transition's first frame (scroll mode 4): the screen and its scroll are still the room
+// Link is leaving, whether the frame ended before or after the game stepped wActiveRoom on to the
+// next one (wLoadingRoom stays the room on screen until the load), so the strips must be the ones
+// of the frame before on every line no sprite reaches. Checked on every frame of the movies.
+typedef struct {
+  bool seasons;
+  const uint8_t *rom;
+  size_t rom_size;
+  GBSample prev;
+  bool have_prev;
+  int checked, stepped, bad;
+} FirstStepCheck;
+
+static bool line_has_sprite(const GBSample *s, int y) {
+  int h = (s->line_lcdc[y] & 0x04) ? 16 : 8;
+  for (int d = 0; d < 2; d++) {
+    const uint8_t *oam = s->drawn_oam[d];
+    for (int i = 0; i < 40; i++)
+      if (y >= oam[i * 4] - 16 && y < oam[i * 4] - 16 + h) return true;
+    const OffscreenSprites *off = &s->drawn_offscreen[d];
+    for (int i = 0; i < off->n; i++)
+      if (y >= off->s[i].y && y < off->s[i].y + h) return true;
+  }
+  return false;
+}
+
+static void check_first_step(FirstStepCheck *c, const GBSample *s) {
+  const uint8_t *w = s->wram[0], *p = c->prev.wram[0];
+  int group = c->seasons ? 0xc49 : 0xc2d, room = c->seasons ? 0xc4c : 0xc30, loading = room - 1;   // wLoadingRoom
+  if (c->have_prev && (w[0xd00] & 0x0f) == 4 && (p[0xd00] & 0x0f) == 1 && w[group] == p[group] && p[room] == p[loading] &&
+      w[loading] == p[loading] && !w[0x4ab] && !p[0x4ab]) {
+    static uint8_t before[WIDE_W * FB_H * 3], now[WIDE_W * FB_H * 3];
+    WideOptions o = {c->seasons, false, {1, 2, 3}, c->rom, c->rom_size, false, {0, 0}, NULL};
+    wide_render(&c->prev, &o, before);
+    wide_render(s, &o, now);
+    long compared = 0, same = 0;
+    for (int y = 16; y < FB_H; y++) {
+      if (line_has_sprite(s, y) || line_has_sprite(&c->prev, y) || s->line_scx[y] != c->prev.line_scx[y] ||
+          s->line_scy[y] != c->prev.line_scy[y] || (s->line_lcdc[y] & 0x81) != 0x81)
+        continue;
+      for (int x = 0; x < WIDE_W; x++) {
+        if (x == WIDE_SIDE) x += FB_W;
+        size_t i = ((size_t)y * WIDE_W + x) * 3;
+        compared++;
+        same += !memcmp(before + i, now + i, 3);
+      }
+    }
+    if (compared) {
+      c->checked++;
+      c->stepped += w[room] != w[loading];
+      if (same * 100 < compared * 95 && c->bad++ < 5)
+        fprintf(stderr, "    frame %llu: room %02x (on screen %02x), %.0f%% of the strips as the frame before\n", (unsigned long long)s->frame,
+                w[room], w[loading], 100.0 * same / compared);
+    }
+  }
+  memcpy(&c->prev, s, sizeof *s);
+  c->have_prev = true;
+}
+
 typedef struct {
   bool seasons;
   uint64_t checked, large, pixels, mismatches, first_bad;
   bool saved;
   const uint8_t *rom;
   size_t rom_size;
+  FirstStepCheck *step;
 } WideCheck;
 
 static bool under_sprite(const GBSample *s, int x, int y) {
@@ -42,6 +103,7 @@ static bool under_sprite(const GBSample *s, int x, int y) {
 static void check_cb(GB *gb, const GBSample *s, void *ctx) {
   (void)gb;
   WideCheck *c = ctx;
+  check_first_step(c->step, s);
   if (getenv("WIDE_TIME") && c->seasons && s->frame >= 3000 && s->frame < 13000) {   // the renderer's cost per frame
     static uint8_t wide[WIDE_W * FB_H * 3];
     static double total, worst;
@@ -96,16 +158,23 @@ static void check_movie(const char *rom_path, const char *inputs, const char *st
   assets_zero_code(rom, n);
   gb_reset(gb);
   if (!oracles_load_boot_state(gb, state_path)) SKIP("boot state missing");
-  WideCheck c = {seasons, 0, 0, 0, 0, 0, false, rom, n};
+  FirstStepCheck *step = calloc(1, sizeof *step);
+  step->seasons = seasons; step->rom = rom; step->rom_size = n;
+  WideCheck c = {seasons, 0, 0, 0, 0, 0, false, rom, n, step};
   gb->input_at = tas_cb; gb->input_ctx = &t;
   gb->frame_cb = check_cb; gb->frame_ctx = &c;
   for (uint64_t i = 0; i < frames && !gb->hung; i++) gb_run_frame(gb);
   printf("  %llu frames checked (%llu in large rooms), %llu pixels, %llu differ (first at frame %llu)\n",
          (unsigned long long)c.checked, (unsigned long long)c.large, (unsigned long long)c.pixels,
          (unsigned long long)c.mismatches, (unsigned long long)c.first_bad);
+  printf("  %d screen transitions checked from their first frame (%d with the room already stepped on), %d with other strips\n",
+         step->checked, step->stepped, step->bad);
   ASSERT(c.checked > 100);
   ASSERT(c.large > 10);
   ASSERT_EQ(c.mismatches, 0);
+  ASSERT(step->checked > 10);
+  ASSERT_EQ(step->bad, 0);
+  free(step);
 }
 
 // Neighbours against the game: while standing in a small overworld room the strips show the rooms
