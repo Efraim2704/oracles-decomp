@@ -1991,7 +1991,7 @@ got_icon:
     CYC(b_+S(64), b_+S(67)); A = W8(wMapMenu_mode);
     CYC(b_+S(67), b_+S(68)); alu_rrca(gb);
     if (!(F & FC)) CYCT(b_+S(68), b_+S(70));
-    else { CYC(b_+S(68), b_+S(70)); CYC(b_+S(70), b_+S(73)); SET_DE(0x4011); }
+    else { CYC(b_+S(68), b_+S(70)); CYC(b_+S(70), b_+S(73)); SET_DE(0x4005); }   // Subrosia: ldde $4<<4, $05
   }
   CYC(b_+O(64), b_+OE(67)); SET_BC(0x2080);
   CYC(b_+O(67), b_+OE(70)); A = mem_rd(gb, wFileSelect_cbb6);
