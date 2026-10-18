@@ -19,6 +19,25 @@ uint16_t ui_file_checksum(const uint8_t *file) {
   return sum;
 }
 
+// A name character as the menus can draw it: ASCII as it is, the accented letters the European
+// releases' name entry offers (the text encoding's $80-$d8, tools/build/parseText.py in the
+// disassembly) as their base letter, anything else '?' ('.' in the table, which spells no '?' so
+// that no "??x" trigraph can form).
+static char name_char(uint8_t ch) {
+  static const char accented[] =
+      "AAAACEEEEIINOOUUU"            // $80-$90  À Â Ä Æ Ç È É Ê Ë Î Ï Ñ Ö Œ Ù Û Ü
+      "s......!."                    // $91-$99  ß, ¡ at $98 (¿ at $99 stays '?')
+      "......"                       // $9a-$9f
+      "aaaaceeeeiinoouuu"            // $a0-$b0  à â ä æ ç è é ê ë î ï ñ ö œ ù û ü
+      "'.............."              // $b1-$bf  ´
+      "OoAIOUIOA......"              // $c0-$ce  Ô ° Á Í Ó Ú Ì Ò Å
+      "."                            // $cf
+      "oaaiouioa";                   // $d0-$d8  ô ª á í ó ú ì ò å
+  if (ch >= 0x20 && ch < 0x80) return (char)ch;
+  if (ch >= 0x80 && ch <= 0xd8 && accented[ch - 0x80] != '.') return accented[ch - 0x80];
+  return '?';
+}
+
 static bool verify(const uint8_t *file, bool ages) {
   uint16_t stored = (uint16_t)(file[0] | (file[1] << 8));
   return stored == ui_file_checksum(file) && memcmp(file + OFS_STRING, ages ? "Z21216-0" : "Z11216-0", 8) == 0;
@@ -35,10 +54,7 @@ int ui_read_files(const uint8_t *sram, size_t size, bool ages, UiFileInfo out[UI
     else if (sram && size >= (size_t)copy2[i] + FILE_SIZE && verify(sram + copy2[i], ages)) file = sram + copy2[i];
     if (!file) continue;
     f->valid = true;
-    for (int k = 0; k < 5 && file[OFS_NAME + k]; k++) {
-      uint8_t ch = file[OFS_NAME + k];
-      f->name[k] = (char)(ch >= 0x20 && ch < 0x80 ? ch : '?');
-    }
+    for (int k = 0; k < 5 && file[OFS_NAME + k]; k++) f->name[k] = name_char(file[OFS_NAME + k]);
     f->health = file[ofs_health];
     f->max_health = file[ofs_health + 1];
     f->essences = file[ofs_essences];

@@ -1478,8 +1478,11 @@ static bool run_launcher(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, c
 
 // Boots straight into a save file: presses Start until the file select screen is up, moves the
 // cursor to the file, then A (the file) and A (the text-speed prompt). Driven by the game's own
-// file-select state, so the same inputs a player would give; any key cancels it.
-typedef enum { BOOT_OFF, BOOT_TO_FILE_SELECT, BOOT_MOVE, BOOT_SELECT, BOOT_TEXT_SPEED } BootPhase;
+// file-select state, so the same inputs a player would give; any key cancels it. The European
+// releases open their language screen (file-select mode 8) before the file menu the first time
+// they start: that choice is the player's, so the driver waits there at normal speed, the player's
+// keys going to the game, and carries on once the file menu is up.
+typedef enum { BOOT_OFF, BOOT_TO_FILE_SELECT, BOOT_MOVE, BOOT_SELECT, BOOT_TEXT_SPEED, BOOT_LANGUAGE } BootPhase;
 typedef struct { BootPhase phase; int file; bool open_file; uint64_t since; } BootDriver;
 
 // wThreadStateBuffer+6/+7 ($c2e6/$c2e7) in both games: the intro stage and the title screen's state
@@ -1488,6 +1491,7 @@ typedef struct { BootPhase phase; int file; bool open_file; uint64_t since; } Bo
 #define FS_MODE(gb) ((gb)->wram[0][wFileSelect_mode & 0xfff])
 #define FS_MODE2(gb) ((gb)->wram[0][wFileSelect_mode2 & 0xfff])
 #define FS_CURSOR(gb) ((gb)->wram[0][wFileSelect_cursorPos & 0xfff])
+#define FS_MODE_LANGUAGE 8
 
 static uint8_t boot_input(GB *gb, BootDriver *d, uint64_t frame) {
   bool pulse = (frame / 6) % 2 == 0;
@@ -1501,6 +1505,7 @@ static uint8_t boot_input(GB *gb, BootDriver *d, uint64_t frame) {
     if (gb->wram[0][INTRO_STAGE] == 3 && gb->wram[0][INTRO_VAR] == 3) { d->phase = BOOT_MOVE; return 0; }
     return pulse ? JOY_START : 0;
   case BOOT_MOVE:
+    if (FS_MODE(gb) == FS_MODE_LANGUAGE) { d->phase = BOOT_LANGUAGE; test_mark("language"); return 0; }
     if (!choosing) return 0;
     if (FS_CURSOR(gb) == d->file) { d->phase = d->open_file ? BOOT_SELECT : BOOT_OFF; return 0; }
     return pulse ? JOY_DOWN : 0;
@@ -1511,6 +1516,8 @@ static uint8_t boot_input(GB *gb, BootDriver *d, uint64_t frame) {
   case BOOT_TEXT_SPEED:
     if (FS_MODE2(gb) != 2) { d->phase = BOOT_OFF; return 0; }
     return pulse ? JOY_A : 0;
+  case BOOT_LANGUAGE:                     // the main loop runs these frames with the player's keys
+    return 0;
   }
   return 0;
 }
@@ -1754,7 +1761,7 @@ static GameEnd run_game(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, co
       case SDL_EVENT_GAMEPAD_AXIS_MOTION:
         press |= action_bit(bindings_pad_action(&settings.bindings, trigger_down));
         release |= action_bit(bindings_pad_action(&settings.bindings, trigger_up));
-        if (stick_pressed && boot.phase != BOOT_OFF) { boot.phase = BOOT_OFF; live_joy = 0; }
+        if (stick_pressed && boot.phase != BOOT_OFF && boot.phase != BOOT_LANGUAGE) { boot.phase = BOOT_OFF; live_joy = 0; }
         break;
       case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
         press |= action_bit(bindings_pad_action(&settings.bindings, ev.gbutton.button));
@@ -1764,7 +1771,7 @@ static GameEnd run_game(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, co
         break;
       }
       if (press >> ACT_PAUSE & 1) { mode = MODE_PAUSING; park_from = frames; live_joy = 0; boot.phase = BOOT_OFF; continue; }
-      if (press && boot.phase != BOOT_OFF) { boot.phase = BOOT_OFF; live_joy = 0; }
+      if (press && boot.phase != BOOT_OFF && boot.phase != BOOT_LANGUAGE) { boot.phase = BOOT_OFF; live_joy = 0; }
       for (int a = 0; a < ACTIONS; a++) {
         bool item = a == ACT_ITEM_X || a == ACT_ITEM_Y;
         if (press >> a & 1) {
@@ -1808,9 +1815,14 @@ static GameEnd run_game(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, co
       continue;
     }
 
-    if (boot.phase != BOOT_OFF) {
+    if (boot.phase == BOOT_LANGUAGE && FS_MODE(gb) != FS_MODE_LANGUAGE) {
+      boot.phase = BOOT_MOVE;             // a language was picked: on to the file
+      boot.since = frames;
+      live_joy = 0;
+    }
+    if (boot.phase != BOOT_OFF && boot.phase != BOOT_LANGUAGE) {
       // fast-forward the logos and menus, silently
-      for (int i = 0; i < 8 && boot.phase != BOOT_OFF; i++) { live_joy = boot_input(gb, &boot, frames); features_frame(gb); gb_run_frame(gb); frames++; }
+      for (int i = 0; i < 8 && boot.phase != BOOT_OFF && boot.phase != BOOT_LANGUAGE; i++) { live_joy = boot_input(gb, &boot, frames); features_frame(gb); gb_run_frame(gb); frames++; }
       if (boot.phase == BOOT_OFF) { live_joy = 0; fprintf(stderr, "boot into file %d done at frame %llu\n", boot.file + 1, (unsigned long long)frames); }
       apu_read_samples(&gb->apu, samples, APU_RING);
     } else if (fast && mode == MODE_PLAY) {

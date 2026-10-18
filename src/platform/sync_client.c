@@ -82,7 +82,7 @@ static bool blank_save(const char *path, const uint8_t *data, size_t n) {
   size_t len = strlen(path);
   if (len < 8 || strcmp(path + len - 8, "sram.sav")) return false;
   UiFileInfo files[UI_FILES];
-  ui_read_files(data, n, strstr(path, "/ages/sram.sav") != NULL, files);
+  ui_read_files(data, n, strstr(path, "/ages/sram.sav") || strstr(path, "/ages-eu/sram.sav"), files);
   for (int i = 0; i < UI_FILES; i++)
     if (files[i].valid) return false;
   return true;

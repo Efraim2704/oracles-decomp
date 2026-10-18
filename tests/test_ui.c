@@ -50,6 +50,9 @@ static void save_files_are_read_and_verified(void) {
   ASSERT_EQ(ui_read_files(sram, sizeof sram, false, f), 1);
   ASSERT(!f[0].valid);
   ASSERT_EQ(ui_read_files(NULL, 0, false, f), 0);
+  make_file(sram + 0x0010, false, "\xc3\xd2\xab" "go", 20, 0);   // the European name entry: Í, á, ñ
+  ASSERT_EQ(ui_read_files(sram, sizeof sram, false, f), 2);
+  ASSERT(f[0].valid && strcmp(f[0].name, "Iango") == 0);
 }
 
 static void home_leads_with_resume_and_slots(void) {
