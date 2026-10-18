@@ -5,7 +5,8 @@ usage: tools/codemap.py AGES.gbc ages.sym SEASONS.gbc seasons.sym [AGES_EU.gbc S
 
 With the European ROMs too, their maps come from ref/eu/<game>_eu.sym and the EU hook lists
 (tools/eu_hooks.py, tools/eu_gen.py); without them the EU tables are written empty (nothing is zeroed). The
-keep_code.txt offset ranges of a game are carried over to its EU ROM through the symbol files.
+keep_code.txt offset ranges of a game are kept in its EU ROM both at the same offset (a read
+through a pointer the data holds) and where the symbol files carry the code around them.
 
 A byte is code when it belongs to an instruction of a hooked routine (every entry of
 src/hooks/generated.txt or generated_seasons.txt, followed with transliterate.py's routine_body:
@@ -76,6 +77,10 @@ def load_game(rom_path, sym_path, hooks_path):
             elif kind in ('both', game):
                 lo, hi = (int(x, 16) for x in arg.split('-'))
                 if to_eu:
+                    # a range is read either through a pointer the data holds (the same offset in
+                    # the EU ROM, whatever code sits there now) or relative to the code around it
+                    # (a table overrun: where that code moved); keep both
+                    keep.update(range(lo, hi))
                     lo2 = to_eu(lo)
                     if lo2 is None: print(f'warning: keep_code {arg} has no EU address', file=sys.stderr); continue
                     lo, hi = lo2, lo2 + (hi - lo)

@@ -1305,7 +1305,7 @@ void goronDance_restartGame_hook(GB *gb) {
   CYC15(b_+7, b_+10); SET_HL(w1Link_yh - 3);
   CYC15(b_+10, b_+12); mem_wr(gb, HL, 2);
   CYC15(b_+12, b_+14); B = 10;
-  CYC15(b_+14, b_+17); SET_HL((SYM(interactionCode48__initSubid1d) + 42));
+  CYC15(b_+14, b_+17); SET_HL(RV((SYM(interactionCode48__initSubid1d) + 42), 0x578a));
   CYC15(b_+17, b_+19); E = 8;
   CYC15(b_+19, b_+22); interBankCall_hook(gb);
 }

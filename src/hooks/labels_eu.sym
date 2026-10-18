@@ -16,6 +16,7 @@
 00:1a7c eu__00_1a7c
 00:1a7e eu__00_1a7e
 00:2f78 updateEnemy__afterCall2f78
+00:31ef parseGivenObjectData_b00__afterCall31ef
 00:3828 loadTilesetGraphics__afterCall3828
 00:3830 loadTilesetGraphics__afterCall3830
 01:6b44 cutscene02__state2__afterCall6b44
@@ -196,6 +197,7 @@
 09:569b interactionCode45__initGraphicsTextAndScript__afterCall569b
 09:56cd interactionCode48__afterCall56cd
 09:56d8 interactionCode48__afterCall56d8
+09:593f tokayThiefSubstate0__afterCall593f
 09:5a37 tokayRunSubid05__afterCall5a37
 09:5a44 tokayRunSubid05__afterCall5a44
 09:5a4d tokayRunSubid06__afterCall5a4d
@@ -229,7 +231,7 @@
 09:6b60 interactionCode58__afterCall6b60
 09:6b7c interactionCode58__loadScriptAndInitGraphics__afterCall6b7c
 09:6bea interactionCode59__afterCall6be7__afterCall6bea
-09:6c0b interactionCode59__loadScriptAndInitGraphics__afterCall6c0b
+09:6c0b interactionCode59__afterCall6c0b
 09:6c28 interactionCode5a__afterCall6c28
 09:6c2e interactionCode5a__afterCall6c2e
 09:6c3d interactionCode5a__loadScriptAndInitGraphics__afterCall6c3d
@@ -249,6 +251,8 @@
 09:75a8 goronSubid00__afterCall7585__afterCall75a8
 09:75c3 goronSubid00__afterCall75c3
 09:75d3 goronSubid00__afterCall75d3
+09:76d8 goronSubid00__afterCall76d8
+09:76de goronSubid00__afterCall76de
 09:771b goronSubid00__afterCall771b
 09:7765 goronSubid00__afterCall7765
 09:7789 goronSubid01__afterCall7789

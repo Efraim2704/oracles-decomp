@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from symfiles import rom_labels, seasons_code, ages_code
 
 FUNC = re.compile(r'^(?:static )?(?:void|uint16_t|uint8_t|bool|int|unsigned) \*?(\w+)\([^)]*\)\s*\{')
-STMT = re.compile(r'CYCT?\(b_\+(O\()?(\d+)\)?, [^;]*\); SET_(HL|BC|DE)\((.*?)\);')
+STMT = re.compile(r'CYCT?(?:15)?\(b_\+(O\()?(\d+)\)?,\s*[^;]*\);\s*SET_(HL|BC|DE)\((.*?)\);')
 LD16 = {'HL': 0x21, 'BC': 0x01, 'DE': 0x11}
 
 
@@ -145,7 +145,9 @@ def main():
         with open(tsv, 'w') as f:
             for path, no, fn, expr, c, rom, us in bad: f.write(f'{path}\t{no}\t{fn}\t{expr}\t{us:04x}\t{c:04x}\t{rom:04x}\n')
     print(f'{game}: {checked} pointers checked, {len(bad)} wrong in EU; not checked: {dict(skipped)}')
+    if bad: print('fix them with tools/eu_fix_pointers.py (--tsv OUT, then the TSV)', file=sys.stderr)
+    return 1 if bad else 0
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main())

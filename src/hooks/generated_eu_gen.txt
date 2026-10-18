@@ -61,6 +61,7 @@
 00:2f75 eua_updateEnemy -
 00:2f78 eua_updateEnemy__afterCall2f78 -
 00:30ee eua_getEntryFromObjectTable1 -
+00:31ef eua_parseGivenObjectData_b00__afterCall31ef -
 00:36a0 eua_getEntryFromObjectTable2 -
 00:3780 eua_loadTilesetLayout -
 00:37a9 eua_loadTilesetLayout__helper L
@@ -512,6 +513,7 @@
 09:56e0 eua_interactionCode48__initSubid L
 09:5878 eua_interactionCode48__initSubid0d L
 09:58d7 eua_tokayState1 -
+09:593f eua_tokayThiefSubstate0__afterCall593f -
 09:5a34 eua_tokayRunSubid05 -
 09:5a37 eua_tokayRunSubid05__afterCall5a37 -
 09:5a44 eua_tokayRunSubid05__afterCall5a44 -
@@ -582,7 +584,7 @@
 09:6be7 eua_interactionCode59__afterCall6be7 -
 09:6bea eua_interactionCode59__afterCall6be7__afterCall6bea -
 09:6c08 eua_interactionCode59__loadScriptAndInitGraphics L
-09:6c0b eua_interactionCode59__loadScriptAndInitGraphics__afterCall6c0b -
+09:6c0b eua_interactionCode59__afterCall6c0b -
 09:6c20 eua_interactionCode5a -
 09:6c28 eua_interactionCode5a__afterCall6c28 -
 09:6c2e eua_interactionCode5a__afterCall6c2e -
@@ -628,6 +630,8 @@
 09:75c3 eua_goronSubid00__afterCall75c3 -
 09:75d3 eua_goronSubid00__afterCall75d3 -
 09:7602 eua_goronSubid00__state2Substate1 L
+09:76d8 eua_goronSubid00__afterCall76d8 -
+09:76de eua_goronSubid00__afterCall76de -
 09:771b eua_goronSubid00__afterCall771b -
 09:7721 eua_goronSubid00__nextRound L
 09:772f eua_goronSubid00__endDance L

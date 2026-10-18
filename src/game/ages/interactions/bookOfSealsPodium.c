@@ -54,7 +54,7 @@ void interactionCodeb4__state0_hook(GB *gb) {
   CYC(b_+33,b_+35); E=0x71; CALL_C(b_+35,objectAddToAButtonSensitiveObjectList_hook,SYM(objectAddToAButtonSensitiveObjectList),b_+38); CYC(b_+38,b_+40); E=0x42; CYC(b_+40,b_+41); A=mem_rd(gb,DE); CYC(b_+41,b_+42); alu_or(gb,A);
   if (!(F&FZ)) { CYCT(b_+42,b_+43); ret_effect(gb); return; } CYC(b_+42,b_+43); CYC(b_+43,b_+46); SET_HL(wTmpcfc0_armosStatue_killedArmosPositions); CYC(b_+46,b_+48); B=0x10;
   if (F&FZ) CALL_C_CC(b_+48,clearMemory_hook,SYM(clearMemory),b_+51); else CYC(b_+48,b_+51); CALL_C(b_+51,getThisRoomFlags_hook,SYM(getThisRoomFlags),b_+54); CYC(b_+54,b_+56); alu_bit(gb,6,A);
-  if (!(F&FZ)) { CYCT(b_+56,b_+57); ret_effect(gb); return; } CYC(b_+56,b_+57); CALL_C(b_+57,interactionIncState_hook,SYM(interactionIncState),b_+60); CYC(b_+60,b_+63); SET_HL((SYM(interactionCoded8__fillNextGroupWithLava) + 10)); CYC(b_+63,b_+66); interactionSetScript_hook(gb); return;
+  if (!(F&FZ)) { CYCT(b_+56,b_+57); ret_effect(gb); return; } CYC(b_+56,b_+57); CALL_C(b_+57,interactionIncState_hook,SYM(interactionIncState),b_+60); CYC(b_+60,b_+63); SET_HL(RV((SYM(interactionCoded8__fillNextGroupWithLava) + 10), 0x7d3b)); CYC(b_+63,b_+66); interactionSetScript_hook(gb); return;
 }
 
 void interactionCodeb4__activatedBook_hook(GB *gb) {

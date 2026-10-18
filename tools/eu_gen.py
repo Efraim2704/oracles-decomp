@@ -46,6 +46,29 @@ def main():
     emap = eu_address_map(f'ref/oracles-disasm/{game}.sym', sym)
     lists = ['src/hooks/generated_seasons.txt', 'src/hooks/generated_seasons_gen.txt'] if seasons else ['src/hooks/generated.txt']
     roots, unplaced = [], []
+    resume_names = {}
+    us_rom = open(f'roms/Legend of Zelda, The - Oracle of {"Seasons" if seasons else "Ages"} (USA, Australia).gbc', 'rb').read()
+    eu_bytes = open(eu_rom, 'rb').read()
+    def byte(rom, b, a):
+        o = a if a < 0x4000 else b * 0x4000 + a - 0x4000
+        return rom[o] if o < len(rom) else None
+    mapped_by_bank = {}
+    for (ub, ua) in emap: mapped_by_bank.setdefault(ub, []).append(ua)
+    for v in mapped_by_bank.values(): v.sort()
+    import bisect
+    def resume_point(ub, ua):
+        """A thread's resume point (after a call, or after `ld sp,hl`) that the symbol files do not
+        carry over: the same distance from the start of its routine, if the EU code has the same
+        call or `ld sp,hl` just before it."""
+        starts = mapped_by_bank.get(ub, [])
+        i = bisect.bisect_right(starts, ua) - 1
+        if i < 0 or ua - starts[i] > 0x400: return None
+        eb, ea0 = emap[(ub, starts[i])]
+        ea = ea0 + (ua - starts[i])
+        for back, ops in ((3, (0xcd, 0xc4, 0xcc, 0xd4, 0xdc)), (1, (0xf9,))):
+            if byte(us_rom, ub, ua - back) in ops and byte(eu_bytes, eb, ea - back) == byte(us_rom, ub, ua - back):
+                return (eb, ea)
+        return None
     for path in lists:
         for l in open(path):
             p = l.split()
@@ -53,10 +76,32 @@ def main():
             ub, ua = int(p[0][:2], 16), int(p[0][3:], 16)
             e = emap.get((ub, ua)) if ua < 0x8000 else None
             if ua >= 0x8000: continue
+            if e is None and re.search(r'__after(Call|Sp)[0-9a-f]{4}', p[1]):
+                e = resume_point(ub, ua)
+                if e:       # the USA name, with the EU address after it
+                    n = re.sub(r'^s_', '', p[1][:-len('_hook')] if p[1].endswith('_hook') else p[1])
+                    resume_names[e] = re.sub(r'(__after(?:Call|Sp))[0-9a-f]{4}$', lambda m: f'{m.group(1)}{e[1]:04x}', n)
             if e is None: unplaced.append(p[1]); continue
             if e not in shared: roots.append(e)
 
     named = []          # (bank, addr, name) written to the labels file
+
+    # roots: the jump-table entries of the shared routines. Their C reaches calls and tail jumps
+    # directly, but a table it does not handle itself dispatches through the hook table, and the EU
+    # table can name code the USA build never had.
+    shared_targets = set()
+    for (b, a) in shared:
+        if a >= 0x8000: continue
+        body = T.routine_body(b, a)
+        addrs = {ia for ia, *_ in body}
+        for ia, m, ln, cy, kind, info in body:
+            if kind != 'jumptable': continue
+            for t in info[0]:
+                if t >= 0x8000 or t in addrs: continue
+                tb = 0 if t < 0x4000 else b
+                if tb and (tb, t) not in shared: shared_targets.add((tb, t))
+                elif not tb and (0, t) not in shared: shared_targets.add((0, t))
+    roots.extend(sorted(shared_targets))
 
     def ensure_label(b, a, name=None):
         if (b, a) in T.by_addr or (b, a) in T.local_by_addr: return
@@ -83,6 +128,7 @@ def main():
                 if tb is not None and T.switches_threads(tb, info[0]): out.append((b, ia + ln, f'{name}__afterCall{ia + ln:04x}'))
         return out
 
+
     generated, unknown_bank = {}, set()
     todo = list(dict.fromkeys(roots))
     rounds = 0
@@ -90,7 +136,7 @@ def main():
         rounds += 1
         for (b, a) in todo:
             if (b, a) in shared: continue
-            ensure_label(b, a)
+            ensure_label(b, a, resume_names.get((b, a)))
             generated[(b, a)] = None
         todo = []
         # walk every generated entry with the labels as they now stand (a new label splits a body)
@@ -123,6 +169,9 @@ def main():
             with contextlib.redirect_stderr(io.StringIO()):
                 code = T.gen(name, b, a)
             if code is None: failed.append((b, a, name)); continue
+            # a local label nothing jumps to (the transliterator marks every named one): drop it
+            used = set(re.findall(r'goto (L_[0-9a-f]{4});', code))
+            code = re.sub(r'^(L_[0-9a-f]{4}):\n', lambda m: m.group(0) if m.group(1) in used else '', code, flags=re.M)
             bodies.append(code)
             rows.append((b, a, T.cname_at(b, a), T.gen.flags))
         if not failed: break
