@@ -3,6 +3,8 @@
 #include "core/bus.h"
 #include "game/gen.h"
 #include "game/seasons/gen.h"
+#include "game/eu/gen_ages.h"
+#include "game/eu/gen_seasons.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

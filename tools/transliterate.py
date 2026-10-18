@@ -28,7 +28,8 @@ extra_names = set()
 alias_labels = set()
 import os as _os
 EU = _os.path.basename(sys.argv[2]).endswith('_eu.sym')      # a European ROM: the extra labels carried over by tools/eu_sym.py
-for extra_path in ([f'src/hooks/extra_seasons{"_eu" if EU else ""}.sym', f'src/hooks/alias_seasons{"_eu" if EU else ""}.sym'] if SEASONS else [f'src/hooks/extra{"_eu" if EU else ""}.sym']):
+# a European ROM also has the entry points tools/eu_gen.py named in its own code (labels_*eu.sym)
+for extra_path in ([f'src/hooks/extra_seasons{"_eu" if EU else ""}.sym', f'src/hooks/alias_seasons{"_eu" if EU else ""}.sym'] if SEASONS else [f'src/hooks/extra{"_eu" if EU else ""}.sym']) + ([f'src/hooks/labels{"_seasons" if SEASONS else ""}_eu.sym'] if EU else []):
     if not _os.path.exists(extra_path): continue
     for line in open(extra_path):
         line = line.split('#')[0].strip()

@@ -971,6 +971,17 @@
 02:4b73 fileSelectDrawHeartsAndDeathCounter_hook -
 02:4bc0 fileSelectDrawAcornCursor_hook -
 02:4be7 fileSelectDrawAcornCursor__func_hook -
+02:4c4b runGameLinkMenu_hook -
+02:4c52 fileSelectMode7_hook -
+02:4c76 fileSelectMode7__state0_hook -
+02:4cb1 fileSelectMode7__state1_hook -
+02:4d0b fileSelectMode7__state2_hook -
+02:4d2d fileSelectMode7__state3_hook -
+02:4d3b fileSelectMode7__moveCursorToQuit_hook -
+02:4d47 fileSelectMode7__selectedSomething_hook -
+02:4d74 fileSelectMode7__func_02_4c4b_hook -
+02:4d7e fileSelectMode7__func_02_4c55_hook -
+02:4d9d fileSelectMode7__state4_hook -
 02:4e00 fileSelect_redrawDecorationsAndSetWramBank4_hook -
 02:4e4e fileSelectDrawLinkInOtherGame_hook -
 02:4e52 fileSelectDrawLink_hook -
@@ -1074,6 +1085,7 @@
 02:59c2 inventorySubmenu1_drawCursor_hook -
 02:5a2b inventorySubmenu2_drawCursor_hook -
 02:5a75 func_02_5a35_hook -
+02:5a83 func_02_5a35__next_hook -
 02:5ad2 func_02_5a35__seedOnlyCodeDone_hook -
 02:5ad3 func_02_5a35__dontHaveSubItem_hook -
 02:5b36 cpInventorySelectedItemToHarp_hook -
@@ -1326,6 +1338,7 @@
 02:7a85 func_02_7a3a_hook -
 02:7a9f getIndexOfGashaSpotInRoom_body_hook -
 02:7ac2 func_02_7a77_hook -
+02:7ad3 applyRoomSpecificTileChangesAfterGfxLoad_hook -
 02:7b4f roomTileChangesAfterLoad0a_hook -
 02:7b5f roomTileChangesAfterLoad09_hook -
 02:7b7b roomTileChangesAfterLoad06_hook -
@@ -2273,6 +2286,7 @@
 05:6000 specialObjectSetAngleRelativeToVar38_hook -
 05:6023 specialObjectSetPositionToVar38IfSet_hook -
 05:6041 checkLinkJumpingOffCliff_hook -
+05:60b2 linkState12_hook -
 05:61db specialObjectCode_transformedLink_hook -
 05:6320 specialObjectCode_linkRidingAnimal_hook -
 05:6371 specialObjectCode_minecart_b05_hook -
@@ -2767,6 +2781,7 @@
 08:46c2 interactionCode1c_hook -
 08:486c interactionCode15_hook -
 08:48f7 getLinkTilePosition_hook -
+08:4a39 interactionCode1a_hook -
 08:4b2e interactionCode1f_hook -
 08:4bf3 interactionCode20_hook -
 08:4c9e interactionCode21_hook -
@@ -2807,6 +2822,7 @@
 08:508b spawnSmallKeyFromCeiling_hook -
 08:5098 verifyTiles_hook -
 08:50aa makeTorchAtPositionTemporarilyLightable_hook -
+08:50bd interactionCode22_hook -
 08:5192 interactionCode23_hook -
 08:52cb interactionCode24_hook -
 08:5320 interactionCode25_hook -
@@ -2815,6 +2831,8 @@
 08:559b interactionCode2d_hook -
 08:55d3 interactionCode2e_hook -
 08:5602 interactionCode2f_hook -
+08:561e interactionCode30_hook -
+08:562a shootingGalleryNpc_hook -
 08:5686 shootingGalleryGame_hook -
 08:578a shootingGallery_initializeGameRounds_hook -
 08:5797 shootingGallery_getNextTargetLayout_hook -
@@ -3094,6 +3112,7 @@
 09:653b impaNpc_faceLinkIfClose_hook -
 09:655a getImpaNpcState_hook -
 09:65a5 interactionCode51_hook -
+09:66bc interactionCode53_hook -
 09:66ed interactionCode54_hook -
 09:66f5 dog_subid00_hook -
 09:6731 dog_subid01_hook -
@@ -3105,7 +3124,12 @@
 09:687b dog_snapToTargetPosition_hook -
 09:688c dog_getTargetPositionAddress_hook -
 09:689c dog_setTargetPositionIndex_hook -
+09:692b interactionCode57_hook -
+09:6937 interactionCode57__subid00_hook -
+09:693c interactionCode57__subid03__state0_hook -
 09:6942 interactionCode57__subid03__state1_hook -
+09:6960 interactionCode57__subid01_hook -
+09:6965 interactionCode57__subid1And2State0_hook -
 09:6975 interactionCode57__subid1State1_hook -
 09:6983 interactionCode57__subid1And2Substate0_hook -
 09:699b interactionCode57__label_09_221_hook -
@@ -3115,9 +3139,11 @@
 09:69e2 interactionCode57__updateAnimationAndRunScript_hook -
 09:69ec interactionCode57__subid1Substate2_hook -
 09:69fc interactionCode57__subid1Substate3_hook -
+09:6a44 interactionCode57__subid02_hook -
 09:6a58 interactionCode57__subid2Substate1_hook -
 09:6a5f interactionCode57__subid2Substate2_hook -
 09:6a80 interactionCode57__unusedFunc_6a80_hook -
+09:6a89 interactionCode57__loadScriptAndInitGraphics_hook -
 09:6aa4 interactionCode57__createDirtChips_hook -
 09:6aa7 interactionCode57__next_hook -
 09:6d45 bear_state0_hook -
@@ -3267,6 +3293,7 @@
 0a:64a7 bombUpgradeFairy_subid01_hook -
 0a:64ff bombUpgradeFairy_subid02_hook -
 0a:665a interactionCode86_hook -
+0a:6962 interactionCode8a_hook -
 0a:6acf interactionCode8c_hook -
 0a:6c6d interactionCode8f_hook -
 0a:6cc1 interactionCode90_hook -
@@ -3342,6 +3369,7 @@
 0a:7c03 patch_subid04_hook -
 0a:7c53 patch_subid06_hook -
 0a:7c94 interactionCode95_hook -
+0a:7d1d interactionCode96_hook -
 0a:7d5c interactionCode97_hook -
 0a:7d64 interaction97_subid00_hook -
 0a:7d9d interaction97_subid01_hook -
@@ -3518,6 +3546,7 @@
 0b:762a interactionCodec9_hook -
 0b:7777 interactionCodeca_hook -
 0b:77be interactionCodecb_hook -
+0b:7804 interactionCodecc_hook -
 0b:7839 interactionCodecd_hook -
 0b:7876 interactionCoded5_hook -
 0b:787e greatFairy_subid0_hook -
@@ -5660,9 +5689,11 @@
 15:5826 monkey_setAnimationFromVar3a_hook -
 15:582c villager_setLinkYToVar39_hook -
 15:5834 villager_createBallAccessory_hook -
+15:5847 villager_createBall_hook -
 15:5854 createExclamationMark_hook -
 15:585a oscillateXRandomly_hook -
 15:5862 loadNextAnimationFrameAndMore_hook -
+15:5870 boy_createLightning_hook -
 15:588c boy_runFunnyJokeCutscene_hook -
 15:593b ghostVeranApplySpeedUntilVar38Zero_hook -
 15:59f3 soldierSetSimulatedInputToEscortLink_hook -
@@ -5738,6 +5769,7 @@
 15:6331 goronDance_initLinkPosition_hook -
 15:6338 goron_targetCarts_setLinkPositionToCartPlatform_hook -
 15:633f goron_targetCarts_setLinkPositionAfterGame_hook -
+15:6346 goron_bigBang_initLinkPosition_hook -
 15:634b goron_setLinkPositionAndDirection_hook -
 15:6355 goron_putLinkInState08_hook -
 15:635b goronDance_checkNumFailedRounds_hook -
@@ -5830,6 +5862,7 @@
 15:6db6 companionScript_makeExclamationMark_hook -
 15:6dbe companionScript_writeAngleTowardLinkToCompanionVar3f_hook -
 15:6dcc companionScript_restoreMusic_hook -
+15:6dd5 companionScript_spawnFairyAfterFindingCompanionInForest_hook -
 15:6de0 companionScript_warpOutOfForest_hook -
 15:6deb companionScript_loseRickyGloves_hook -
 15:6f13 kingMoblinDefeated_setGoronDirection_hook -
@@ -5919,6 +5952,8 @@
 15:7b14 greatFairy_checkScreenIsScrolling_hook -
 15:7b21 slateSlot_7b21_hook -
 15:7b2f slateSlot_placeSlate_hook -
+15:7b73 interactiondc_removeGraveyardGateTiles1_hook -
+15:7bb1 interactiondc_removeGraveyardGateTiles2_hook -
 15:7bde interactiondc_7bde_hook -
 15:7bee interactiondc_spawnPuff_hook -
 16:4000 interactionLoadTreasureData_hook -
@@ -6204,7 +6239,9 @@
 3f:76bc monkeyCheckChangeAnimation_hook -
 3f:773e monkeySubid2State1_hook -
 3f:7744 monkeySubid4State1_hook -
+3f:7809 monkeySubid5State1_hook -
 3f:7824 monkeyAnimateAndRunScript_hook -
+3f:782a monkeySubid5State1_monkey9_hook -
 3f:796d rabbitSubid1_hook -
 3f:7a0c rabbitSubid2_hook -
 3f:7a36 rabbitSubid3_hook -

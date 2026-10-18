@@ -50,6 +50,7 @@ def extra_labels(sym):
     import os
     out = []
     paths = [extra_sym_for(sym)] + ([f'src/hooks/alias_seasons{"_eu" if is_eu(sym) else ""}.sym'] if 'seasons' in sym else [])
+    if is_eu(sym): paths.append(f'src/hooks/labels{"_seasons" if "seasons" in sym else ""}_eu.sym')     # tools/eu_gen.py
     for path in paths:
         if not os.path.exists(path): continue
         for line in open(path):

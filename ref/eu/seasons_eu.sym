@@ -2034,6 +2034,7 @@ wlasymbol true
 01:623e cutscene14@state2@seasonsFunc_6238
 01:6252 cutscene14@state2@substate3
 01:6280 cutscene14@initWaveScrollValues_everyOtherLine
+01:6296 paletteHeaderTable
 01:6412 paletteHeader00
 01:6415 paletteHeader01
 01:6418 paletteHeader02
@@ -2224,6 +2225,7 @@ wlasymbol true
 01:66cd paletteHeaderbb
 01:66d0 paletteHeaderbc
 01:66d3 paletteHeaderbd
+01:66d6 uncmpGfxHeaderTable
 01:6746 uncmpGfxHeader00
 01:6746 uncmpGfxHeader01
 01:674c uncmpGfxHeader02
@@ -2248,6 +2250,14 @@ wlasymbol true
 01:681e uncmpGfxHeader15
 01:683c uncmpGfxHeader16
 01:6848 uncmpGfxHeader17
+01:684e uncmpGfxHeader18
+01:6854 uncmpGfxHeader19
+01:685a uncmpGfxHeader1a
+01:6860 uncmpGfxHeader1b
+01:6866 uncmpGfxHeader1c
+01:686c uncmpGfxHeader1d
+01:6872 uncmpGfxHeader1e
+01:6878 uncmpGfxHeader1f
 01:687e uncmpGfxHeader20
 01:6884 uncmpGfxHeader21
 01:688a uncmpGfxHeader22
@@ -2444,12 +2454,18 @@ wlasymbol true
 02:4bd7 fileSelectDrawAcornCursor@func
 02:4be2 fileSelectDrawAcornCursor@sprite
 02:4be7 fileSelectDrawAcornCursor@table
+02:4bf5 fileSelectDrawAcornCursor@table1
 02:4bf9 fileSelectDrawAcornCursor@data11
 02:4c01 fileSelectDrawAcornCursor@data12
+02:4c05 fileSelectDrawAcornCursor@table3
 02:4c07 fileSelectDrawAcornCursor@data31
+02:4c0f fileSelectDrawAcornCursor@table4
 02:4c13 fileSelectDrawAcornCursor@data41
+02:4c1b fileSelectDrawAcornCursor@table2
 02:4c1f fileSelectDrawAcornCursor@data21
+02:4c27 fileSelectDrawAcornCursor@table5
 02:4c2b fileSelectDrawAcornCursor@data51
+02:4c33 fileSelectDrawAcornCursor@table6
 02:4c35 fileSelectDrawAcornCursor@data61
 02:4c3b runGameLinkMenu
 02:4c42 fileSelectMode7
@@ -2641,6 +2657,7 @@ wlasymbol true
 02:5f94 seedAndHarpSpriteTable@sprite2
 02:5f99 seedAndHarpSpriteTable@sprite3
 02:5f9e seedAndHarpSpriteTable@sprite4
+02:5fa3 table_5ae5
 02:5fab table_5ae5@data4
 02:5fac table_5ae5@data2
 02:5faf table_5ae5@data5
@@ -3762,6 +3779,43 @@ wlasymbol true
 04:579a updateAnimationData
 04:57cf updateAnimationDataPointer
 04:580f loadAnimationGfxIndex
+04:5828 uniqueGfxHeadersStart
+04:5828 uniqueGfxHeader00
+04:5828 uniqueGfxHeader01
+04:582e uniqueGfxHeader02
+04:5834 uniqueGfxHeader03
+04:583a uniqueGfxHeader04
+04:5840 uniqueGfxHeader05
+04:5846 uniqueGfxHeader06
+04:584c uniqueGfxHeader07
+04:5852 uniqueGfxHeader08
+04:585a uniqueGfxHeader09
+04:5860 uniqueGfxHeader0a
+04:5866 uniqueGfxHeader0b
+04:586c uniqueGfxHeader0c
+04:5872 uniqueGfxHeader0d
+04:5878 uniqueGfxHeader0e
+04:587e uniqueGfxHeader0f
+04:5884 uniqueGfxHeader10
+04:588a uniqueGfxHeader11
+04:5890 uniqueGfxHeader12
+04:589c uniqueGfxHeader13
+04:58a8 uniqueGfxHeader14
+04:58ae uniqueGfxHeader15
+04:58b4 uniqueGfxHeader16
+04:58c0 uniqueGfxHeader17
+04:58d8 uniqueGfxHeader18
+04:58f0 uniqueGfxHeader19
+04:58f6 uniqueGfxHeader1a
+04:58fc uniqueGfxHeader1b
+04:5902 uniqueGfxHeader1c
+04:590e uniqueGfxHeader1d
+04:5922 uniqueGfxHeader1e
+04:5936 uniqueGfxHeader1f
+04:593c uniqueGfxHeader20
+04:5942 uniqueGfxHeader21
+04:5948 uniqueGfxHeader22
+04:594e uniqueGfxHeader23
 04:5954 uniqueGfxHeader24
 04:5956 uniqueGfxHeader25
 04:5958 uniqueGfxHeader26
@@ -4621,6 +4675,7 @@ wlasymbol true
 05:613f linkState12@noCollision
 05:6144 linkState12@landHere
 05:614e linkState12@offsets
+05:6156 landableTileFromCliffExceptions
 05:6162 landableTileFromCliffExceptions@overworld
 05:6164 landableTileFromCliffExceptions@subrosia
 05:6164 landableTileFromCliffExceptions@makutree
@@ -6277,6 +6332,54 @@ wlasymbol true
 07:63b7 itemAttributes
 07:6467 itemAnimationTable
 07:64c7 itemOamDataTable
+07:6527 item00Animations
+07:6527 item01Animations
+07:6527 item02Animations
+07:6527 item03Animations
+07:652b item04Animations
+07:652b item05Animations
+07:652b item07Animations
+07:652b item08Animations
+07:652b item0bAnimations
+07:652b item0cAnimations
+07:652b item0fAnimations
+07:652b item13Animations
+07:652b item16Animations
+07:652b item27Animations
+07:653b item06Animations
+07:653d item0dAnimations
+07:654b item0aAnimations
+07:6557 item18Animations
+07:655d item1aAnimations
+07:6565 item09Animations
+07:6565 item0eAnimations
+07:6565 item10Animations
+07:6565 item11Animations
+07:6565 item12Animations
+07:6565 item14Animations
+07:6565 item15Animations
+07:6565 item17Animations
+07:6565 item19Animations
+07:6565 item1bAnimations
+07:6565 item1cAnimations
+07:6565 item1dAnimations
+07:6565 item1eAnimations
+07:6565 item1fAnimations
+07:6565 item20Animations
+07:6567 item21Animations
+07:6567 item22Animations
+07:6567 item24Animations
+07:656b item23Animations
+07:656b item25Animations
+07:656b item26Animations
+07:656d item28Animations
+07:656d item29Animations
+07:6571 item2aAnimations
+07:6573 item2bAnimations
+07:6573 item2cAnimations
+07:6573 item2dAnimations
+07:6573 item2eAnimations
+07:6573 item2fAnimations
 07:657b itemAnimation1e777
 07:659c itemAnimation1e798
 07:65b1 itemAnimation1e7ad
@@ -6692,6 +6795,18 @@ wlasymbol true
 08:530b interactionCode20@state2
 08:530e interactionCode20@state1
 08:5315 interactionCode20@scriptTable
+08:532d interactionCode20@dungeon0
+08:5331 interactionCode20@dungeon1
+08:5339 interactionCode20@dungeon2
+08:533f interactionCode20@dungeon3
+08:5349 interactionCode20@dungeon4
+08:5359 interactionCode20@dungeon5
+08:5361 interactionCode20@dungeon6
+08:537f interactionCode20@dungeon7
+08:539d interactionCode20@dungeon8
+08:53b5 interactionCode20@dungeon9
+08:53b9 interactionCode20@dungeonA
+08:53b9 interactionCode20@dungeonB
 08:53c7 interactionCode21
 08:53d5 interactionCode21@state0
 08:53f0 interactionCode21@state2
@@ -6727,10 +6842,13 @@ wlasymbol true
 08:5614 interactionCode22@func_5610
 08:5623 interactionCode22@func_561f
 08:5643 interactionCode22@table_563f
+08:5653 interactionCode22@scriptTable
 08:5669 interactionCode23
 08:5671 interactionCode23@substate0
 08:56a2 interactionCode23@substate1
 08:56a9 table_56a5
+08:56b3 table_56af
+08:56b7 table_56b3
 08:56b9 interactionCode24
 08:56b9 interactionCode29
 08:56b9 interactionCode2c
@@ -6770,6 +6888,7 @@ wlasymbol true
 08:5878 getSunkenCityNPCVisibleSubId@main
 08:58a9 getSunkenCityNPCVisibleSubId@xorARet
 08:58ab conditionalHoronNPCLookupTable
+08:58bb conditionalHoronNPCLookupTable@fickleLady
 08:58c9 conditionalHoronNPCLookupTable@fickleLady@subid0
 08:58cb conditionalHoronNPCLookupTable@fickleLady@subid1
 08:58d0 conditionalHoronNPCLookupTable@fickleLady@subid2
@@ -6777,28 +6896,41 @@ wlasymbol true
 08:58d4 conditionalHoronNPCLookupTable@fickleLady@subid4
 08:58d7 conditionalHoronNPCLookupTable@fickleLady@subid5
 08:58d9 conditionalHoronNPCLookupTable@fickleLady@subid6
+08:58db conditionalHoronNPCLookupTable@fickleMan
 08:58e7 conditionalHoronNPCLookupTable@fickleMan@subid0
 08:58eb conditionalHoronNPCLookupTable@fickleMan@subid1
 08:58ed conditionalHoronNPCLookupTable@fickleMan@subid2
 08:58ef conditionalHoronNPCLookupTable@fickleMan@subid3
 08:58f1 conditionalHoronNPCLookupTable@fickleMan@subid4
 08:58f3 conditionalHoronNPCLookupTable@fickleMan@subid5
+08:58f8 conditionalHoronNPCLookupTable@oldLadyFarmer
+08:58f8 conditionalHoronNPCLookupTable@fountainOldMan
+08:58f8 conditionalHoronNPCLookupTable@boyPlaysWithSpringBloomFlower
 08:58fa conditionalHoronNPCLookupTable@boyPlaysWithSpringBloomFlower@subid0
+08:5906 conditionalHoronNPCLookupTable@horonVillageBoy
 08:590e conditionalHoronNPCLookupTable@horonVillageBoy@table_590a
 08:5911 conditionalHoronNPCLookupTable@horonVillageBoy@table_590d
 08:5918 conditionalHoronNPCLookupTable@horonVillageBoy@table_5914
 08:591b conditionalHoronNPCLookupTable@horonVillageBoy@table_5917
+08:591d conditionalHoronNPCLookupTable@boyWithDog
 08:5927 conditionalHoronNPCLookupTable@boyWithDog@table_5923
 08:592b conditionalHoronNPCLookupTable@boyWithDog@table_5927
 08:592d conditionalHoronNPCLookupTable@boyWithDog@table_5929
 08:592f conditionalHoronNPCLookupTable@boyWithDog@table_592b
 08:5933 conditionalHoronNPCLookupTable@boyWithDog@table_592f
+08:5937 conditionalHoronNPCLookupTable@otherOldMan
 08:593f conditionalHoronNPCLookupTable@otherOldMan@table_593b
 08:5945 conditionalHoronNPCLookupTable@otherOldMan@table_5941
 08:5947 conditionalHoronNPCLookupTable@otherOldMan@table_5943
 08:594c conditionalHoronNPCLookupTable@otherOldMan@table_5948
 08:594e miscNPC_scriptTable
 08:59a6 miscNPC_scriptTable@malonScripts
+08:59a8 miscNPC_scriptTable@bathingSubrosiansScripts
+08:59b4 miscNPC_scriptTable@masterDiversSonScripts
+08:59be miscNPC_scriptTable@fickleManScripts
+08:59d6 miscNPC_scriptTable@dungeonWiseOldManScripts
+08:59d8 miscNPC_scriptTable@sunkenCityTreasureHunterScripts
+08:59e2 miscNPC_scriptTable@villageFarmerScripts
 08:59f8 miscNPC_scriptTable@villageFountainManScripts
 08:5a12 interactionCode25
 08:5a12 interactionCode26
@@ -6910,6 +7042,7 @@ wlasymbol true
 08:61c0 interactionCode31@subid1@screenAboveRosa
 08:61d6 interactionCode31@subid1@beachEntranceScreen
 08:61db interactionCode31@subid1@goToState3
+08:61e1 interactionCode31@subid1@roomTable_61dd
 08:61f1 interactionCode31@subid1@group0
 08:61f1 interactionCode31@subid1@group2
 08:61f1 interactionCode31@subid1@group6
@@ -7040,6 +7173,10 @@ wlasymbol true
 08:6ac0 func_6abc
 08:6ac5 func_6ac1
 08:6acd table_6ac9
+08:6ad5 table_6ac9@var03_00
+08:6aeb table_6ac9@var03_01
+08:6b01 table_6ac9@var03_02
+08:6b17 table_6ac9@var03_03
 08:6b21 interactionCode40
 08:6b21 interactionCode41
 08:6b29 interactionCode41@state0
@@ -7070,6 +7207,7 @@ wlasymbol true
 08:6c7c func_6c78
 08:6c8f func_6c8b
 08:6cb6 table_6cb2
+08:6cc3 table_6cbf
 08:6ce1 interactionCode42
 08:6ce9 interactionCode42@state0
 08:6d12 interactionCode42@state1
@@ -7820,6 +7958,8 @@ wlasymbol true
 09:6a54 strangeBrothersSubId2
 09:6a5e strangeBrothersSubId2@state0
 09:6a92 strangeBrothersSubId2@table_6a92
+09:6a96 strangeBrothersSubId2@table_6a96
+09:6aa4 strangeBrothersSubId2@table_6aa4
 09:6ab2 strangeBrothersSubId2@state1
 09:6ad1 strangeBrothersSubId2@func_6ad1
 09:6add strangeBrothersSubId2@func_6add
@@ -8094,6 +8234,7 @@ wlasymbol true
 0a:40ae interactionCode89@loadPrelinkedScript
 0a:40b0 interactionCode89@loadLinkedScript
 0a:40b9 interactionCode89@setScriptAndGotoState4
+0a:40c2 interactionCode89@scriptTable
 0a:40ca interactionCode89@state3
 0a:40e8 interactionCode89@state4
 0a:4109 interactionCode89@state5
@@ -8917,6 +9058,11 @@ wlasymbol true
 0a:78f8 func_78c3
 0a:7903 func_78ce
 0a:7916 ba_to_beScripts
+0a:7920 baScripts
+0a:7928 bbScripts
+0a:792a bcScripts
+0a:7930 bdScripts
+0a:7936 beScripts
 0a:793c interactionCodebf
 0a:7944 interactionCodebf@state0
 0a:7951 interactionCodebf@state1
@@ -9775,6 +9921,7 @@ wlasymbol true
 0b:5db8 piratian1FScript_text1BasedOnD6Beaten@readyToLeave
 0b:5dbf piratian1FScript_text2BasedOnD6Beaten
 0b:5dcd piratian1FScript_text2BasedOnD6Beaten@talkedTo
+0b:5dd9 piratian1FScript_text2BasedOnD6Beaten@readyToLeave
 0b:5de0 unluckySailorScript
 0b:5dee unluckySailorScript@piratesLeft
 0b:5df3 unluckySailorScript@finishedGame
@@ -10008,6 +10155,18 @@ wlasymbol true
 0b:69b9 strangeBrother2Script_2ndScreen@pattern1
 0b:69bd strangeBrother2Script_2ndScreen@pattern2
 0b:69c1 strangeBrother2Script_3rdScreen
+0b:69c8 strangeBrother2Script_3rdScreen@pattern1
+0b:69cc strangeBrother2Script_3rdScreen@pattern2
+0b:69d0 strangeBrother2Script_4thScreen
+0b:69d7 strangeBrother2Script_4thScreen@pattern1
+0b:69db strangeBrother2Script_4thScreen@pattern2
+0b:69df strangeBrother2Script_5thScreen
+0b:69e6 strangeBrother2Script_5thScreen@pattern1
+0b:69ea strangeBrother2Script_5thScreen@pattern2
+0b:69ee strangeBrother2Script_6thScreen
+0b:69f5 strangeBrother2Script_6thScreen@pattern1
+0b:69f9 strangeBrother2Script_6thScreen@pattern2
+0b:69fd strangeBrother2Script_finishedScreen
 0b:6a01 strangeBrotherScript_lookDownUpRightLeft
 0b:6a0e strangeBrotherScript_lookUpDownRightLeft
 0b:6a16 strangeBrotherScript_lookRightLeftUpDown
@@ -12269,6 +12428,7 @@ wlasymbol true
 0d:6aec label_270@delete
 0d:6af5 ganonRevivalCutscene_spawnShadow
 0d:6b19 ganonRevivalCutscene_spawnShadow@shadowVariables
+0d:6b31 orbMovementScript
 0d:6b47 orbMovementScript@subid00
 0d:6b49 orbMovementScript@subid00@loop
 0d:6b54 orbMovementScript@subid01
@@ -12491,6 +12651,7 @@ wlasymbol true
 0d:7a10 objectRunMovementScript_body@moveLeft
 0d:7a26 objectRunMovementScript_body@wait
 0d:7a35 objectRunMovementScript_body@storePointer
+0d:7a3d movingSidescrollPlatformScriptTable
 0d:7a67 movingSidescrollPlatformScriptTable@subid00
 0d:7a70 movingSidescrollPlatformScriptTable@subid01
 0d:7a79 movingSidescrollPlatformScriptTable@subid02
@@ -12512,6 +12673,7 @@ wlasymbol true
 0d:7b15 movingSidescrollPlatformScriptTable@subid12
 0d:7b1e movingSidescrollPlatformScriptTable@subid13
 0d:7b27 movingSidescrollPlatformScriptTable@subid14
+0d:7b30 movingSidescrollConveyorScriptTable
 0d:7b3a movingSidescrollConveyorScriptTable@subid00
 0d:7b47 movingSidescrollConveyorScriptTable@subid01
 0d:7b50 movingSidescrollConveyorScriptTable@subid02
@@ -14081,6 +14243,7 @@ wlasymbol true
 0f:7ecc interactionCoded5@state1
 0f:7ed4 interactionCoded5@substate0
 0f:7efe interactionCoded5@setScript
+0f:7f01 interactionCoded5@substate1
 0f:7f1f table_7f1f
 0f:7f27 interactionCoded6
 0f:7f2f interactionCoded6@state0
@@ -15360,6 +15523,7 @@ wlasymbol true
 11:5734 group5Map96EnemyObjectData
 11:573d group5Map98EnemyObjectData
 11:5746 group5Map9eBeforeEventObjectData
+11:574b objectTable1
 11:5765 objectData575e
 11:577b objectData5774
 11:5785 objectData577e
@@ -15407,6 +15571,10 @@ wlasymbol true
 11:5b0d assignRandomPositionToEnemy
 11:5b22 checkEnemyKilled
 11:5b42 objectDataGroupTable
+11:5b52 group0ObjectDataTable
+11:5d52 group1ObjectDataTable
+11:5f52 group4ObjectDataTable
+11:6152 group5ObjectDataTable
 11:6352 group0Map02ObjectData
 11:6352 group0Map04ObjectData
 11:6352 group0Map09ObjectData
@@ -16233,6 +16401,8 @@ wlasymbol true
 11:75ad group4Map8aObjectData
 11:75b1 group4Map8bObjectData
 11:75bf group4Map8cObjectData
+11:75d0 group4Map8dObjectData
+11:75d4 group4Map8eObjectData
 11:75d8 group4Map8fObjectData
 11:75e1 group4Map90ObjectData
 11:75e5 group4Map91ObjectData
@@ -16252,6 +16422,10 @@ wlasymbol true
 11:7657 group4Mapa0ObjectData
 11:766b group4Mapa1ObjectData
 11:766f group4Mapa2ObjectData
+11:7684 group4Mapa3ObjectData
+11:7688 group4Mapa4ObjectData
+11:768c group4Mapa5ObjectData
+11:7690 group4Mapa6ObjectData
 11:7694 group4Mapa7ObjectData
 11:769f group4Mapa8ObjectData
 11:76a3 group4Mapa9ObjectData
@@ -18037,6 +18211,240 @@ wlasymbol true
 14:5563 dinScript_discoverLinkCollapsed_body
 14:558e ZeldaBeingKidnappedEvent_body
 14:5630 gettingRodOfSeasons_body
+14:566d interactionAnimationTable
+14:583d interactionOamDataTable
+14:5a0d interaction00Animations
+14:5a0d interaction01Animations
+14:5a0d interaction0dAnimations
+14:5a0d interaction0eAnimations
+14:5a0d interaction13Animations
+14:5a0d interaction15Animations
+14:5a0d interaction19Animations
+14:5a0d interaction1bAnimations
+14:5a0d interaction1dAnimations
+14:5a0d interaction1eAnimations
+14:5a0d interaction1fAnimations
+14:5a0d interaction20Animations
+14:5a0d interaction21Animations
+14:5a0d interaction22Animations
+14:5a0d interaction23Animations
+14:5a0d interaction3aAnimations
+14:5a0d interaction51Animations
+14:5a0d interaction5aAnimations
+14:5a0d interaction5fAnimations
+14:5a0d interaction61Animations
+14:5a0d interaction62Animations
+14:5a0d interaction63Animations
+14:5a0d interaction65Animations
+14:5a0d interaction78Animations
+14:5a0d interaction85Animations
+14:5a0d interaction90Animations
+14:5a0d interaction9bAnimations
+14:5a0d interaction9eAnimations
+14:5a0d interactiona8Animations
+14:5a0d interactionabAnimations
+14:5a0d interactionacAnimations
+14:5a0d interactionb3Animations
+14:5a0d interactionb5Animations
+14:5a0d interactionc3Animations
+14:5a0d interactionc4Animations
+14:5a0d interactionc5Animations
+14:5a0d interactionc7Animations
+14:5a0d interactiond0Animations
+14:5a0d interactiond1Animations
+14:5a0d interactiond7Animations
+14:5a0d interactiond9Animations
+14:5a0d interactiondaAnimations
+14:5a0d interactiondcAnimations
+14:5a0f interaction02Animations
+14:5a11 interaction03Animations
+14:5a13 interaction04Animations
+14:5a15 interaction05Animations
+14:5a17 interaction06Animations
+14:5a17 interaction09Animations
+14:5a17 interaction0cAnimations
+14:5a19 interaction07Animations
+14:5a1b interaction08Animations
+14:5a1d interaction0aAnimations
+14:5a25 interaction0bAnimations
+14:5a29 interaction12Animations
+14:5a29 interaction14Animations
+14:5a29 interaction1cAnimations
+14:5a29 interaction5dAnimations
+14:5a29 interaction5eAnimations
+14:5a29 interaction64Animations
+14:5a29 interaction66Animations
+14:5a29 interaction71Animations
+14:5a29 interaction83Animations
+14:5a29 interactiona3Animations
+14:5a29 interactione5Animations
+14:5a2b interaction7dAnimations
+14:5a33 interaction3eAnimations
+14:5a33 interaction82Animations
+14:5a33 interactionbbAnimations
+14:5a47 interaction79Animations
+14:5a47 interactione0Animations
+14:5a53 interaction7aAnimations
+14:5a5f interaction7bAnimations
+14:5a61 interaction17Animations
+14:5a61 interaction18Animations
+14:5a61 interaction47Animations
+14:5a61 interaction54Animations
+14:5a61 interaction60Animations
+14:5a61 interaction68Animations
+14:5a61 interaction81Animations
+14:5a61 interaction91Animations
+14:5a61 interaction92Animations
+14:5a61 interaction94Animations
+14:5a61 interactionb6Animations
+14:5a61 interactionc6Animations
+14:5a61 interactiondeAnimations
+14:5a77 interaction6fAnimations
+14:5a7b interaction7eAnimations
+14:5a7d interaction77Animations
+14:5a81 interaction7fAnimations
+14:5a81 interactiona0Animations
+14:5a81 interactiona6Animations
+14:5a89 interaction88Animations
+14:5a8d interaction16Animations
+14:5a91 interactione2Animations
+14:5aa1 interaction10Animations
+14:5aa1 interaction24Animations
+14:5aa1 interaction29Animations
+14:5aa1 interaction32Animations
+14:5aa1 interaction38Animations
+14:5aa1 interaction39Animations
+14:5aa1 interaction40Animations
+14:5aa1 interaction42Animations
+14:5aa1 interaction46Animations
+14:5aa1 interaction55Animations
+14:5aa1 interaction5cAnimations
+14:5aa1 interaction67Animations
+14:5aa1 interaction70Animations
+14:5aa1 interaction73Animations
+14:5aa1 interaction76Animations
+14:5aa1 interaction80Animations
+14:5aa1 interaction8aAnimations
+14:5aa1 interaction8bAnimations
+14:5aa1 interaction8fAnimations
+14:5aa1 interaction96Animations
+14:5aa1 interaction99Animations
+14:5aa1 interactiona4Animations
+14:5aa1 interactionb1Animations
+14:5aa1 interactionb8Animations
+14:5aa1 interactionc8Animations
+14:5aa1 interactioncaAnimations
+14:5aa1 interactionccAnimations
+14:5aa1 interactiond8Animations
+14:5aa1 interactionddAnimations
+14:5aa1 interactione4Animations
+14:5aa1 interactione7Animations
+14:5abb interaction30Animations
+14:5abb interaction53Animations
+14:5abb interaction6aAnimations
+14:5abb interaction6dAnimations
+14:5acf interaction7cAnimations
+14:5ad1 interaction25Animations
+14:5ae3 interaction26Animations
+14:5ae9 interaction27Animations
+14:5afd interaction28Animations
+14:5b09 interaction2aAnimations
+14:5b11 interaction2bAnimations
+14:5b1d interaction3dAnimations
+14:5b27 interaction2cAnimations
+14:5b31 interaction31Animations
+14:5b31 interaction6cAnimations
+14:5b41 interaction33Animations
+14:5b4b interaction34Animations
+14:5b4f interaction35Animations
+14:5b7f interaction36Animations
+14:5b87 interaction37Animations
+14:5b91 interaction3bAnimations
+14:5ba5 interaction3cAnimations
+14:5ba5 interaction8dAnimations
+14:5ba5 interactioncdAnimations
+14:5baf interaction50Animations
+14:5baf interaction9fAnimations
+14:5baf interactiond5Animations
+14:5bb3 interaction3fAnimations
+14:5bc1 interaction45Animations
+14:5bcf interaction2dAnimations
+14:5bcf interaction2fAnimations
+14:5bcf interaction41Animations
+14:5bcf interactionb2Animations
+14:5bcf interactionc2Animations
+14:5bd9 interaction44Animations
+14:5beb interaction2eAnimations
+14:5bef interaction43Animations
+14:5bf1 interaction48Animations
+14:5bf9 interaction49Animations
+14:5bf9 interaction6eAnimations
+14:5bf9 interaction8cAnimations
+14:5bfd interaction4aAnimations
+14:5c0d interaction4bAnimations
+14:5c13 interaction4cAnimations
+14:5c27 interaction4dAnimations
+14:5c2b interaction0fAnimations
+14:5c2f interaction4eAnimations
+14:5c4b interaction4fAnimations
+14:5c7d interaction52Animations
+14:5c85 interaction57Animations
+14:5c91 interaction58Animations
+14:5ca1 interaction59Animations
+14:5ca3 interaction5bAnimations
+14:5ca3 interactiond6Animations
+14:5cad interaction69Animations
+14:5cb3 interaction1aAnimations
+14:5cb3 interactione1Animations
+14:5cb5 interaction6bAnimations
+14:5cbb interaction72Animations
+14:5cc5 interaction74Animations
+14:5cd3 interaction75Animations
+14:5cdf interaction11Animations
+14:5cdf interaction84Animations
+14:5ce9 interaction86Animations
+14:5ceb interaction87Animations
+14:5cf5 interaction89Animations
+14:5d07 interaction8eAnimations
+14:5d09 interaction93Animations
+14:5d0f interaction95Animations
+14:5d21 interaction97Animations
+14:5d23 interaction98Animations
+14:5d2b interaction56Animations
+14:5d2b interaction9aAnimations
+14:5d2f interaction9cAnimations
+14:5d35 interaction9dAnimations
+14:5d3f interactiona1Animations
+14:5d47 interactiona2Animations
+14:5d4b interactiona5Animations
+14:5d5d interactiona7Animations
+14:5d67 interactiona9Animations
+14:5d7f interactionaaAnimations
+14:5d97 interactionadAnimations
+14:5dab interactionaeAnimations
+14:5dab interactionafAnimations
+14:5dab interactionc0Animations
+14:5dab interactiond4Animations
+14:5de1 interactionb0Animations
+14:5ded interactionb4Animations
+14:5dfb interactionb7Animations
+14:5dff interactionb9Animations
+14:5e1f interactionbaAnimations
+14:5e29 interactionbcAnimations
+14:5e29 interactionbeAnimations
+14:5e33 interactionbdAnimations
+14:5e3d interactionbfAnimations
+14:5e43 interactionc1Animations
+14:5e45 interactionc9Animations
+14:5e47 interactioncbAnimations
+14:5e49 interactionceAnimations
+14:5e55 interactioncfAnimations
+14:5e5b interactiond2Animations
+14:5e63 interactiond3Animations
+14:5e67 interactiondbAnimations
+14:5e71 interactiondfAnimations
+14:5e7d interactione3Animations
+14:5e81 interactione6Animations
 14:5e87 interactionAnimation51b3f
 14:5ea2 interactionAnimation51b5a
 14:5ec0 interactionAnimation51b78
@@ -18418,8 +18826,10 @@ wlasymbol true
 14:6b49 interaction0aOamDataPointers
 14:6b51 interaction07OamDataPointers
 14:6b55 interaction08OamDataPointers
+14:6b61 interaction7dOamDataPointers
 14:6b79 interaction14OamDataPointers
 14:6b79 interaction66OamDataPointers
+14:6b7b interaction7aOamDataPointers
 14:6b8d interaction12OamDataPointers
 14:6b8d interaction64OamDataPointers
 14:6b8f interaction7bOamDataPointers
@@ -18445,8 +18855,12 @@ wlasymbol true
 14:6b9f interactione5OamDataPointers
 14:6bb5 interaction79OamDataPointers
 14:6bb5 interactiona3OamDataPointers
+14:6bc1 interaction7eOamDataPointers
+14:6bc5 interaction7fOamDataPointers
 14:6bcf interaction82OamDataPointers
 14:6bd7 interaction83OamDataPointers
+14:6bd9 interaction11OamDataPointers
+14:6bd9 interaction84OamDataPointers
 14:6bef interaction86OamDataPointers
 14:6bf9 interaction16OamDataPointers
 14:6bfd interactione2OamDataPointers
@@ -18498,6 +18912,7 @@ wlasymbol true
 14:6d59 interaction37OamDataPointers
 14:6d5d interaction3bOamDataPointers
 14:6d71 interaction3cOamDataPointers
+14:6d79 interaction3dOamDataPointers
 14:6d7d interaction4dOamDataPointers
 14:6d7d interaction50OamDataPointers
 14:6d83 interaction3fOamDataPointers
@@ -18518,9 +18933,12 @@ wlasymbol true
 14:6df7 interaction8cOamDataPointers
 14:6dff interaction4aOamDataPointers
 14:6e2d interaction4bOamDataPointers
+14:6e39 interaction4cOamDataPointers
 14:6e59 interaction0fOamDataPointers
 14:6e5f interaction4eOamDataPointers
 14:6ea3 interaction4fOamDataPointers
+14:6edb interaction75OamDataPointers
+14:6f0f interaction52OamDataPointers
 14:6f13 interaction57OamDataPointers
 14:6f27 interaction58OamDataPointers
 14:6f3b interaction59OamDataPointers
@@ -18534,24 +18952,32 @@ wlasymbol true
 14:6f91 interaction6eOamDataPointers
 14:6f95 interaction6fOamDataPointers
 14:6f9b interaction71OamDataPointers
+14:6f9d interaction72OamDataPointers
+14:6fb3 interaction87OamDataPointers
+14:6fc1 interaction88OamDataPointers
 14:6fc5 interaction89OamDataPointers
 14:6fe5 interaction8dOamDataPointers
 14:6fe5 interactioncdOamDataPointers
 14:6fe9 interaction8eOamDataPointers
 14:6fef interaction93OamDataPointers
+14:6ff5 interaction95OamDataPointers
 14:7023 interaction97OamDataPointers
 14:7029 interaction98OamDataPointers
 14:7031 interaction56OamDataPointers
 14:7031 interaction9aOamDataPointers
+14:703d interaction9cOamDataPointers
 14:7057 interaction9dOamDataPointers
 14:706d interaction9fOamDataPointers
 14:7077 interactiona1OamDataPointers
 14:707f interactiona2OamDataPointers
 14:7087 interactiona5OamDataPointers
+14:70bf interactiona7OamDataPointers
 14:70d3 interactiona9OamDataPointers
 14:70fb interactionaaOamDataPointers
 14:712b interactionadOamDataPointers
+14:7153 interactionaeOamDataPointers
 14:7187 interactionb0OamDataPointers
+14:71a3 interaction74OamDataPointers
 14:71b9 interactionb4OamDataPointers
 14:71d5 interactionb7OamDataPointers
 14:71e3 interactionb8OamDataPointers
@@ -18570,6 +18996,8 @@ wlasymbol true
 14:72a5 interactioncfOamDataPointers
 14:72ab interactiond2OamDataPointers
 14:72b3 interactiond3OamDataPointers
+14:72bf interactiond4OamDataPointers
+14:72c5 interactiond5OamDataPointers
 14:72c9 interactiondbOamDataPointers
 14:72e1 interactiondfOamDataPointers
 14:72f1 interactione3OamDataPointers
@@ -23991,16 +24419,6 @@ wlasymbol true
 48:6b09 textTableENG
 49:428d TEXT_OFFSET_1
 4b:56f6 TEXT_OFFSET_2
-; unplaced 01:6290 paletteHeaderTable
-; unplaced 01:66d0 uncmpGfxHeaderTable
-; unplaced 01:6848 uncmpGfxHeader18
-; unplaced 01:684e uncmpGfxHeader19
-; unplaced 01:6854 uncmpGfxHeader1a
-; unplaced 01:685a uncmpGfxHeader1b
-; unplaced 01:6860 uncmpGfxHeader1c
-; unplaced 01:6866 uncmpGfxHeader1d
-; unplaced 01:686c uncmpGfxHeader1e
-; unplaced 01:6872 uncmpGfxHeader1f
 ; unplaced 01:6926 uncmpGfxHeader36
 ; unplaced 01:6926 uncmpGfxHeader37
 ; unplaced 01:6926 gfxHeaderTable
@@ -24261,178 +24679,14 @@ wlasymbol true
 ; unplaced 02:492f func_02_494a@end
 ; unplaced 02:4931 func_02_494a@table1
 ; unplaced 02:495a func_02_494a@table2
-; unplaced 02:4a9c fileSelectDrawAcornCursor@table1
-; unplaced 02:4aac fileSelectDrawAcornCursor@table3
-; unplaced 02:4ab6 fileSelectDrawAcornCursor@table4
-; unplaced 02:4ac2 fileSelectDrawAcornCursor@table2
-; unplaced 02:4ace fileSelectDrawAcornCursor@table5
-; unplaced 02:4ada fileSelectDrawAcornCursor@table6
 ; unplaced 02:4dee secretTextTable
-; unplaced 02:5a74 table_5ae5
-; unplaced 04:5828 uniqueGfxHeadersStart
-; unplaced 04:5828 uniqueGfxHeader00
-; unplaced 04:5828 uniqueGfxHeader01
-; unplaced 04:582e uniqueGfxHeader02
-; unplaced 04:5834 uniqueGfxHeader03
-; unplaced 04:583a uniqueGfxHeader04
-; unplaced 04:5840 uniqueGfxHeader05
-; unplaced 04:5846 uniqueGfxHeader06
-; unplaced 04:584c uniqueGfxHeader07
-; unplaced 04:5852 uniqueGfxHeader08
-; unplaced 04:585a uniqueGfxHeader09
-; unplaced 04:5860 uniqueGfxHeader0a
-; unplaced 04:5866 uniqueGfxHeader0b
-; unplaced 04:586c uniqueGfxHeader0c
-; unplaced 04:5872 uniqueGfxHeader0d
-; unplaced 04:5878 uniqueGfxHeader0e
-; unplaced 04:587e uniqueGfxHeader0f
-; unplaced 04:5884 uniqueGfxHeader10
-; unplaced 04:588a uniqueGfxHeader11
-; unplaced 04:5890 uniqueGfxHeader12
-; unplaced 04:589c uniqueGfxHeader13
-; unplaced 04:58a8 uniqueGfxHeader14
-; unplaced 04:58ae uniqueGfxHeader15
-; unplaced 04:58b4 uniqueGfxHeader16
-; unplaced 04:58c0 uniqueGfxHeader17
-; unplaced 04:58d8 uniqueGfxHeader18
-; unplaced 04:58f0 uniqueGfxHeader19
-; unplaced 04:58f6 uniqueGfxHeader1a
-; unplaced 04:58fc uniqueGfxHeader1b
-; unplaced 04:5902 uniqueGfxHeader1c
-; unplaced 04:590e uniqueGfxHeader1d
-; unplaced 04:5922 uniqueGfxHeader1e
-; unplaced 04:5936 uniqueGfxHeader1f
-; unplaced 04:593c uniqueGfxHeader20
-; unplaced 04:5942 uniqueGfxHeader21
-; unplaced 04:5948 uniqueGfxHeader22
-; unplaced 04:594e uniqueGfxHeader23
-; unplaced 05:6137 landableTileFromCliffExceptions
 ; unplaced 07:4000 fileManagementFunction
-; unplaced 07:64c1 item00Animations
-; unplaced 07:64c1 item01Animations
-; unplaced 07:64c1 item02Animations
-; unplaced 07:64c1 item03Animations
-; unplaced 07:64c5 item04Animations
-; unplaced 07:64c5 item05Animations
-; unplaced 07:64c5 item07Animations
-; unplaced 07:64c5 item08Animations
-; unplaced 07:64c5 item0bAnimations
-; unplaced 07:64c5 item0cAnimations
-; unplaced 07:64c5 item0fAnimations
-; unplaced 07:64c5 item13Animations
-; unplaced 07:64c5 item16Animations
-; unplaced 07:64c5 item27Animations
-; unplaced 07:64d5 item06Animations
-; unplaced 07:64d7 item0dAnimations
-; unplaced 07:64e5 item0aAnimations
-; unplaced 07:64f1 item18Animations
-; unplaced 07:64f7 item1aAnimations
-; unplaced 07:64ff item09Animations
-; unplaced 07:64ff item0eAnimations
-; unplaced 07:64ff item10Animations
-; unplaced 07:64ff item11Animations
-; unplaced 07:64ff item12Animations
-; unplaced 07:64ff item14Animations
-; unplaced 07:64ff item15Animations
-; unplaced 07:64ff item17Animations
-; unplaced 07:64ff item19Animations
-; unplaced 07:64ff item1bAnimations
-; unplaced 07:64ff item1cAnimations
-; unplaced 07:64ff item1dAnimations
-; unplaced 07:64ff item1eAnimations
-; unplaced 07:64ff item1fAnimations
-; unplaced 07:64ff item20Animations
-; unplaced 07:6501 item21Animations
-; unplaced 07:6501 item22Animations
-; unplaced 07:6501 item24Animations
-; unplaced 07:6505 item23Animations
-; unplaced 07:6505 item25Animations
-; unplaced 07:6505 item26Animations
-; unplaced 07:6507 item28Animations
-; unplaced 07:6507 item29Animations
-; unplaced 07:650b item2aAnimations
-; unplaced 07:650d item2bAnimations
-; unplaced 07:650d item2cAnimations
-; unplaced 07:650d item2dAnimations
-; unplaced 07:650d item2eAnimations
-; unplaced 07:650d item2fAnimations
-; unplaced 08:5329 interactionCode20@dungeon0
-; unplaced 08:532d interactionCode20@dungeon1
-; unplaced 08:5335 interactionCode20@dungeon2
-; unplaced 08:533b interactionCode20@dungeon3
-; unplaced 08:5345 interactionCode20@dungeon4
-; unplaced 08:5355 interactionCode20@dungeon5
-; unplaced 08:535d interactionCode20@dungeon6
-; unplaced 08:537b interactionCode20@dungeon7
-; unplaced 08:5399 interactionCode20@dungeon8
-; unplaced 08:53b1 interactionCode20@dungeon9
-; unplaced 08:53b5 interactionCode20@dungeonA
-; unplaced 08:53b5 interactionCode20@dungeonB
-; unplaced 08:564f interactionCode22@scriptTable
-; unplaced 08:56af table_56af
-; unplaced 08:56b3 table_56b3
-; unplaced 08:58b7 conditionalHoronNPCLookupTable@fickleLady
-; unplaced 08:58d7 conditionalHoronNPCLookupTable@fickleMan
-; unplaced 08:58f4 conditionalHoronNPCLookupTable@oldLadyFarmer
-; unplaced 08:58f4 conditionalHoronNPCLookupTable@fountainOldMan
-; unplaced 08:58f4 conditionalHoronNPCLookupTable@boyPlaysWithSpringBloomFlower
-; unplaced 08:5902 conditionalHoronNPCLookupTable@horonVillageBoy
-; unplaced 08:5919 conditionalHoronNPCLookupTable@boyWithDog
-; unplaced 08:5933 conditionalHoronNPCLookupTable@otherOldMan
 ; unplaced 08:5982 miscNPC_scriptTable@mayorsHouseScripts
 ; unplaced 08:5982 miscNPC_scriptTable@stub
 ; unplaced 08:598a miscNPC_scriptTable@mrsRuulScripts
 ; unplaced 08:598c miscNPC_scriptTable@mrWriteScripts
 ; unplaced 08:598e miscNPC_scriptTable@fickleLadyScripts
-; unplaced 08:59a6 miscNPC_scriptTable@bathingSubrosiansScripts
-; unplaced 08:59b2 miscNPC_scriptTable@masterDiversSonScripts
-; unplaced 08:59bc miscNPC_scriptTable@fickleManScripts
-; unplaced 08:59d4 miscNPC_scriptTable@dungeonWiseOldManScripts
-; unplaced 08:59d6 miscNPC_scriptTable@sunkenCityTreasureHunterScripts
-; unplaced 08:59e0 miscNPC_scriptTable@villageFarmerScripts
 ; unplaced 08:5a0c miscNPC_scriptTable@tickTockScripts
-; unplaced 08:61dd interactionCode31@subid1@roomTable_61dd
-; unplaced 08:6ad1 table_6ac9@var03_00
-; unplaced 08:6ae7 table_6ac9@var03_01
-; unplaced 08:6afd table_6ac9@var03_02
-; unplaced 08:6b13 table_6ac9@var03_03
-; unplaced 08:6cbf table_6cbf
-; unplaced 09:6a96 strangeBrothersSubId2@table_6a96
-; unplaced 09:6aa4 strangeBrothersSubId2@table_6aa4
-; unplaced 0a:40c2 interactionCode89@scriptTable
-; unplaced 0a:78eb baScripts
-; unplaced 0a:78f3 bbScripts
-; unplaced 0a:78f5 bcScripts
-; unplaced 0a:78fb bdScripts
-; unplaced 0a:7901 beScripts
-; unplaced 0b:5dd6 piratian1FScript_text2BasedOnD6Beaten@readyToLeave
-; unplaced 0b:69c5 strangeBrother2Script_3rdScreen@pattern1
-; unplaced 0b:69c9 strangeBrother2Script_3rdScreen@pattern2
-; unplaced 0b:69cd strangeBrother2Script_4thScreen
-; unplaced 0b:69d4 strangeBrother2Script_4thScreen@pattern1
-; unplaced 0b:69d8 strangeBrother2Script_4thScreen@pattern2
-; unplaced 0b:69dc strangeBrother2Script_5thScreen
-; unplaced 0b:69e3 strangeBrother2Script_5thScreen@pattern1
-; unplaced 0b:69e7 strangeBrother2Script_5thScreen@pattern2
-; unplaced 0b:69eb strangeBrother2Script_6thScreen
-; unplaced 0b:69f2 strangeBrother2Script_6thScreen@pattern1
-; unplaced 0b:69f6 strangeBrother2Script_6thScreen@pattern2
-; unplaced 0b:69fa strangeBrother2Script_finishedScreen
-; unplaced 0d:6b30 orbMovementScript
-; unplaced 0d:7a3c movingSidescrollPlatformScriptTable
-; unplaced 0d:7b2f movingSidescrollConveyorScriptTable
-; unplaced 0f:7f01 interactionCoded5@substate1
-; unplaced 11:5744 objectTable1
-; unplaced 11:5b4b group0ObjectDataTable
-; unplaced 11:5d4b group1ObjectDataTable
-; unplaced 11:5f4b group4ObjectDataTable
-; unplaced 11:614b group5ObjectDataTable
-; unplaced 11:75c9 group4Map8dObjectData
-; unplaced 11:75cd group4Map8eObjectData
-; unplaced 11:767d group4Mapa3ObjectData
-; unplaced 11:7681 group4Mapa4ObjectData
-; unplaced 11:7685 group4Mapa5ObjectData
-; unplaced 11:7689 group4Mapa6ObjectData
 ; unplaced 13:5898 interactionOamData4d898
 ; unplaced 13:66de interactionOamData4e6de
 ; unplaced 14:4000 data_4556
@@ -24440,260 +24694,6 @@ wlasymbol true
 ; unplaced 14:459d data_4556_7
 ; unplaced 14:463e data_4556_8
 ; unplaced 14:46cf data_4556_9
-; unplaced 14:5325 interactionAnimationTable
-; unplaced 14:54f5 interactionOamDataTable
-; unplaced 14:56c5 interaction00Animations
-; unplaced 14:56c5 interaction01Animations
-; unplaced 14:56c5 interaction0dAnimations
-; unplaced 14:56c5 interaction0eAnimations
-; unplaced 14:56c5 interaction13Animations
-; unplaced 14:56c5 interaction15Animations
-; unplaced 14:56c5 interaction19Animations
-; unplaced 14:56c5 interaction1bAnimations
-; unplaced 14:56c5 interaction1dAnimations
-; unplaced 14:56c5 interaction1eAnimations
-; unplaced 14:56c5 interaction1fAnimations
-; unplaced 14:56c5 interaction20Animations
-; unplaced 14:56c5 interaction21Animations
-; unplaced 14:56c5 interaction22Animations
-; unplaced 14:56c5 interaction23Animations
-; unplaced 14:56c5 interaction3aAnimations
-; unplaced 14:56c5 interaction51Animations
-; unplaced 14:56c5 interaction5aAnimations
-; unplaced 14:56c5 interaction5fAnimations
-; unplaced 14:56c5 interaction61Animations
-; unplaced 14:56c5 interaction62Animations
-; unplaced 14:56c5 interaction63Animations
-; unplaced 14:56c5 interaction65Animations
-; unplaced 14:56c5 interaction78Animations
-; unplaced 14:56c5 interaction85Animations
-; unplaced 14:56c5 interaction90Animations
-; unplaced 14:56c5 interaction9bAnimations
-; unplaced 14:56c5 interaction9eAnimations
-; unplaced 14:56c5 interactiona8Animations
-; unplaced 14:56c5 interactionabAnimations
-; unplaced 14:56c5 interactionacAnimations
-; unplaced 14:56c5 interactionb3Animations
-; unplaced 14:56c5 interactionb5Animations
-; unplaced 14:56c5 interactionc3Animations
-; unplaced 14:56c5 interactionc4Animations
-; unplaced 14:56c5 interactionc5Animations
-; unplaced 14:56c5 interactionc7Animations
-; unplaced 14:56c5 interactiond0Animations
-; unplaced 14:56c5 interactiond1Animations
-; unplaced 14:56c5 interactiond7Animations
-; unplaced 14:56c5 interactiond9Animations
-; unplaced 14:56c5 interactiondaAnimations
-; unplaced 14:56c5 interactiondcAnimations
-; unplaced 14:56c7 interaction02Animations
-; unplaced 14:56c9 interaction03Animations
-; unplaced 14:56cb interaction04Animations
-; unplaced 14:56cd interaction05Animations
-; unplaced 14:56cf interaction06Animations
-; unplaced 14:56cf interaction09Animations
-; unplaced 14:56cf interaction0cAnimations
-; unplaced 14:56d1 interaction07Animations
-; unplaced 14:56d3 interaction08Animations
-; unplaced 14:56d5 interaction0aAnimations
-; unplaced 14:56dd interaction0bAnimations
-; unplaced 14:56e1 interaction12Animations
-; unplaced 14:56e1 interaction14Animations
-; unplaced 14:56e1 interaction1cAnimations
-; unplaced 14:56e1 interaction5dAnimations
-; unplaced 14:56e1 interaction5eAnimations
-; unplaced 14:56e1 interaction64Animations
-; unplaced 14:56e1 interaction66Animations
-; unplaced 14:56e1 interaction71Animations
-; unplaced 14:56e1 interaction83Animations
-; unplaced 14:56e1 interactiona3Animations
-; unplaced 14:56e1 interactione5Animations
-; unplaced 14:56e3 interaction7dAnimations
-; unplaced 14:56eb interaction3eAnimations
-; unplaced 14:56eb interaction82Animations
-; unplaced 14:56eb interactionbbAnimations
-; unplaced 14:56ff interaction79Animations
-; unplaced 14:56ff interactione0Animations
-; unplaced 14:570b interaction7aAnimations
-; unplaced 14:5717 interaction7bAnimations
-; unplaced 14:5719 interaction17Animations
-; unplaced 14:5719 interaction18Animations
-; unplaced 14:5719 interaction47Animations
-; unplaced 14:5719 interaction54Animations
-; unplaced 14:5719 interaction60Animations
-; unplaced 14:5719 interaction68Animations
-; unplaced 14:5719 interaction81Animations
-; unplaced 14:5719 interaction91Animations
-; unplaced 14:5719 interaction92Animations
-; unplaced 14:5719 interaction94Animations
-; unplaced 14:5719 interactionb6Animations
-; unplaced 14:5719 interactionc6Animations
-; unplaced 14:5719 interactiondeAnimations
-; unplaced 14:572f interaction6fAnimations
-; unplaced 14:5733 interaction7eAnimations
-; unplaced 14:5735 interaction77Animations
-; unplaced 14:5739 interaction7fAnimations
-; unplaced 14:5739 interactiona0Animations
-; unplaced 14:5739 interactiona6Animations
-; unplaced 14:5741 interaction88Animations
-; unplaced 14:5745 interaction16Animations
-; unplaced 14:5749 interactione2Animations
-; unplaced 14:5759 interaction10Animations
-; unplaced 14:5759 interaction24Animations
-; unplaced 14:5759 interaction29Animations
-; unplaced 14:5759 interaction32Animations
-; unplaced 14:5759 interaction38Animations
-; unplaced 14:5759 interaction39Animations
-; unplaced 14:5759 interaction40Animations
-; unplaced 14:5759 interaction42Animations
-; unplaced 14:5759 interaction46Animations
-; unplaced 14:5759 interaction55Animations
-; unplaced 14:5759 interaction5cAnimations
-; unplaced 14:5759 interaction67Animations
-; unplaced 14:5759 interaction70Animations
-; unplaced 14:5759 interaction73Animations
-; unplaced 14:5759 interaction76Animations
-; unplaced 14:5759 interaction80Animations
-; unplaced 14:5759 interaction8aAnimations
-; unplaced 14:5759 interaction8bAnimations
-; unplaced 14:5759 interaction8fAnimations
-; unplaced 14:5759 interaction96Animations
-; unplaced 14:5759 interaction99Animations
-; unplaced 14:5759 interactiona4Animations
-; unplaced 14:5759 interactionb1Animations
-; unplaced 14:5759 interactionb8Animations
-; unplaced 14:5759 interactionc8Animations
-; unplaced 14:5759 interactioncaAnimations
-; unplaced 14:5759 interactionccAnimations
-; unplaced 14:5759 interactiond8Animations
-; unplaced 14:5759 interactionddAnimations
-; unplaced 14:5759 interactione4Animations
-; unplaced 14:5759 interactione7Animations
-; unplaced 14:5773 interaction30Animations
-; unplaced 14:5773 interaction53Animations
-; unplaced 14:5773 interaction6aAnimations
-; unplaced 14:5773 interaction6dAnimations
-; unplaced 14:5787 interaction7cAnimations
-; unplaced 14:5789 interaction25Animations
-; unplaced 14:579b interaction26Animations
-; unplaced 14:57a1 interaction27Animations
-; unplaced 14:57b5 interaction28Animations
-; unplaced 14:57c1 interaction2aAnimations
-; unplaced 14:57c9 interaction2bAnimations
-; unplaced 14:57d5 interaction3dAnimations
-; unplaced 14:57df interaction2cAnimations
-; unplaced 14:57e9 interaction31Animations
-; unplaced 14:57e9 interaction6cAnimations
-; unplaced 14:57f9 interaction33Animations
-; unplaced 14:5803 interaction34Animations
-; unplaced 14:5807 interaction35Animations
-; unplaced 14:5837 interaction36Animations
-; unplaced 14:583f interaction37Animations
-; unplaced 14:5849 interaction3bAnimations
-; unplaced 14:585d interaction3cAnimations
-; unplaced 14:585d interaction8dAnimations
-; unplaced 14:585d interactioncdAnimations
-; unplaced 14:5867 interaction50Animations
-; unplaced 14:5867 interaction9fAnimations
-; unplaced 14:5867 interactiond5Animations
-; unplaced 14:586b interaction3fAnimations
-; unplaced 14:5879 interaction45Animations
-; unplaced 14:5887 interaction2dAnimations
-; unplaced 14:5887 interaction2fAnimations
-; unplaced 14:5887 interaction41Animations
-; unplaced 14:5887 interactionb2Animations
-; unplaced 14:5887 interactionc2Animations
-; unplaced 14:5891 interaction44Animations
-; unplaced 14:58a3 interaction2eAnimations
-; unplaced 14:58a7 interaction43Animations
-; unplaced 14:58a9 interaction48Animations
-; unplaced 14:58b1 interaction49Animations
-; unplaced 14:58b1 interaction6eAnimations
-; unplaced 14:58b1 interaction8cAnimations
-; unplaced 14:58b5 interaction4aAnimations
-; unplaced 14:58c5 interaction4bAnimations
-; unplaced 14:58cb interaction4cAnimations
-; unplaced 14:58df interaction4dAnimations
-; unplaced 14:58e3 interaction0fAnimations
-; unplaced 14:58e7 interaction4eAnimations
-; unplaced 14:5903 interaction4fAnimations
-; unplaced 14:5935 interaction52Animations
-; unplaced 14:593d interaction57Animations
-; unplaced 14:5949 interaction58Animations
-; unplaced 14:5959 interaction59Animations
-; unplaced 14:595b interaction5bAnimations
-; unplaced 14:595b interactiond6Animations
-; unplaced 14:5965 interaction69Animations
-; unplaced 14:596b interaction1aAnimations
-; unplaced 14:596b interactione1Animations
-; unplaced 14:596d interaction6bAnimations
-; unplaced 14:5973 interaction72Animations
-; unplaced 14:597d interaction74Animations
-; unplaced 14:598b interaction75Animations
-; unplaced 14:5997 interaction11Animations
-; unplaced 14:5997 interaction84Animations
-; unplaced 14:59a1 interaction86Animations
-; unplaced 14:59a3 interaction87Animations
-; unplaced 14:59ad interaction89Animations
-; unplaced 14:59bf interaction8eAnimations
-; unplaced 14:59c1 interaction93Animations
-; unplaced 14:59c7 interaction95Animations
-; unplaced 14:59d9 interaction97Animations
-; unplaced 14:59db interaction98Animations
-; unplaced 14:59e3 interaction56Animations
-; unplaced 14:59e3 interaction9aAnimations
-; unplaced 14:59e7 interaction9cAnimations
-; unplaced 14:59ed interaction9dAnimations
-; unplaced 14:59f7 interactiona1Animations
-; unplaced 14:59ff interactiona2Animations
-; unplaced 14:5a03 interactiona5Animations
-; unplaced 14:5a15 interactiona7Animations
-; unplaced 14:5a1f interactiona9Animations
-; unplaced 14:5a37 interactionaaAnimations
-; unplaced 14:5a4f interactionadAnimations
-; unplaced 14:5a63 interactionaeAnimations
-; unplaced 14:5a63 interactionafAnimations
-; unplaced 14:5a63 interactionc0Animations
-; unplaced 14:5a63 interactiond4Animations
-; unplaced 14:5a99 interactionb0Animations
-; unplaced 14:5aa5 interactionb4Animations
-; unplaced 14:5ab3 interactionb7Animations
-; unplaced 14:5ab7 interactionb9Animations
-; unplaced 14:5ad7 interactionbaAnimations
-; unplaced 14:5ae1 interactionbcAnimations
-; unplaced 14:5ae1 interactionbeAnimations
-; unplaced 14:5aeb interactionbdAnimations
-; unplaced 14:5af5 interactionbfAnimations
-; unplaced 14:5afb interactionc1Animations
-; unplaced 14:5afd interactionc9Animations
-; unplaced 14:5aff interactioncbAnimations
-; unplaced 14:5b01 interactionceAnimations
-; unplaced 14:5b0d interactioncfAnimations
-; unplaced 14:5b13 interactiond2Animations
-; unplaced 14:5b1b interactiond3Animations
-; unplaced 14:5b1f interactiondbAnimations
-; unplaced 14:5b29 interactiondfAnimations
-; unplaced 14:5b35 interactione3Animations
-; unplaced 14:5b39 interactione6Animations
-; unplaced 14:6819 interaction7dOamDataPointers
-; unplaced 14:6833 interaction7aOamDataPointers
-; unplaced 14:6879 interaction7eOamDataPointers
-; unplaced 14:687d interaction7fOamDataPointers
-; unplaced 14:6891 interaction11OamDataPointers
-; unplaced 14:6891 interaction84OamDataPointers
-; unplaced 14:6a31 interaction3dOamDataPointers
-; unplaced 14:6af1 interaction4cOamDataPointers
-; unplaced 14:6b93 interaction75OamDataPointers
-; unplaced 14:6bc7 interaction52OamDataPointers
-; unplaced 14:6c55 interaction72OamDataPointers
-; unplaced 14:6c6b interaction87OamDataPointers
-; unplaced 14:6c79 interaction88OamDataPointers
-; unplaced 14:6cad interaction95OamDataPointers
-; unplaced 14:6cf5 interaction9cOamDataPointers
-; unplaced 14:6d77 interactiona7OamDataPointers
-; unplaced 14:6e0b interactionaeOamDataPointers
-; unplaced 14:6e5b interaction74OamDataPointers
-; unplaced 14:6f77 interactiond4OamDataPointers
-; unplaced 14:6f7d interactiond5OamDataPointers
 ; unplaced 15:7759 part00OamDataPointers
 ; unplaced 15:7759 part05OamDataPointers
 ; unplaced 15:7759 part06OamDataPointers

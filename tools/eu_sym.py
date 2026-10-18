@@ -17,7 +17,9 @@ what the EU build inserted before it, and the data moved to other banks. This to
   4. reads every aligned instruction's ROM operands on both sides: a label the references agree on
      is placed or corrected there ("ref") -- the entry of a routine the EU build changed, a table
      that moved; what is still left is written as a comment and listed in the report as unplaced;
-  5. copies RAM labels and [definitions] unchanged (the WRAM/HRAM layout is the same in every
+  5. places what is left between two placed labels the EU build kept the same distance apart
+     (tables whose pointers moved: other bytes, same size);
+  6. copies RAM labels and [definitions] unchanged (the WRAM/HRAM layout is the same in every
      region: wActiveLanguage at $c62a is already reserved in the USA map).
 
 The output is a WLA-style .sym the decomp's tools read like the disassembly's own. Labels in code
@@ -291,6 +293,28 @@ def place_by_reference(us_path, sym_path, us, eu, al, placed):
     return newly, conflicts
 
 
+def place_between(labels, placed):
+    """Third pass: a label still unplaced between two placed ones whose distance the EU build kept
+    (a pointer table whose entries moved, a script whose operands changed: other bytes, same
+    size) sits at the same offset from them in the EU ROM ("between")."""
+    by_bank = collections.defaultdict(list)
+    for key in labels:
+        if key[2] < 0x8000: by_bank[0 if key[2] < BANK else key[1]].append(key)
+    out = {}
+    for b, keys in by_bank.items():
+        keys.sort(key=lambda k: k[2])
+        addrs = [k[2] for k in keys]
+        for i, key in enumerate(keys):
+            if placed.get(key): continue
+            prev = next((keys[j] for j in range(i - 1, -1, -1) if placed.get(keys[j]) and keys[j][2] < key[2]), None)
+            nxt = next((keys[j] for j in range(i + 1, len(keys)) if placed.get(keys[j]) and keys[j][2] > key[2]), None)
+            if not prev or not nxt: continue
+            pp, pn = placed[prev], placed[nxt]
+            if pp[0] != pn[0] or pn[1] - pp[1] != nxt[2] - prev[2]: continue
+            out[key] = (pp[0], pp[1] + (key[2] - prev[2]), 'between')
+    return out
+
+
 def main():
     args = sys.argv[1:]
     extras = []
@@ -319,6 +343,7 @@ def main():
         if p: placed[key] = p
     newly, conflicts = place_by_reference(us_path, sym_path, us, eu, al, {k: placed.get(k) for k in labels})
     placed.update(newly)
+    placed.update(place_between(labels, placed))
     out, rows = [], []
     counts = collections.Counter()
     section = None
