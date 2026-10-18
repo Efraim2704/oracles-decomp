@@ -272,8 +272,9 @@ void sync_run(const SyncConfig *c, const char *cache, const char *game, SyncResu
   Records rec;
   records_load(&rec, cache, c->code);
   sync_file(c, cache, SHARED, "settings.ini", remote, nremote, &rec, r);
-  static const char *const all[] = {"ages", "seasons"};
-  for (int g = 0; g < 2; g++) {
+  // every ROM folder: each release of each game keeps its own saves (see platform/app.c)
+  static const char *const all[] = {"ages", "seasons", "ages-eu", "seasons-eu"};
+  for (int g = 0; g < 4; g++) {
     const char *name = game && !strcmp(game, SYNC_ALL_GAMES) ? all[g] : g == 0 ? game : NULL;
     char dir[1100];
     snprintf(dir, sizeof dir, "%s%s", cache, name ? name : "");
@@ -351,7 +352,7 @@ static struct {
   SDL_AtomicInt state;          // 0 idle, 1 running, 2 finished
   SDL_Thread *thread;
   SyncConfig config;
-  char cache[1024], game[8];
+  char cache[1024], game[16];
   SyncResult result;
 } bg;
 

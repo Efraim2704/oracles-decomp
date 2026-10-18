@@ -9,7 +9,7 @@
 #define SYNC_MAX_FILES 32
 
 typedef struct {
-  char game[8], name[24];
+  char game[16], name[24];
   int version;
   char sha[65];
   int format;                   // save states: the state format; -1 when the server has none
@@ -18,7 +18,7 @@ typedef struct {
 } SyncRemote;
 
 typedef struct {
-  char game[8], name[24];
+  char game[16], name[24];
   int version;
   char sha[65];
 } SyncRecord;

@@ -35,7 +35,7 @@ int sync_parse_manifest(const char *text, SyncRemote *out, int max) {
     long long updated = 0;
     int used = 0;
     memset(r, 0, sizeof *r);
-    if (sscanf(line, "%7s %23s %d %64s %15s %lld %n", r->game, r->name, &r->version, r->sha, format, &updated, &used) < 6) continue;
+    if (sscanf(line, "%15s %23s %d %64s %15s %lld %n", r->game, r->name, &r->version, r->sha, format, &updated, &used) < 6) continue;
     r->format = strcmp(format, "-") ? atoi(format) : -1;
     if (r->format > 0) r->format &= ~(1 << 23);        // early builds marked 64-bit longs; the layout is the same
     r->updated = updated;
@@ -58,7 +58,7 @@ int sync_parse_records(const char *text, SyncRecord *out, int max) {
     char line[256];
     snprintf(line, sizeof line, "%.*s", (int)(eol - p), p);
     SyncRecord *r = &out[n];
-    if (sscanf(line, "%7s %23s %d %64s", r->game, r->name, &r->version, r->sha) == 4) n++;
+    if (sscanf(line, "%15s %23s %d %64s", r->game, r->name, &r->version, r->sha) == 4) n++;
   }
   return n;
 }

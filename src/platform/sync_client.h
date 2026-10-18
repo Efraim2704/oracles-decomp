@@ -18,7 +18,7 @@ void sync_config_store(const SyncConfig *c, const char *cache);
 
 // A file changed both here and on the server since this device last synced: the player picks.
 typedef struct {
-  char game[8], name[24];
+  char game[16], name[24];
   SyncRemote remote;
   bool local;
   int64_t local_mtime;
@@ -35,8 +35,8 @@ typedef struct {
   char error[128];
 } SyncResult;
 
-// Blocking. game: "ages", "seasons" or SYNC_ALL_GAMES; NULL skips it (the running game) and syncs
-// only the shared settings, which always come along.
+// Blocking. game: a ROM folder ("ages", "seasons", "ages-eu", "seasons-eu") or SYNC_ALL_GAMES;
+// NULL skips it (the running game) and syncs only the shared settings, which always come along.
 #define SYNC_ALL_GAMES "*"
 void sync_run(const SyncConfig *c, const char *cache, const char *game, SyncResult *r);
 // The server's current bytes of a file, for showing a choice (malloc'd; NULL when missing).

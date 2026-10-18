@@ -1,8 +1,10 @@
 // The shipped app: native engine, no interpreter, no boot ROM, no ROM code. On first launch it
 // takes the user's ROM (argument, or the launcher's ADD ROM dialog; loose or in a zip or gz, see
-// platform/archive.c), checks its SHA1 against the two known games, builds the cycle table from the
-// original bytes, zeroes the code bytes and writes the result to the per-platform cache; later
-// launches load the cache and never see the ROM again. Saves are the game's own SRAM image in that
+// platform/archive.c), checks its SHA1 against the known ROMs (each game's USA and European
+// release), builds the cycle table from the original bytes, zeroes the code bytes and writes the
+// result to the per-platform cache; later launches load the cache and never see the ROM again.
+// Each ROM keeps its own folder there (ages, ages-eu, seasons, seasons-eu), saves and states
+// included, and the one added last is the one its game's tab starts (active.txt). Saves are the game's own SRAM image in that
 // cache; Cmd+S / Cmd+R save and load one state slot there.
 //
 // usage: oracles-native [ROM] [--game ages|seasons [--file 1-3]] [--cache DIR] [--frames N]
@@ -50,10 +52,17 @@
 #define AUDIO_TARGET_BYTES (APU_SAMPLE_RATE / 10 * 4)
 #define ASSETS_VERSION 1
 
-static const struct { const char *sha1, *game; } known[] = {
+// id: the ROM's folder in the cache. A save made on one release would not load on the other
+// (the European one keeps a language and a signature in it), so each keeps its own.
+static const struct { const char *sha1, *id; } known[] = {
   {"880374fb978b18af4aa529e2e32f7ffb4d7dd2f4", "ages"},
   {"ba1268290fb2b1b70505d2d7b5825fc8a4816a4b", "seasons"},
+  {"9f2dff3c46406839f839a8d535353dfc1e3e8670", "ages-eu"},        // Europe (En,Fr,De,Es,It)
+  {"360b9408e569ba826212eac1ebea1b09573cb48c", "seasons-eu"},     // Europe (En,Fr,De,Es,It)
 };
+
+// A ROM folder's game: "ages-eu" is Ages.
+static bool is_ages(const char *id) { return !strncmp(id, "ages", 4); }
 
 static bool write_file(const char *path, const void *data, size_t n) {
   FILE *f = fopen(path, "wb");
@@ -67,9 +76,48 @@ static const char *game_of(const uint8_t *rom, size_t n) {
   char hex[41];
   sha1_hex(rom, n, hex);
   for (size_t i = 0; i < sizeof known / sizeof known[0]; i++)
-    if (strcmp(hex, known[i].sha1) == 0) return known[i].game;
-  fprintf(stderr, "ROM sha1 %s is not Oracle of Ages or Seasons (USA)\n", hex);
+    if (strcmp(hex, known[i].sha1) == 0) return known[i].id;
+  fprintf(stderr, "ROM sha1 %s is not Oracle of Ages or Seasons (USA or Europe)\n", hex);
   return NULL;
+}
+
+static bool cached(const char *cache, const char *game);
+
+// active.txt: per game, the ROM folder its tab starts ("ages ages-eu"), so adding the other
+// release switches to it and leaves the first one's saves where they are.
+static void active_set(const char *cache, const char *id) {
+  char path[1100], ids[2][16] = {"", ""};
+  snprintf(path, sizeof path, "%sactive.txt", cache);
+  FILE *f = fopen(path, "r");
+  if (f) {
+    char a[16], b[16];
+    while (fscanf(f, "%15s %15s", a, b) == 2) snprintf(ids[is_ages(a) ? 0 : 1], sizeof ids[0], "%s", b);
+    fclose(f);
+  }
+  snprintf(ids[is_ages(id) ? 0 : 1], sizeof ids[0], "%s", id);
+  if (!(f = fopen(path, "w"))) return;
+  if (ids[0][0]) fprintf(f, "ages %s\n", ids[0]);
+  if (ids[1][0]) fprintf(f, "seasons %s\n", ids[1]);
+  fclose(f);
+}
+
+// The ROM folder a game's tab uses: the one active.txt names if it is installed, else whichever
+// release is installed (the USA one first), else the USA folder (shown as not installed).
+static const char *rom_id(const char *cache, int ages) {
+  static char out[2][16];
+  const char *us = ages ? "ages" : "seasons", *eu = ages ? "ages-eu" : "seasons-eu";
+  char path[1100], a[16], b[16];
+  snprintf(path, sizeof path, "%sactive.txt", cache);
+  FILE *f = fopen(path, "r");
+  char *o = out[ages ? 0 : 1];
+  o[0] = 0;
+  if (f) {
+    while (fscanf(f, "%15s %15s", a, b) == 2)
+      if (!strcmp(a, ages ? "ages" : "seasons") && (!strcmp(b, us) || !strcmp(b, eu)) && cached(cache, b)) snprintf(o, 16, "%s", b);
+    fclose(f);
+  }
+  if (!o[0]) snprintf(o, 16, "%s", cached(cache, us) || !cached(cache, eu) ? us : eu);
+  return o;
 }
 
 // The cache holds, per game, the ROM image with its code bytes zeroed, the cycle table built
@@ -103,13 +151,14 @@ static bool extract(const char *rom_path, const char *cache, char *game_out, cha
   snprintf(path, sizeof path, "%s/cyctab.bin", dir);
   ok = ok && write_file(path, tab, n);
   char manifest[512];
-  snprintf(manifest, sizeof manifest, "oracles-assets %d\ngame %s\nrom_sha1 %s\nsize %zu\ncode_bytes_zeroed %zu\n", ASSETS_VERSION, game, hex, n, zeroed);
+  snprintf(manifest, sizeof manifest, "oracles-assets %d\ngame %s\nregion %s\nrom_sha1 %s\nsize %zu\ncode_bytes_zeroed %zu\n", ASSETS_VERSION, is_ages(game) ? "ages" : "seasons", strchr(game, '-') ? "eu" : "us", hex, n, zeroed);
   snprintf(path, sizeof path, "%s/manifest.txt", dir);
   ok = ok && write_file(path, manifest, strlen(manifest));
   if (ok) fprintf(stderr, "extracted %s: %zu code bytes zeroed, cache %s\n", game, zeroed, dir);
   else { fprintf(stderr, "cannot write the cache in %s\n", dir); snprintf(err, err_size, "CANNOT SAVE CACHE"); }
   strcpy(game_out, game);
   free(rom); free(tab);
+  if (ok) active_set(cache, game);
   return ok;
 }
 
@@ -192,8 +241,6 @@ static void load_sram(GB *gb, const char *path) {
 static void save_sram(GB *gb, const char *path) {
   if (gb->eram_size) write_file(path, gb->eram, gb->eram_size);
 }
-
-static const char *const game_ids[UI_GAMES] = {"ages", "seasons"};
 
 static bool poll_event(SDL_Event *ev);
 static void show_status(const char *msg);
@@ -806,20 +853,21 @@ static void launcher_load(Launcher *l, const char *cache) {
   for (int g = 0; g < UI_GAMES; g++) {
     LauncherGame *lg = &l->games[g];
     ui_theme_default(&lg->theme, g == UI_GAME_AGES);
-    if (!cached(cache, game_ids[g])) continue;
+    const char *id = rom_id(cache, g == UI_GAME_AGES);
+    if (!cached(cache, id)) continue;
     lg->installed = true;
     char path[1300];
     size_t n;
-    snprintf(path, sizeof path, "%s%s/sram.sav", cache, game_ids[g]);
+    snprintf(path, sizeof path, "%s%s/sram.sav", cache, id);
     uint8_t *sram = oracles_read_file(path, &n);
     ui_read_files(sram, sram ? n : 0, g == UI_GAME_AGES, lg->files);
     free(sram);
     char dir[1100];
-    snprintf(dir, sizeof dir, "%s%s", cache, game_ids[g]);
+    snprintf(dir, sizeof dir, "%s%s", cache, id);
     migrate_state(dir);
     slot_path(path, sizeof path, dir, SLOT_AUTO, "");
     lg->has_resume = file_exists(path);
-    snprintf(path, sizeof path, "%s%s/rom.bin", cache, game_ids[g]);
+    snprintf(path, sizeof path, "%s%s/rom.bin", cache, id);
     uint8_t *rom = oracles_read_file(path, &n);
     ui_theme_load(&lg->theme, rom, rom ? n : 0, g == UI_GAME_AGES);
     free(rom);
@@ -1146,7 +1194,7 @@ static bool sync_blocking(SDL_Renderer *ren, SDL_Texture *tex, const uint8_t *rg
 static void side_fill(ConflictSide *side, const char *label, const char *game, const char *name, const uint8_t *data, size_t n, const uint8_t *thumb, size_t tn) {
   snprintf(side->label, sizeof side->label, "%s", label);
   if (!data) { side->missing = true; return; }
-  if (!strcmp(name, "sram.sav")) { side->has_files = true; ui_read_files(data, n, !strcmp(game, "ages"), side->files); }
+  if (!strcmp(name, "sram.sav")) { side->has_files = true; ui_read_files(data, n, is_ages(game), side->files); }
   if (thumb && tn == sizeof side->thumb) { side->has_thumb = true; memcpy(side->thumb, thumb, tn); }
 }
 
@@ -1170,8 +1218,8 @@ static bool run_conflicts_page(SDL_Renderer *ren, SDL_Texture *tex, const SyncRe
     uint8_t *theirs_thumb = state ? sync_fetch(&sync_cfg, ch->game, thumb_name, &rtn) : NULL;
     memset(&v, 0, sizeof v);
     const char *what = !strcmp(ch->name, "sram.sav") ? "save files" : !strcmp(ch->name, "state_auto") ? "resume" : NULL;
-    if (what) snprintf(v.what, sizeof v.what, "%s %s", !strcmp(ch->game, "ages") ? "Ages" : "Seasons", what);
-    else snprintf(v.what, sizeof v.what, "%s slot %c", !strcmp(ch->game, "ages") ? "Ages" : "Seasons", ch->name[6]);
+    if (what) snprintf(v.what, sizeof v.what, "%s %s", is_ages(ch->game) ? "Ages" : "Seasons", what);
+    else snprintf(v.what, sizeof v.what, "%s slot %c", is_ages(ch->game) ? "Ages" : "Seasons", ch->name[6]);
     side_fill(&v.side[0], "This device", ch->game, ch->name, mine, n, mine_thumb, tn);
     v.side[0].time = (int64_t)ch->local_mtime * SDL_NS_PER_SECOND;
     side_fill(&v.side[1], ch->remote.device[0] ? ch->remote.device : "Other device", ch->game, ch->name, theirs, rn, theirs_thumb, rtn);
@@ -1245,7 +1293,7 @@ static bool run_sync_page(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, 
   if (!game_rgb) game_rgb = page_black;
   char code[20] = "";
   // what SYNC NOW covers: every game, or during play every game but the running one
-  const char *scope = !playing ? SYNC_ALL_GAMES : !strcmp(playing, "ages") ? "seasons" : "ages";
+  const char *scope = !playing ? SYNC_ALL_GAMES : rom_id(app_cache, !is_ages(playing));
 #define REOPEN() do { code[0] = 0; if (sync_cfg.code[0]) sync_format_code(sync_cfg.code, code); \
     syncmenu_open(&m, sync_cfg.code[0] != 0, code, sync_status_line); } while (0)
   REOPEN();
@@ -1333,7 +1381,7 @@ static void home_scan(Home *h, const char *cache) {
   launcher_load(&h->l, cache);
   for (int g = 0; g < UI_GAMES; g++) {
     char dir[1100];
-    snprintf(dir, sizeof dir, "%s%s", cache, game_ids[g]);
+    snprintf(dir, sizeof dir, "%s%s", cache, rom_id(cache, g == UI_GAME_AGES));
     for (int i = 0; i < HOME_SLOTS; i++) slot_read(&h->slots[g][i], dir, i);
     slot_read(&h->resume[g], dir, SLOT_AUTO);
   }
@@ -1400,11 +1448,11 @@ static bool run_home(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, const
       }
       if (r.action == LAUNCH_PLAY && sync_cfg.code[0]) {
         SyncResult pre;
-        if (sync_blocking(ren, tex, rgb, game_ids[r.game], &pre) && !sync_finished(win, ren, tex, &pre)) return false;
+        if (sync_blocking(ren, tex, rgb, rom_id(cache, r.game == UI_GAME_AGES), &pre) && !sync_finished(win, ren, tex, &pre)) return false;
         home_scan(&h, cache);
       }
       if (r.action == LAUNCH_PLAY) {
-        strcpy(game_out, game_ids[r.game]);
+        strcpy(game_out, rom_id(cache, r.game == UI_GAME_AGES));
         *file_out = r.file;
         *file_used = r.file >= 0 && h.l.games[r.game].files[r.file].valid;
         return true;
@@ -1563,7 +1611,7 @@ static GameEnd run_game(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, co
   snprintf(path, sizeof path, "%s/cyctab.bin", dir);
   uint8_t *tab = oracles_read_file(path, &tab_size);
   if (!rom || !tab || tab_size != rom_size) { fprintf(stderr, "cache in %s is incomplete; run again with the ROM path\n", dir); return GAME_FAILED; }
-  bool ages = strcmp(gs->game, "ages") == 0;
+  bool ages = is_ages(gs->game);
   UiTheme theme;
   ui_theme_load(&theme, rom, rom_size, ages);
   overlay_style(&theme);
@@ -1635,7 +1683,7 @@ static GameEnd run_game(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, co
       else if (sync_failures() == 1) show_status("Sync failed");
     }
     // the running game's files wait for the game to end; the rest go as soon as the server answers
-    if (sync_cfg.code[0] && sync_should_retry()) sync_start(&sync_cfg, app_cache, strcmp(gs->game, "ages") ? "ages" : "seasons");
+    if (sync_cfg.code[0] && sync_should_retry()) sync_start(&sync_cfg, app_cache, rom_id(app_cache, !is_ages(gs->game)));
     SDL_Event ev;
     while (poll_event(&ev)) {
       if (ev.type == SDL_EVENT_QUIT) {
@@ -1907,14 +1955,16 @@ int main(int argc, char **argv) {
   char rom_err[40] = {0};
   if (rom_arg) { if (!extract(rom_arg, cache, game, rom_err, sizeof rom_err)) return 2; direct = true; }
   else if (game_arg) {
-    if (!cached(cache, game_arg)) { fprintf(stderr, "%s is not installed; run once with its ROM path\n", game_arg); return 2; }
-    snprintf(game, sizeof game, "%s", game_arg);
+    // --game ages|seasons starts that game's active ROM; a folder name (ages-eu) picks one
+    const char *id = strchr(game_arg, '-') ? game_arg : rom_id(cache, is_ages(game_arg));
+    if (!cached(cache, id)) { fprintf(stderr, "%s is not installed; run once with its ROM path\n", game_arg); return 2; }
+    snprintf(game, sizeof game, "%s", id);
     direct = true;
     if (file_arg >= 0 && file_arg < UI_FILES) {
       static Launcher probe;
       launcher_load(&probe, cache);
       gs.start_file = file_arg;
-      gs.open_file = probe.games[strcmp(game, "ages") == 0 ? UI_GAME_AGES : UI_GAME_SEASONS].files[file_arg].valid;
+      gs.open_file = probe.games[is_ages(game) ? UI_GAME_AGES : UI_GAME_SEASONS].files[file_arg].valid;
     }
   }
   // The spec wants settings rows a mod asked for to exist "from the launcher", before any game
