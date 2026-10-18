@@ -27,7 +27,8 @@ externs = set()
 extra_names = set()
 alias_labels = set()
 import os as _os
-for extra_path in (['src/hooks/extra_seasons.sym', 'src/hooks/alias_seasons.sym'] if SEASONS else ['src/hooks/extra.sym']):
+EU = _os.path.basename(sys.argv[2]).endswith('_eu.sym')      # a European ROM: the extra labels carried over by tools/eu_sym.py
+for extra_path in ([f'src/hooks/extra_seasons{"_eu" if EU else ""}.sym', f'src/hooks/alias_seasons{"_eu" if EU else ""}.sym'] if SEASONS else [f'src/hooks/extra{"_eu" if EU else ""}.sym']):
     if not _os.path.exists(extra_path): continue
     for line in open(extra_path):
         line = line.split('#')[0].strip()
@@ -35,7 +36,7 @@ for extra_path in (['src/hooks/extra_seasons.sym', 'src/hooks/alias_seasons.sym'
         if not m: continue
         b, a, n = int(m.group(1), 16), int(m.group(2), 16), m.group(3)
         labels.setdefault(n, (b, a)); by_addr.setdefault((b, a), n); instances.setdefault(n, [(b, a)]); extra_names.add(n)
-        if extra_path.endswith('alias_seasons.sym'): alias_labels.add(n)
+        if 'alias_seasons' in extra_path: alias_labels.add(n)
         if m.group(4): relocs.append((a, a + 0x80, int(m.group(4), 16), int(m.group(5), 16)))
         if m.group(6): externs.add((b, a))
 def in_reloc(a): return any(lo <= a < hi for lo, hi, sb, sa in relocs)

@@ -141,6 +141,43 @@ def pair_instances(ages_rom, ages_sym, seasons_rom, seasons_sym):
     return pairs
 
 
+def eu_sym_for(sym):
+    """ref/eu/<game>_eu.sym for a USA symbol file, or None when it has not been generated."""
+    import os
+    path = os.path.join('ref', 'eu', ('seasons' if 'seasons' in os.path.basename(sym) else 'ages') + '_eu.sym')
+    return path if os.path.exists(path) else None
+
+
+def eu_address_map(us_sym, eu_sym):
+    """USA (bank, addr) -> EU (bank, addr) for every ROM label tools/eu_sym.py placed (extra labels
+    included). A label with copies in several banks is paired by bank: code banks keep their
+    number in the EU ROMs; failing that, by order."""
+    us, eu = rom_labels(us_sym), rom_labels(eu_sym)
+    out = {}
+    for name, uinst in us.items():
+        einst = eu.get(name)
+        if not einst: continue
+        if len(uinst) == 1 and len(einst) == 1:
+            out.setdefault(uinst[0], einst[0]); continue
+        for u in uinst:
+            same = [e for e in einst if e[0] == u[0] or (u[1] < 0x4000 and e[1] < 0x4000)]
+            if len(same) == 1: out.setdefault(u, same[0])
+            elif len(uinst) == len(einst): out.setdefault(u, einst[uinst.index(u)])
+    return out
+
+
+def sym_macros(root='src/game'):
+    """NAME -> expansion for the `#define NAME ...SYM(label)...` lines of the game headers
+    (ROM_b07_fileManagementFunction is SYM(fileManagementFunction)): C that uses NAME uses label."""
+    import glob, os
+    out = {}
+    for path in glob.glob(os.path.join(root, '**', '*.h'), recursive=True):
+        for line in open(path, errors='replace'):
+            m = re.match(r'#define (\w+) (.*\bSYM\(\w+\).*?)\s*(?://.*)?$', line)
+            if m: out[m.group(1)] = m.group(2)
+    return out
+
+
 UNNAMED = re.compile(r'^(_label_[0-9a-f]{2}_\d+|label_[0-9a-f]{2}_\d+)$')
 
 

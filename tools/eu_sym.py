@@ -218,8 +218,10 @@ def place_by_reference(us_path, sym_path, us, eu, al, placed):
     by_addr = collections.defaultdict(list)        # addr -> the same, every bank
     for key in placed: at[(key[1], key[2])].append(key); by_addr[key[2]].append(key)
     votes = collections.defaultdict(collections.Counter)
-    def vote(ub, v, eb, v2):
+    strong = collections.defaultdict(collections.Counter)      # from instructions the alignment placed itself
+    def vote(ub, v, eb, v2, sure):
         if v >= 0x8000 or v2 >= 0x8000: return
+        if (v < BANK) != (v2 < BANK): return        # bank 0 stays bank 0, a switchable address stays switchable
         if v < BANK: keys, tb = at.get((0, v), []), 0
         else:
             keys = at.get((ub, v), [])
@@ -233,33 +235,54 @@ def place_by_reference(us_path, sym_path, us, eu, al, placed):
                 ok = [c for c in cands if eu[c * BANK + v2 - BANK:c * BANK + v2 - BANK + 4] == us[hits[0][1] * BANK + v - BANK:hits[0][1] * BANK + v - BANK + 4]]
                 if len(ok) != 1: return
                 tb = ok[0]
-        for k in keys: votes[k][(tb, v2)] += 1
+        for k in keys:
+            votes[k][(tb, v2)] += 1
+            if sure: strong[k][(tb, v2)] += 1
+    # walk only code the decomp hooks: a data label decoded as instructions votes for whatever
+    # its bytes happen to say
+    code = set()
+    for path in ('src/hooks/generated.txt', 'src/hooks/generated_seasons.txt', 'src/hooks/generated_seasons_gen.txt'):
+        if ('seasons' in path) != ('seasons' in os.path.basename(sym_path)) or not os.path.exists(path): continue
+        for l in open(path):
+            m = re.match(r'([0-9a-f]{2}):([0-9a-f]{4}) ', l)
+            if m: code.add((int(m.group(1), 16), int(m.group(2), 16)))
     for name, insts in US.instances.items():
         for (b, a) in insts:
-            if b not in CODE_BANKS or a >= 0x8000: continue
+            if b not in CODE_BANKS or a >= 0x8000 or (b, a) not in code: continue
             try: body = US.body(b, a)
             except Exception: continue
+            start = placed.get((name, b, a))
             for (ia, ln, kind, tmpl, ops) in body:
                 p = al.place(b, ia)
-                if not p or p[2] != 'block': continue
-                eb, ea = (p[0] if ia >= BANK else b), p[1]
+                sure = bool(p and p[2] == 'block')
+                if sure: eb, ea = (p[0] if ia >= BANK else b), p[1]
+                elif start and start[2] == 'block':
+                    # an instruction the alignment broke up (operands that point at moved code
+                    # leave one-byte blocks): where it sits from the routine's own entry
+                    eb, ea = (start[0] if ia >= BANK else b), start[1] + (ia - a)
+                else: continue
                 ln2, kind2, tmpl2, ops2 = E.decode(eb, ea)
                 if kind == 'jumptable':
                     if tmpl2 != 'rst $00': continue
                     for i, (k, v) in enumerate(ops):
                         o = (ea + 1 + 2 * i) if ea < BANK else eb * BANK + ea + 1 + 2 * i - BANK
-                        vote(b, v, eb, eu[o] | eu[o + 1] << 8)
+                        vote(b, v, eb, eu[o] | eu[o + 1] << 8, sure)
                     continue
                 if (ln2, tmpl2) != (ln, tmpl): continue
                 for (k, v), (k2, v2) in zip(ops, ops2):
-                    if k in ('rom', 'any'): vote(b, v, eb, v2)
+                    if k in ('rom', 'any'): vote(b, v, eb, v2, sure)
     newly, conflicts = {}, []
     for key, c in votes.items():
         (best, n), total = c.most_common(1)[0], sum(c.values())
         if n * 3 < total * 2: continue                 # references disagree: leave it alone
         if placed.get(key):
             pb, pa = placed[key][0], placed[key][1]
-            if (pb, pa) != best and n >= 2:
+            # overriding the alignment takes near-unanimous references from instructions the
+            # alignment itself placed (one found from its routine's entry may sit in changed code)
+            sc = strong.get(key)
+            if not sc: continue
+            (best, n), total = sc.most_common(1)[0], sum(sc.values())
+            if (pb, pa) != best and n >= 2 and n * 10 >= total * 9:
                 # an entry point the EU build inserted code at: the bytes moved, the label did not
                 conflicts.append((key, (pb, pa), best, n, total))
                 newly[key] = (best[0], best[1], 'ref')
