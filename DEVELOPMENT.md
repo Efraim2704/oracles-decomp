@@ -66,6 +66,8 @@ they need the loose `.gbc` files even though the apps also accept archives:
 | `roms/Legend of Zelda, The - Oracle of Ages (USA, Australia).gbc` | `880374fb978b18af4aa529e2e32f7ffb4d7dd2f4` |
 | `roms/Legend of Zelda, The - Oracle of Seasons (USA, Australia).gbc` | `ba1268290fb2b1b70505d2d7b5825fc8a4816a4b` |
 | `roms/cgb_boot.bin` | the Game Boy Color boot ROM |
+| `roms/Legend of Zelda, The - Oracle of Ages (Europe) (En,Fr,De,Es,It).gbc` (optional, `test_eu`) | `9f2dff3c46406839f839a8d535353dfc1e3e8670` |
+| `roms/Legend of Zelda, The - Oracle of Seasons (Europe) (En,Fr,De,Es,It).gbc` (optional, `test_eu`) | `360b9408e569ba826212eac1ebea1b09573cb48c` |
 
 ## Build
 
@@ -195,6 +197,51 @@ matches that room's own picture once the movie reaches it (Seasons 96.8%, Ages 9
 the rest are things the player changed). `test_room` checks the ROM room decoder against every room
 the movies load. `test_archive` checks the zip/gz reader against streams from a known-good
 compressor.
+
+## European ROMs
+
+The European releases (`Legend of Zelda, The - Oracle of Ages (Europe) (En,Fr,De,Es,It).gbc`,
+SHA1 `9f2dff3c46406839f839a8d535353dfc1e3e8670`, and `... Oracle of Seasons (Europe)
+(En,Fr,De,Es,It).gbc`, `360b9408e569ba826212eac1ebea1b09573cb48c`) are 2 MB ROMs with five
+languages: English, French, German, Italian and Spanish (`wActiveLanguage`, $c62a, 0-4). Most of
+their code is the USA code, often moved; the text engine, the file menu (a ninth mode, the language
+screen), name entry and a few dozen gameplay routines differ. RAM is laid out the same, so the save
+format, the mods and the RAM symbols are shared. The region is the header's game code
+(`rom[0x142] == 'P'`: AZ8P, AZ7P); `hooks.c` then selects the EU hook table, `syms_select` the EU
+symbol column (`game_eu`), and `assets.c` the EU code map.
+
+How the EU build is made, all from the USA symbols and the two ROMs:
+
+- `tools/eu_sym.py` writes `ref/eu/{ages,seasons}_eu.sym` (and `src/hooks/extra*_eu.sym`,
+  `alias_seasons_eu.sym`): every USA label carried to its EU address by aligning each code bank
+  with its EU counterpart, then by the operands of already-placed code. About 96% are placed by
+  the alignment, 2% between two placed neighbours, and 1.5% stay unplaced (data only the USA build
+  uses).
+- `tools/eu_hooks.py` keeps in the EU table the USA hooks whose routine is instruction-identical in
+  the EU ROM (pointers relocated) and whose callees are kept too.
+- `tools/eu_gen.py` transliterates the rest from the EU ROM (`src/game/eu/gen_*.c`, cycle-exact like
+  `tools/transliterate.py`), following calls, jump tables and thread resume points to a fixed point,
+  so the native build always finds C where the game goes.
+- The shared C builds some pointers as `SYM(label) + n` under a nearby label, which can move by a
+  different amount in the EU ROM. `tools/eu_operands.py` evaluates each one with the EU symbols
+  against the operand the EU ROM has, and `tools/eu_fix_pointers.py` rewrites the ones that differ
+  as `RV(usa, eu)` (`game_eu` picks the arm).
+- `src/wide/room.c` and `item.c` carry the EU table addresses; the EU gfx header table has entries
+  with one source per language, read with the RAM's language.
+
+After C changes, `tools/eu_regen.sh AGES_EU.gbc SEASONS_EU.gbc` runs the steps after `eu_sym.py`
+and ends with the pointer check. `test_eu` (with the EU ROMs in `roms/`) starts each EU ROM from a
+USA movie's file data put in its battery RAM, enters every room of every group natively, and
+compares the ROM room decoder with the rooms the game loaded. There is no EU movie; coverage beyond
+that comes from comparing the native build with the interpreter frame by frame from saves:
+
+```bash
+./build/oracles-run --rom EU.gbc --tas IN.inputs --frames N --no-hooks --frame-hash-out fh.bin [--sram file.sav]
+./build/oracles-native-run --rom EU.gbc --tas IN.inputs --frames N --frame-hash-check fh.bin [--sram file.sav]
+```
+
+`--sram` starts with that battery RAM; `WRAMDUMP_AT` takes a comma list of frames, so a USA movie
+can yield the file data of many points in one run.
 
 ## Recording a playthrough
 

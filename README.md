@@ -5,7 +5,8 @@ Native macOS, Windows, Linux and Android versions of **Oracle of Ages** and **Or
 run as native programs, which is what makes widescreen, save states and save sync across your
 devices possible.
 
-**No game data is included.** You need your own Oracle of Ages and/or Oracle of Seasons (USA) ROM.
+**No game data is included.** You need your own Oracle of Ages and/or Oracle of Seasons ROM (USA or
+Europe).
 The app reads it once, keeps the graphics, sound and data, and never needs it again.
 
 ## Quality-of-life improvements
@@ -59,8 +60,13 @@ The ROM can be a plain `.gbc`/`.gb` file **or a `.zip` or `.gz`** holding one, s
 downloaded archive works as it came. From a zip the `.gbc`/`.gb` file inside is taken, otherwise the
 largest one. `.7z` isn't read — extract it first.
 
-Your ROM has to be the USA release of either game; the app checks it and says so if it isn't. On
-Android, copy the ROM to the phone's Downloads first so the picker can reach it.
+Your ROM has to be the USA or the European release of either game; the app checks it and says so if
+it isn't. The European ROMs play in English, French, German, Italian or Spanish: the game asks the
+first time it starts, and B on the file menu brings the language screen back. Each ROM keeps its own
+saves and save states, so a game's USA and European files never mix; adding the other release of a
+game makes it the one that tab starts, and adding the first one again switches back, its saves
+where you left them. On Android, copy the ROM to the phone's Downloads first so the picker can reach
+it.
 
 ## Playing
 
