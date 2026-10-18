@@ -76,7 +76,7 @@ state1:
   CYC(b_+68, b_+71); W8(w1Link_direction) = A;
   CYC(b_+71, b_+73); A = 0x01;
   CYC(b_+73, b_+76); W8(wTmpcfc0_fairyHideAndSeek_active) = A;
-  CYC(b_+76, b_+79); SET_HL((SYM(miscPuzzles_subid19__state4) + 15)); // mainScripts.fairyHidingMinigame_subid00Script
+  CYC(b_+76, b_+79); SET_HL(RV((SYM(miscPuzzles_subid19__state4) + 15), 0x7290)); // mainScripts.fairyHidingMinigame_subid00Script
   CYC(b_+79, b_+82); TAIL(interactionSetScript); // jp
 
 state2:
@@ -210,7 +210,7 @@ state2:
   CYC(b_+96, b_+97); mem_wr(gb, HL, A);
   CALL_C(b_+97, objectCreatePuff_hook, SYM(objectCreatePuff), b_+100);
   CALL_C(b_+100, interactionIncState_hook, SYM(interactionIncState), b_+103);
-  CYC(b_+103, b_+106); SET_HL((SYM(miscPuzzles_subid19__state4) + 19)); // mainScripts.fairyHidingMinigame_subid01Script
+  CYC(b_+103, b_+106); SET_HL(RV((SYM(miscPuzzles_subid19__state4) + 19), 0x7294)); // mainScripts.fairyHidingMinigame_subid01Script
   CYC(b_+106, b_+109); TAIL(interactionSetScript); // jp
 
 state3:
@@ -264,7 +264,7 @@ state0:
   if (!(F & FC)) { CYCT(b_+24, b_+27); interactionDelete_hook(gb); return; } // jp nc
   CYC(b_+24, b_+27);
   CALL_C(b_+27, interactionIncState_hook, SYM(interactionIncState), b_+30);
-  CYC(b_+30, b_+33); SET_HL((SYM(miscPuzzles_subid19__state4) + 23)); // mainScripts.fairyHidingMinigame_subid02Script
+  CYC(b_+30, b_+33); SET_HL(RV((SYM(miscPuzzles_subid19__state4) + 23), 0x7298)); // mainScripts.fairyHidingMinigame_subid02Script
   CYC(b_+33, b_+36); TAIL(interactionSetScript); // jp
 }
 

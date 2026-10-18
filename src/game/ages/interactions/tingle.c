@@ -107,7 +107,7 @@ state3: // interactionCodec8@state3
   CYC(b_+90, b_+91);
   CYC(b_+91, b_+93); E = INTERACTION_BASE + OBJ_PRESSED_A_BUTTON;
   CALL_C(b_+93, objectAddToAButtonSensitiveObjectList_hook, SYM(objectAddToAButtonSensitiveObjectList), b_+96);
-  CYC(b_+96, b_+99); SET_HL((SYM(interactionCoded8__subid1Script) + 84)); // mainScripts.tingleScript
+  CYC(b_+96, b_+99); SET_HL(RV((SYM(interactionCoded8__subid1Script) + 84), 0x7e00)); // mainScripts.tingleScript
   CALL_C(b_+99, interactionSetScript_hook, SYM(interactionSetScript), b_+102);
   CYC(b_+102, b_+104); A = 0x04;
   CYC(b_+104, b_+106); E = INTERACTION_BASE + OBJ_STATE;

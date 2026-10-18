@@ -166,7 +166,7 @@ substate0:
   }
   CYC(b_+113, b_+114);
   CALL_C(b_+114, interactionIncSubstate_hook, SYM(interactionIncSubstate), b_+117);
-  CYC(b_+117, b_+120); SET_HL((SYM(interactionCode64__state0) + 5));
+  CYC(b_+117, b_+120); SET_HL(RV((SYM(interactionCode64__state0) + 5), 0x73df));
   CYC(b_+120, b_+122); E = 0x08;
   CYC(b_+122, b_+125); interBankCall_hook(gb);
   return;
@@ -186,7 +186,7 @@ substate1:
   return;
 
 substate2:
-  CYC(b_+139, b_+142); SET_HL((SYM(goronDance_sequenceData__platinum) + 20));
+  CYC(b_+139, b_+142); SET_HL(RV((SYM(goronDance_sequenceData__platinum) + 20), 0x7b0a));
   CYC(b_+142, b_+144); E = 0x08;
   CYC(b_+144, b_+147); interBankCall_hook(gb);
   return;
@@ -197,7 +197,7 @@ subid3:
     CYCT(b_+150, b_+152); goto subid3_state0;
   }
   CYC(b_+150, b_+152);
-  CYC(b_+152, b_+155); SET_HL((SYM(goronDance_sequenceData__gold) + 14));
+  CYC(b_+152, b_+155); SET_HL(RV((SYM(goronDance_sequenceData__gold) + 14), 0x7ba4));
   CYC(b_+155, b_+157); E = 0x08;
   CYC(b_+157, b_+160); interBankCall_hook(gb);
   return;

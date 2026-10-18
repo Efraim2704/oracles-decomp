@@ -201,7 +201,7 @@ state0:
   CALL_C(b_+30, applyOffsetTableHL_hook, SYM(applyOffsetTableHL), b_+33);
   CALL_C(b_+33, objectSetVisible82_hook, SYM(objectSetVisible82), b_+36);
   CALL_C(b_+36, loadAttributesAndGraphicsAndIncState_hook, SYM(loadAttributesAndGraphicsAndIncState), b_+39);
-  CYC(b_+39, b_+42); SET_BC((SYM(galeSeedTryToWarpLink__substate3) + 1));
+  CYC(b_+39, b_+42); SET_BC(RV((SYM(galeSeedTryToWarpLink__substate3) + 1), 0x5029));
   CYC(b_+42, b_+45); A = W8(wSwitchHookLevel);
   CYC(b_+45, b_+46); A = alu_dec8(gb, A);
   if (F & FZ) {

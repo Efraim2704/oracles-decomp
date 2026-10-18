@@ -183,7 +183,7 @@ void cutscene_rumbleSoundWhenFrameCounterLowerNibbleIs0_hook(GB *gb) {
 
 void cutscene_resetOamWithSomething1_hook(GB *gb) {
   BASE(cutscene_resetOamWithSomething1);
-  CYC(b_+0, b_+3); SET_HL((SYM(introCinematic_ridingHorse_state4__drawLinkOnHorseAndScrollScreen) + 3));
+  CYC(b_+0, b_+3); SET_HL(RV((SYM(introCinematic_ridingHorse_state4__drawLinkOnHorseAndScrollScreen) + 3), 0x4dc5));
   CYC(b_+3, b_+5); E = 0x16;
   CYC(b_+5, b_+8); SET_BC(0x3038);
   CYC(b_+8, b_+10);
@@ -192,7 +192,7 @@ void cutscene_resetOamWithSomething1_hook(GB *gb) {
 
 void cutscene_resetOamWithSomething2_hook(GB *gb) {
   BASE(cutscene_resetOamWithSomething2);
-  CYC(b_+0, b_+3); SET_HL((SYM(introCinematic_ridingHorse) + 13));
+  CYC(b_+0, b_+3); SET_HL(RV((SYM(introCinematic_ridingHorse) + 13), 0x4c89));
   CYC(b_+3, b_+5); E = 0x16;
   CYC(b_+5, b_+8); SET_BC(0x3038);
   TAIL(cutscene_resetOamWithData);
@@ -1140,14 +1140,14 @@ load_animation:
 
 void endgameCutsceneHandler_0a__state2_hook(GB *gb) {
   BASE(endgameCutsceneHandler_0a);
-  CYC(b_+453, b_+456); SET_HL((SYM(wallRetraction_dungeon8__cbb3_01) + 45));
+  CYC(b_+453, b_+456); SET_HL(RV((SYM(wallRetraction_dungeon8__cbb3_01) + 45), GV(0x70f6, (SYM(wallRetraction_dungeon8__cbb3_01) + 45))));
   CYC(b_+456, b_+458); E = 0x10;
   CYC(b_+458, b_+461); TAIL(interBankCall);
 }
 
 void endgameCutsceneHandler_0a__state3_hook(GB *gb) {
   BASE(endgameCutsceneHandler_0a);
-  CYC(b_+461, b_+464); SET_HL((SYM(func_03_7244__state0) + 72));
+  CYC(b_+461, b_+464); SET_HL(RV((SYM(func_03_7244__state0) + 72), GV(0x7298, (SYM(func_03_7244__state0) + 72))));
   CYC(b_+464, b_+466); E = 0x10;
   CYC(b_+466, b_+469); TAIL(interBankCall);
 }
@@ -1214,7 +1214,7 @@ void endgameCutsceneHandler_09_stage0__state0_hook(GB *gb) {
   CALL_C(b_+80, playSound_b00_hook, SYM(playSound_b00), b_+83);
   CALL_C(b_+83, clearAllParentItems_hook, SYM(clearAllParentItems), b_+86);
   CALL_C(b_+86, dropLinkHeldItem_hook, SYM(dropLinkHeldItem), b_+89);
-  CYC(b_+89, b_+92); SET_HL(SYM(createInteraction));
+  CYC(b_+89, b_+92); SET_HL(RV(SYM(createInteraction), GV(0x5405, SYM(createInteraction))));
   CALL_C(b_+92, parseGivenObjectData_b00_hook, SYM(parseGivenObjectData_b00), b_+95);
   CYC(b_+95, b_+98); SET_HL(wTmpcbb3);
   CYC(b_+98, b_+100); mem_wr(gb, HL, 0x3c);
@@ -1303,7 +1303,7 @@ void endgameCutsceneHandler_09_stage0__state5_hook(GB *gb) {
   CYC(b_+208, b_+210); mem_wr(gb, HL, 0x50);
   CYC(b_+210, b_+212); L = 0x08;
   CYC(b_+212, b_+214); mem_wr(gb, HL, 0x02);
-  CYC(b_+214, b_+217); SET_HL((SYM(wallRetraction_dungeon8__cbb3_01) + 9));
+  CYC(b_+214, b_+217); SET_HL(RV((SYM(wallRetraction_dungeon8__cbb3_01) + 9), GV(0x70d2, (SYM(wallRetraction_dungeon8__cbb3_01) + 9))));
   CYC(b_+217, b_+219); A = 0x10;
   CALL_C(b_+219, setSimulatedInputAddress_hook, SYM(setSimulatedInputAddress), b_+222);
   CYC(b_+222, b_+225); SET_HL(SYM(blackTowerEscapeCutscene_doorOpenReplacement));
@@ -1335,7 +1335,7 @@ void endgameCutsceneHandler_09_stage0__state7_hook(GB *gb) {
   CYC(b_+264, b_+265); alu_xor(gb, A);
   CYC(b_+265, b_+268); mem_wr(gb, wDisabledObjects, A);
   CYC(b_+268, b_+271); mem_wr(gb, wScrollMode, A);
-  CYC(b_+271, b_+274); SET_HL((SYM(wallRetraction_dungeon8__cbb3_01) + 12));
+  CYC(b_+271, b_+274); SET_HL(RV((SYM(wallRetraction_dungeon8__cbb3_01) + 12), GV(0x70d5, (SYM(wallRetraction_dungeon8__cbb3_01) + 12))));
   CYC(b_+274, b_+276); A = 0x10;
   CYC(b_+276, b_+279); TAIL(setSimulatedInputAddress);
 }
@@ -1372,7 +1372,7 @@ void endgameCutsceneHandler_09_stage0__state9_hook(GB *gb) {
   CALL_C(b_+310, playSound_b00_hook, SYM(playSound_b00), b_+313);
   CYC(b_+313, b_+315); A = 0x02;
   CALL_C(b_+315, loadGfxRegisterStateIndex_hook, SYM(loadGfxRegisterStateIndex), b_+318);
-  CYC(b_+318, b_+321); SET_HL((SYM(endgameCutsceneHandler_body) + 2));
+  CYC(b_+318, b_+321); SET_HL(RV((SYM(endgameCutsceneHandler_body) + 2), GV(0x540f, (SYM(endgameCutsceneHandler_body) + 2))));
   CALL_C(b_+321, parseGivenObjectData_b00_hook, SYM(parseGivenObjectData_b00), b_+324);
   CYC(b_+324, b_+327); SET_HL(wTmpcbb3);
   CYC(b_+327, b_+329); mem_wr(gb, HL, 0x1e);
@@ -1397,7 +1397,7 @@ void endgameCutsceneHandler_09_stage0__stateA_hook(GB *gb) {
   CYC(b_+350, b_+352); mem_wr(gb, HL, 0x50);
   CYC(b_+352, b_+354); L = 0x08;
   CYC(b_+354, b_+356); mem_wr(gb, HL, 0x00);
-  CYC(b_+356, b_+359); SET_HL((SYM(wallRetraction_dungeon8__cbb3_01) + 20));
+  CYC(b_+356, b_+359); SET_HL(RV((SYM(wallRetraction_dungeon8__cbb3_01) + 20), GV(0x70dd, (SYM(wallRetraction_dungeon8__cbb3_01) + 20))));
   CYC(b_+359, b_+361); A = 0x10;
   CALL_C(b_+361, setSimulatedInputAddress_hook, SYM(setSimulatedInputAddress), b_+364);
   CYC(b_+364, b_+365); alu_xor(gb, A);
@@ -1416,7 +1416,7 @@ void endgameCutsceneHandler_09_stage0__stateB_hook(GB *gb) {
   }
   CYC(b_+374, b_+375);
   CALL_C(b_+375, incCbc2_hook, SYM(incCbc2), b_+378);
-  CYC(b_+378, b_+381); SET_HL((SYM(wallRetraction_dungeon8__cbb3_01) + 37));
+  CYC(b_+378, b_+381); SET_HL(RV((SYM(wallRetraction_dungeon8__cbb3_01) + 37), GV(0x70ee, (SYM(wallRetraction_dungeon8__cbb3_01) + 37))));
   CYC(b_+381, b_+383); A = 0x10;
   CYC(b_+383, b_+386); TAIL(setSimulatedInputAddress);
 }
@@ -1743,7 +1743,7 @@ void endgameCutsceneHandler_09_stage1__loadOamData_hook(GB *gb) {
 
 void endgameCutsceneHandler_09_stage1__loadCertainOamData1_hook(GB *gb) {
   BASE(endgameCutsceneHandler_09_stage1);
-  CYC(b_+112, b_+115); SET_HL((SYM(intro_gotoTitlescreen) + 2));
+  CYC(b_+112, b_+115); SET_HL(RV((SYM(intro_gotoTitlescreen) + 2), GV(0x4b57, (SYM(intro_gotoTitlescreen) + 2))));
   CYC(b_+115, b_+117); E = 0x16;
   TAIL(endgameCutsceneHandler_09_stage1__loadOamData);
 }
@@ -1783,7 +1783,7 @@ void endgameCutsceneHandler_09_stage1__state4_hook(GB *gb) {
 
 void endgameCutsceneHandler_09_stage1__loadCertainOamData2_hook(GB *gb) {
   BASE(endgameCutsceneHandler_09_stage1);
-  CYC(b_+163, b_+166); SET_HL((SYM(intro_titlescreen) + 22));
+  CYC(b_+163, b_+166); SET_HL(RV((SYM(intro_titlescreen) + 22), GV(0x4bf0, (SYM(intro_titlescreen) + 22))));
   CYC(b_+166, b_+168); E = 0x16;
   CYC(b_+168, b_+170);
   TAIL(endgameCutsceneHandler_09_stage1__loadOamData);

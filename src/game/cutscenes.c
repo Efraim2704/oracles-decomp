@@ -14,7 +14,7 @@ void cutscene06_hook(GB *gb) {
   uint16_t sp0_ = gb->sp; (void)sp0_;
   CALL_C(b_+0, refreshLoadedTreeGfx_hook, SYM(refreshLoadedTreeGfx), b_+3);
   CYC(b_+3, b_+5); C = 0x00;
-  CYC(b_+5, b_+8); SET_HL((SYM(checkLinkCanStandOnTile) + 29));
+  CYC(b_+5, b_+8); SET_HL(RV((SYM(checkLinkCanStandOnTile) + 29), GV(0x630d, (SYM(checkLinkCanStandOnTile) + 29))));
   CYC(b_+8, b_+10); E = 0x03;
   CYC(b_+10, b_+13);
   TAIL(interBankCall);
@@ -35,7 +35,7 @@ void func_5d5d_hook(GB *gb) {
     TAIL(applyWarpTransition2);
   }
   CYC(b_+4, b_+7);
-  CYC(b_+7, b_+10); SET_HL((SYM(checkLinkCanStandOnTile) + 29));
+  CYC(b_+7, b_+10); SET_HL(RV((SYM(checkLinkCanStandOnTile) + 29), 0x630d));
   CYC(b_+10, b_+12); E = 0x03;
   CYC(b_+12, b_+15);
   TAIL(interBankCall);
@@ -120,7 +120,7 @@ void cutscene0d_hook(GB *gb) {
   uint16_t sp0_ = gb->sp; (void)sp0_;
   CALL_C(b_+0, refreshLoadedTreeGfx_hook, SYM(refreshLoadedTreeGfx), b_+3);
   CYC(b_+3, b_+5); C = 0x06;
-  CYC(b_+5, b_+8); SET_HL((SYM(checkLinkCanStandOnTile) + 29));
+  CYC(b_+5, b_+8); SET_HL(RV((SYM(checkLinkCanStandOnTile) + 29), GV(0x630d, (SYM(checkLinkCanStandOnTile) + 29))));
   CYC(b_+8, b_+10); E = 0x03;
   CYC(b_+10, b_+13);
   TAIL(interBankCall);
@@ -138,7 +138,7 @@ void cutscene0e_hook(GB *gb) {
   }
   CYC(b_+7, b_+9);
   CYC(b_+9, b_+11); C = 0x05;
-  CYC(b_+11, b_+14); SET_HL((SYM(checkLinkCanStandOnTile) + 29));
+  CYC(b_+11, b_+14); SET_HL(RV((SYM(checkLinkCanStandOnTile) + 29), GV(0x630d, (SYM(checkLinkCanStandOnTile) + 29))));
   CYC(b_+14, b_+16); E = 0x03;
   CYC(b_+16, b_+19);
   TAIL(interBankCall);

@@ -48,7 +48,7 @@ state0:
   CYC(b_+38, b_+40); mem_wr(gb, HL, 7);
   CYC(b_+40, b_+42); E = INTERACTION_BASE + OBJ_PRESSED_A_BUTTON;
   CALL_C(b_+42, objectAddToAButtonSensitiveObjectList_hook, SYM(objectAddToAButtonSensitiveObjectList), b_+45);
-  CYC(b_+45, b_+48); SET_HL((SYM(dog_subid01__state0) + 36));
+  CYC(b_+45, b_+48); SET_HL(RV((SYM(dog_subid01__state0) + 36), GV(0x6762, (SYM(dog_subid01__state0) + 36))));
   CYC(b_+48, b_+50); goto set_script_and_state2;
 
 state1:
@@ -125,17 +125,17 @@ can_purchase:
 set_can_purchase:
   CYC(b_+139, b_+141); E = INTERACTION_BASE + OBJ_VAR38;
   CYC(b_+141, b_+142); mem_wr(gb, DE, A);
-  CYC(b_+142, b_+145); SET_HL((SYM(dog_subid01__state1) + 8));
+  CYC(b_+142, b_+145); SET_HL(RV((SYM(dog_subid01__state1) + 8), GV(0x677a, (SYM(dog_subid01__state1) + 8))));
   CYC(b_+145, b_+147); goto set_script_and_state2;
 
 talk_without_item:
   CALL_C(b_+147, shopkeeperCheckAllItemsBought_hook, SYM(shopkeeperCheckAllItemsBought), b_+150);
   if (F & FZ) { CYCT(b_+150, b_+152); goto show_welcome_text; }
   CYC(b_+150, b_+152);
-  CYC(b_+152, b_+155); SET_HL((SYM(dog_subid01__state1) + 4));
+  CYC(b_+152, b_+155); SET_HL(RV((SYM(dog_subid01__state1) + 4), GV(0x6776, (SYM(dog_subid01__state1) + 4))));
   CYC(b_+155, b_+157); goto set_script_and_state2;
 show_welcome_text:
-  CYC(b_+157, b_+160); SET_HL(SYM(dog_subid01__state1));
+  CYC(b_+157, b_+160); SET_HL(RV(SYM(dog_subid01__state1), GV(0x6772, SYM(dog_subid01__state1))));
 set_script_and_state2:
   CYC(b_+160, b_+162); E = INTERACTION_BASE + OBJ_STATE;
   CYC(b_+162, b_+164); A = 2;

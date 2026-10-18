@@ -76,7 +76,7 @@ subid1:
   CALL_C(b_+62, checkIsLinkedGame_hook, SYM(checkIsLinkedGame), b_+65);
   if (!(F & FZ)) { CYCT(b_+65, b_+66); ret_effect(gb); return; }
   CYC(b_+65, b_+66);
-  CYC(b_+66, b_+69); SET_HL((SYM(subrosian_loadScript) + 6));
+  CYC(b_+66, b_+69); SET_HL(RV((SYM(subrosian_loadScript) + 6), 0x6405));
   CYC(b_+69, b_+72); interactionSetScript_hook(gb);
   return;
 
@@ -86,7 +86,7 @@ subid3:
   if (!(F & FZ)) { CYCT(b_+77, b_+80); interactionDelete_hook(gb); return; }
   CYC(b_+77, b_+80);
 subid4:
-  CYC(b_+80, b_+83); SET_HL((SYM(dog_setTargetPositionIndex__map3) + 4));
+  CYC(b_+80, b_+83); SET_HL(RV((SYM(dog_setTargetPositionIndex__map3) + 4), 0x68e8));
   CYC(b_+83, b_+85); E = 0x08;
   CALL_C(b_+85, interBankCall_hook, 0x008a, b_+88);
   CYC(b_+88, b_+91); ambi_loadScript_hook(gb);
@@ -101,7 +101,7 @@ subid2:
   return;
 
 subid5:
-  CYC(b_+100, b_+103); SET_HL((SYM(dog_setTargetPositionIndex__map3) + 4));
+  CYC(b_+100, b_+103); SET_HL(RV((SYM(dog_setTargetPositionIndex__map3) + 4), 0x68e8));
   CYC(b_+103, b_+105); E = 0x08;
   CALL_C(b_+105, interBankCall_hook, 0x008a, b_+108);
   CALL_C(b_+108, objectSetVisiblec3_hook, SYM(objectSetVisiblec3), b_+111);
@@ -267,7 +267,7 @@ substate0:
   CYC(b_+37, b_+39); alu_cp(gb, 0x0e);
   if (!(F & FZ)) { CYCT(b_+39, b_+41); ambi_updateAnimationAndRunScript_hook(gb); return; }
   CYC(b_+39, b_+41);
-  CYC(b_+41, b_+44); SET_HL((SYM(interactionCode64__state0) + 5));
+  CYC(b_+41, b_+44); SET_HL(RV((SYM(interactionCode64__state0) + 5), 0x73df));
   CYC(b_+44, b_+46); E = 0x08;
   CALL_C(b_+46, interBankCall_hook, 0x008a, b_+49);
   CYC(b_+49, b_+52); interactionIncSubstate_hook(gb);

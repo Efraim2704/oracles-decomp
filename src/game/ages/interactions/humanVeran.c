@@ -25,7 +25,7 @@ static uint16_t human_veran_jump_table(GB *gb) {
 void interactionCodebb__afterCall6dd1_hook(GB *gb) {
   BASE(interactionCodebb);
   uint16_t sp0_ = gb->sp;
-  CYC(b_+14, b_+17); SET_HL((SYM(interactionCoded8__subid0Script) + 58));
+  CYC(b_+14, b_+17); SET_HL(RV((SYM(interactionCoded8__subid0Script) + 58), 0x7d93));
   CALL_C(b_+17, interactionSetScript_hook, SYM(interactionSetScript), b_+20);
   CYC(b_+20, b_+23); TAIL(objectSetVisible82);
 }

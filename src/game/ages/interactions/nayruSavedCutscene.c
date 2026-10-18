@@ -77,7 +77,7 @@ void interaction6e_subid00_hook(GB *gb) {
   CYC(b_+68, b_+70); A = 0x0a;
   CALL_C(b_+70, interactionSetAnimation_hook, SYM(interactionSetAnimation), b_+73);
   CALL_C(b_+73, objectSetVisible82_hook, SYM(objectSetVisible82), b_+76);
-  CYC(b_+76, b_+79); SET_HL((SYM(miscPuzzles_subid1a) + 19)); // mainScripts.interaction6e_subid00Script
+  CYC(b_+76, b_+79); SET_HL(RV((SYM(miscPuzzles_subid1a) + 19), 0x72cd)); // mainScripts.interaction6e_subid00Script
   CYC(b_+79, b_+82); TAIL(interactionSetScript); // jp
 
 state1:
@@ -123,7 +123,7 @@ void interaction6e_subid01_hook(GB *gb) {
   CYC(b_+26, b_+27); mem_wr(gb, HL, A); SET_HL(HL + 1); // ldi (hl),a
   CYC(b_+27, b_+28); mem_wr(gb, HL, A);
   CALL_C(b_+28, objectSetVisiblec2_hook, SYM(objectSetVisiblec2), b_+31);
-  CYC(b_+31, b_+34); SET_HL((SYM(miscPuzzles_subid1d) + 31)); // mainScripts.interaction6e_subid01Script_part1
+  CYC(b_+31, b_+34); SET_HL(RV((SYM(miscPuzzles_subid1d) + 31), 0x7305)); // mainScripts.interaction6e_subid01Script_part1
   CYC(b_+34, b_+37); TAIL(interactionSetScript); // jp
 
 state1:
@@ -194,7 +194,7 @@ l55bc:
   CYC(b_+121, b_+123); A = 0x06;
   CYC(b_+123, b_+124); mem_wr(gb, HL, A); SET_HL(HL - 1); // ldd (hl),a
   CYC(b_+124, b_+125); mem_wr(gb, HL, A);
-  CYC(b_+125, b_+128); SET_HL((SYM(miscPuzzles_subid1f__state1) + 4)); // mainScripts.interaction6e_subid01Script_part2
+  CYC(b_+125, b_+128); SET_HL(RV((SYM(miscPuzzles_subid1f__state1) + 4), 0x732b)); // mainScripts.interaction6e_subid01Script_part2
   CALL_C(b_+128, interactionSetScript_hook, SYM(interactionSetScript), b_+131);
   CYC(b_+131, b_+133); A = 0xd2; // SND_LIGHTNING
   CALL_C(b_+133, playSound_b00_hook, SYM(playSound_b00), b_+136);
@@ -292,7 +292,7 @@ state2:
 
 l5662:
   CYC(b_+114, b_+116); A = 0x10;
-  CYC(b_+116, b_+119); SET_BC((SYM(interaction97_subid01__positions) + 161));
+  CYC(b_+116, b_+119); SET_BC(RV((SYM(interaction97_subid01__positions) + 161), 0x7e78));
   CALL_C(b_+119, objectSetPositionInCircleArc_hook, SYM(objectSetPositionInCircleArc), b_+122);
   CYC(b_+122, b_+125); TAIL(interactionAnimate); // jp
 
@@ -342,7 +342,7 @@ void interaction6e_initRalph_hook(GB *gb) {
   CYC(b_+6, b_+8); L = INTERACTION_BASE + OBJ_SPEED;
   CYC(b_+8, b_+10); mem_wr(gb, HL, 0x50); // SPEED_200
   CALL_C(b_+10, objectSetVisible82_hook, SYM(objectSetVisible82), b_+13);
-  CYC(b_+13, b_+16); SET_HL((SYM(miscPuzzles_subid1f__state2) + 10)); // mainScripts.interaction6e_subid03Script
+  CYC(b_+13, b_+16); SET_HL(RV((SYM(miscPuzzles_subid1f__state2) + 10), 0x7389)); // mainScripts.interaction6e_subid03Script
   CYC(b_+16, b_+19); TAIL(interactionSetScript); // jp
 }
 

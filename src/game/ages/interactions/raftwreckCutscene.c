@@ -100,7 +100,7 @@ substate1:
 
 l_5361:
   CALL_C(b_+139, interactionIncSubstate_hook, SYM(interactionIncSubstate), b_+142);
-  CYC(b_+142, b_+145); SET_HL((SYM(interactiond7_makuSeed__state3Substate2) + 13)); // mainScripts.raftwreckCutsceneScript
+  CYC(b_+142, b_+145); SET_HL(RV((SYM(interactiond7_makuSeed__state3Substate2) + 13), 0x7ac9)); // mainScripts.raftwreckCutsceneScript
   CYC(b_+145, b_+148); TAIL(interactionSetScript); // jp
 
 substate2:

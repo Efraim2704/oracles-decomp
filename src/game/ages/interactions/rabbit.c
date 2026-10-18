@@ -6,7 +6,7 @@
 
 void interactionCode4b_hook(GB *gb) {
   BASE(interactionCode4b);
-  CYC(b_+0, b_+3); SET_HL((SYM(goronSubid04__state1) + 5));
+  CYC(b_+0, b_+3); SET_HL(RV((SYM(goronSubid04__state1) + 5), 0x7846));
   CYC(b_+3, b_+5); E = 0x3f;
   CYC(b_+5, b_+8); TAIL(interBankCall);
 }

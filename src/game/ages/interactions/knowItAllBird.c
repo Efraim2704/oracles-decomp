@@ -48,7 +48,7 @@ void interactionCodee3_hook(GB *gb) {
   CYC(b_+5, b_+7); A = 0x01;  // ld a,$01
   CYC(b_+7, b_+8); mem_wr(gb, DE, A);  // ld (de),a
   CALL_C(b_+8, interactionInitGraphics_hook, SYM(interactionInitGraphics), b_+11);
-  CYC(b_+11, b_+14); SET_HL((SYM(interactionCodee6__checkLinkWithinRange) + 144));  // ld hl,mainScripts.knowItAllBirdScript
+  CYC(b_+11, b_+14); SET_HL(RV((SYM(interactionCodee6__checkLinkWithinRange) + 144), 0x7f78));  // ld hl,mainScripts.knowItAllBirdScript
   CALL_C(b_+14, interactionSetScript_hook, SYM(interactionSetScript), b_+17);
   CALL_C(b_+17, getRandomNumber_noPreserveVars_hook, SYM(getRandomNumber_noPreserveVars), b_+20);
   CYC(b_+20, b_+22); alu_and(gb, 0x01);  // and $01

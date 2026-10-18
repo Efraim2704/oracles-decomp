@@ -111,7 +111,7 @@ generic:
   CYC(b_+158, b_+159); E = alu_inc8(gb, E); CYC(b_+159, b_+160); mem_wr(gb, DE, A);
   CYC(b_+160, b_+162); E = 0x78; CYC(b_+162, b_+163); A = mem_rd(gb, HL); CYC(b_+163, b_+164); mem_wr(gb, DE, A);
   CALL_C(b_+164, interactionSetAnimation_hook, SYM(interactionSetAnimation), b_+167); CALL_C(b_+167, objectSetVisiblec2_hook, SYM(objectSetVisiblec2), b_+170);
-  CYC(b_+170, b_+173); SET_HL((SYM(impaNpc_subid01) + 19)); CYC(b_+173, b_+176); interactionSetScript_hook(gb); return;
+  CYC(b_+170, b_+173); SET_HL(RV((SYM(impaNpc_subid01) + 19), 0x64ff)); CYC(b_+173, b_+176); interactionSetScript_hook(gb); return;
 generic_state1:
   CALL_C(b_+94, interactionRunScript_hook, SYM(interactionRunScript), b_+97); CYC(b_+97, b_+100); TAIL(interactionAnimateAsNpc);
 }

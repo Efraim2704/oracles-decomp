@@ -50,7 +50,7 @@ state1:
   CYC(b_+24, b_+27); push_effect(gb, b_+27); toilet_hand_respond_to_object_in_hole(gb, sp0_); if (F & FC) goto dropped;
   CALL_C(b_+29, interactionRunScript_hook, SYM(interactionRunScript), b_+32); CYC(b_+32, b_+33); H = D; CYC(b_+33, b_+35); L = INTERACTION_BASE + OBJ_VISIBLE; CYC(b_+35, b_+37); alu_bit(gb, 7, mem_rd(gb, HL)); if (F & FZ) { CYCT(b_+37, b_+38); ret_effect(gb); return; } CYC(b_+37, b_+38); CYC(b_+38, b_+41); interactionAnimateAsNpc_hook(gb); return;
 dropped:
-  CYC(b_+41, b_+44); SET_HL((SYM(interactionCode53__initGraphicsLoadScriptAndIncState) + 6)); CALL_C(b_+44, interactionSetScript_hook, SYM(interactionSetScript), b_+47); CYC(b_+47, b_+50); interactionIncState_hook(gb); return;
+  CYC(b_+41, b_+44); SET_HL(RV((SYM(interactionCode53__initGraphicsLoadScriptAndIncState) + 6), 0x66dc)); CALL_C(b_+44, interactionSetScript_hook, SYM(interactionSetScript), b_+47); CYC(b_+47, b_+50); interactionIncState_hook(gb); return;
 state2:
   CYC(b_+50, b_+53); A = W8(wTextIsActive); CYC(b_+53, b_+54); alu_or(gb, A); if (!(F & FZ)) { CYCT(b_+54, b_+55); ret_effect(gb); return; } CYC(b_+54, b_+55); CALL_C(b_+55, interactionRunScript_hook, SYM(interactionRunScript), b_+58); if (F & FC) goto script_ended; CYC(b_+58, b_+60); CYC(b_+60, b_+61); H = D; CYC(b_+61, b_+63); L = INTERACTION_BASE + OBJ_VISIBLE; CYC(b_+63, b_+65); alu_bit(gb, 7, mem_rd(gb, HL)); if (F & FZ) { CYCT(b_+65, b_+66); ret_effect(gb); return; } CYC(b_+65, b_+66); CALL_C(b_+66, interactionAnimateAsNpc_hook, SYM(interactionAnimateAsNpc), b_+69); CYC(b_+69, b_+72); interactionAnimate_hook(gb); return;
 script_ended:

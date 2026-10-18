@@ -288,7 +288,7 @@ void goron_targetCarts_loadCrystals_hook(GB *gb) {
 
 L_6848:
   CYC(b_+15, b_+18); mem_wr(gb, wTmpcfc0_genericCutscene_cfd4, A);
-  CYC(b_+18, b_+21); SET_HL((SYM(symmetryNpcSubid8And9Script__repeat_b15) + 4));
+  CYC(b_+18, b_+21); SET_HL(RV((SYM(symmetryNpcSubid8And9Script__repeat_b15) + 4), 0x7866));
   CYC(b_+21, b_+24); TAIL(parseGivenObjectData_b00);
 }
 

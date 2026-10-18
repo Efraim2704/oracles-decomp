@@ -116,7 +116,7 @@ initSubid06:
     CYCT(b_+67, b_+69); goto initSubid06_setScript;
   }
   CYC(b_+67, b_+69);
-  CYC(b_+69, b_+72); SET_BC((SYM(interactionCode1e__scriptSubidTable) + 24));
+  CYC(b_+69, b_+72); SET_BC(RV((SYM(interactionCode1e__scriptSubidTable) + 24), 0x4850));
   CALL_C(b_+72, interactionSetPosition_hook, SYM(interactionSetPosition), b_+75);
   CYC(b_+75, b_+78); SET_HL(ralphSubid06Script_part2_bank0c);
 initSubid06_setScript:
@@ -1440,7 +1440,7 @@ void ralphFunc_738b_hook(GB *gb) {
   CYC(b_+30, b_+32); mem_wr(gb, HL, 0x1f);
 
 angleDecreasing:
-  CYC(b_+32, b_+35); SET_BC((SYM(nayruState0) + 13));
+  CYC(b_+32, b_+35); SET_BC(RV((SYM(nayruState0) + 13), 0x6890));
   CYC(b_+35, b_+38); A = mem_rd(gb, wFrameCounter);
   CYC(b_+38, b_+39); alu_rrca(gb);
   if (!(F & FC)) {

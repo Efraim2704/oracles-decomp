@@ -683,7 +683,7 @@ substateD:
   // Start the next part of the cutscene
   CALL_C(b_+445, interactionIncSubstate_hook, SYM(interactionIncSubstate), b_+448);
   CALL_C(b_+448, clearFollowingLinkObject_hook, SYM(clearFollowingLinkObject), b_+451);
-  CYC(b_+451, b_+454); SET_BC((SYM(childUpdateCuriousMovement__substate1) + 24));
+  CYC(b_+451, b_+454); SET_BC(RV((SYM(childUpdateCuriousMovement__substate1) + 24), 0x6838));
   CALL_C(b_+454, interactionSetPosition_hook, SYM(interactionSetPosition), b_+457);
   CYC(b_+457, b_+460); SET_HL(impaScript_revealPossession_bank0c);
   CYC(b_+460, b_+463); interactionSetScript_hook(gb);
@@ -841,7 +841,7 @@ substate0:
   CYC(b_+24, b_+26); mem_wr(gb, HL, 0x3c);
   CALL_C(b_+26, interactionIncSubstate_hook, SYM(interactionIncSubstate), b_+29);
   CYC(b_+29, b_+31); A = 0x50;
-  CYC(b_+31, b_+34); SET_BC((SYM(interactionCode32__init2) + 6));
+  CYC(b_+31, b_+34); SET_BC(RV((SYM(interactionCode32__init2) + 6), 0x6050));
   CYC(b_+34, b_+37); createEnergySwirlGoingIn_hook(gb);
   return;
 

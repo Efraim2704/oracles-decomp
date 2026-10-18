@@ -77,7 +77,7 @@ void interactionCode3e_hook(GB *gb) {
           CYC(b_+38, b_+40); mem_wr(gb, HL, 0x10);
           CYC(b_+40, b_+42); L = 0x50;
           CYC(b_+42, b_+44); mem_wr(gb, HL, 0x1e);
-          CYC(b_+44, b_+47); SET_HL((SYM(forestFairy_subid00State3) + 9));
+          CYC(b_+44, b_+47); SET_HL(RV((SYM(forestFairy_subid00State3) + 9), 0x5dd3));
           CALL_C(b_+47, interactionSetScript_hook, SYM(interactionSetScript), b_+50);
           CALL_C(b_+50, interactionSetAlwaysUpdateBit_hook, SYM(interactionSetAlwaysUpdateBit), b_+53);
           CYC(b_+53, b_+56); TAIL(objectSetVisible81);
@@ -149,7 +149,7 @@ substate0_visible:
       if (!(F & FZ)) { CYCT(b_+68, b_+71); objectApplySpeed_hook(gb); return; }
       CYC(b_+68, b_+71);
       CALL_C(b_+71, interactionIncSubstate_hook, SYM(interactionIncSubstate), b_+74);
-      CYC(b_+74, b_+77); SET_HL((SYM(forestFairy_subid00State2) + 5));
+      CYC(b_+74, b_+77); SET_HL(RV((SYM(forestFairy_subid00State2) + 5), 0x5db4));
       CYC(b_+77, b_+80); TAIL(interactionSetScript);
     }
     else if (jt_ == b_+80) {
@@ -236,7 +236,7 @@ run_script:
       if (!(F & FZ)) { CYCT(b_+237, b_+238); ret_effect(gb); return; }
       CYC(b_+237, b_+238);
       CALL_C(b_+238, interactionIncSubstate_hook, SYM(interactionIncSubstate), b_+241);
-      CYC(b_+241, b_+244); SET_HL((SYM(forestFairy_subid00State2) + 9));
+      CYC(b_+241, b_+244); SET_HL(RV((SYM(forestFairy_subid00State2) + 9), 0x5db8));
       CALL_C(b_+244, interactionSetScript_hook, SYM(interactionSetScript), b_+247);
       CALL_C(b_+247, objectSetVisible80_hook, SYM(objectSetVisible80), b_+250);
       goto jt_fall1;

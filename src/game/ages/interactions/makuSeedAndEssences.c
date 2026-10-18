@@ -166,7 +166,7 @@ state3:
   } else {
     CYC(b_+82, b_+85);
   }
-  CYC(b_+85, b_+88); SET_BC((SYM(interactionCodea1__state9) + 11));
+  CYC(b_+85, b_+88); SET_BC(RV((SYM(interactionCodea1__state9) + 11), 0x5878));
   CYC(b_+88, b_+91); A = mem_rd(gb, wTmpcfc0_genericCutscene_cfc1);
   CYC(b_+91, b_+94); TAIL(objectSetPositionInCircleArc); // jp
 }

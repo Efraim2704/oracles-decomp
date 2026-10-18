@@ -137,7 +137,7 @@ state0:
   CALL_C(b_+13, checkGlobalFlag_hook, SYM(checkGlobalFlag), b_+16);
   if (!(F & FZ)) { CYCT(b_+16, b_+18); goto delete_; } // jr nz
   CYC(b_+16, b_+18);
-  CYC(b_+18, b_+21); SET_HL((SYM(interactionCode94) + 13)); // objectData.nayruAndAnimalsInIntro
+  CYC(b_+18, b_+21); SET_HL(RV((SYM(interactionCode94) + 13), 0x7881)); // objectData.nayruAndAnimalsInIntro
   CALL_C(b_+21, parseGivenObjectData_b00_hook, SYM(parseGivenObjectData_b00), b_+24);
   CYC(b_+24, b_+26); A = 0x36; // INTERAC_NAYRU
   CYC(b_+26, b_+29); W8(wInteractionIDToLoadExtraGfx) = A;
@@ -392,7 +392,7 @@ substate2:
   CYC(b_+92, b_+95); SET_BC(0x0116);
   CALL_C(b_+95, disableLcdAndLoadRoom_hook, SYM(disableLcdAndLoadRoom), b_+98);
   CALL_C(b_+98, resetCamera_hook, SYM(resetCamera), b_+101);
-  CYC(b_+101, b_+104); SET_HL((SYM(patch_subid00__state0) + 21)); // objectData.ambiAndNayruInPostD3Cutscene
+  CYC(b_+101, b_+104); SET_HL(RV((SYM(patch_subid00__state0) + 21), 0x78a9)); // objectData.ambiAndNayruInPostD3Cutscene
   CALL_C(b_+104, parseGivenObjectData_b00_hook, SYM(parseGivenObjectData_b00), b_+107);
   CYC(b_+107, b_+109); A = 0x02;
   CALL_C(b_+109, loadGfxRegisterStateIndex_hook, SYM(loadGfxRegisterStateIndex), b_+112);
@@ -715,7 +715,7 @@ state1:
   CALL_C(b_+49, getThisRoomFlags_hook, SYM(getThisRoomFlags), b_+52);
   CYC(b_+52, b_+54); mem_wr(gb, HL, mem_rd(gb, HL) | 0x40);
   CALL_C(b_+54, interactionIncState_hook, SYM(interactionIncState), b_+57);
-  CYC(b_+57, b_+60); SET_HL((SYM(miscPuzzles_subid19__state1) + 2)); // mainScripts.interaction6b_bridgeToNuunSimpleScript
+  CYC(b_+57, b_+60); SET_HL(RV((SYM(miscPuzzles_subid19__state1) + 2), 0x7242)); // mainScripts.interaction6b_bridgeToNuunSimpleScript
   CYC(b_+60, b_+63); TAIL(interactionSetSimpleScript); // jp
 
 state2:

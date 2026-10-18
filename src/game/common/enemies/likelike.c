@@ -96,7 +96,7 @@ void enemyCode24_hook(GB *gb) {
   CYC(b_+24, b_+25); B = A;
   CYC(b_+25, b_+26); L = alu_inc8(gb, L);
   CYC(b_+26, b_+27); C = mem_rd(gb, HL);
-  CYC(b_+27, b_+30); SET_HL(GV((SYM(likelike_subid03) + 8), 0x5d74)); // bank5.checkPositionSurroundedByWalls
+  CYC(b_+27, b_+30); SET_HL(GV(RV((SYM(likelike_subid03) + 8), 0x5e9f), RV(0x5d74, 0x5d93))); // bank5.checkPositionSurroundedByWalls
   CYC(b_+30, b_+32); E = 0x05;
   CALL_C(b_+32, interBankCall_hook, 0x008a, b_+35);
   CYC(b_+35, b_+37); B = alu_rl(gb, B);

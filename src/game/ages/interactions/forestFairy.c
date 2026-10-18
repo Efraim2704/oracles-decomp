@@ -526,7 +526,7 @@ void forestFairy_initNpcFromData_hook(GB *gb) {
   CYC(b_+33, b_+35); mem_wr(gb, HL, 0xfc);
   CYC(b_+35, b_+37); L = 0x73;
   CYC(b_+37, b_+39); mem_wr(gb, HL, 0x11);
-  CYC(b_+39, b_+42); SET_HL((SYM(ambi_runSubid05) + 11));
+  CYC(b_+39, b_+42); SET_HL(RV((SYM(ambi_runSubid05) + 11), 0x6306));
   CALL_C(b_+42, interactionSetScript_hook, SYM(interactionSetScript), b_+45);
   CYC(b_+45, b_+48); TAIL(objectSetVisiblec1);
 }
@@ -614,7 +614,7 @@ void forestFairy_subid0b_hook(GB *gb) {
   CYC(b_+28, b_+30); A = 1;
   CYC(b_+30, b_+31); mem_wr(gb, HL, A); SET_HL(HL - 1);
   CYC(b_+31, b_+32); mem_wr(gb, HL, A);
-  CYC(b_+32, b_+35); SET_HL((SYM(ambi_runSubid05__data) + 4));
+  CYC(b_+32, b_+35); SET_HL(RV((SYM(ambi_runSubid05__data) + 4), 0x630e));
   CALL_C(b_+35, interactionSetScript_hook, SYM(interactionSetScript), b_+38);
   CYC(b_+38, b_+41); TAIL(objectSetVisiblec1);
 }

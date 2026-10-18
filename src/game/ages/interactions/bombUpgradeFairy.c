@@ -156,7 +156,7 @@ state2:
   CYC(b_+150, b_+153); SET_BC(0x840e); // INTERAC_SPARKLE, $0e
   CALL_C(b_+153, objectCreateInteraction_hook, SYM(objectCreateInteraction), b_+156);
   CALL_C(b_+156, objectSetVisible81_hook, SYM(objectSetVisible81), b_+159);
-  CYC(b_+159, b_+162); SET_HL((SYM(twinrova_takeInvertedPositionFromObject) + 16)); // mainScripts.bombUpgradeFairyScript
+  CYC(b_+159, b_+162); SET_HL(RV((SYM(twinrova_takeInvertedPositionFromObject) + 16), 0x7702)); // mainScripts.bombUpgradeFairyScript
   CALL_C(b_+162, interactionSetScript_hook, SYM(interactionSetScript), b_+165);
   CYC(b_+165, b_+167); B = 0x00;
   CYC(b_+167, b_+170); push_effect(gb, b_+170); goto spawnSubid2Instance;

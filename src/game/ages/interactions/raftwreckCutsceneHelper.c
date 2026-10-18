@@ -38,7 +38,7 @@ static void raftwreck_add_double_index(GB *gb, uint16_t return_address) {
 static void raftwreck_load_angle_and_counter_preset(GB *gb, uint16_t sp0_) {
   BASE(interactionCode64);
   CYC(b_+33, b_+35); B = 3;
-  CYC(b_+35, b_+38); SET_HL((SYM(goronSubid00__state3Substate2) + 1));
+  CYC(b_+35, b_+38); SET_HL(RV((SYM(goronSubid00__state3Substate2) + 1), 0x76cb));
   CYC(b_+38, b_+40); E = 0x0a;
   CALL_C(b_+40, interBankCall_hook, 0x008a, b_+43);
   CYC(b_+43, b_+44); A = B;

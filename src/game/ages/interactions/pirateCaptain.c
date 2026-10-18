@@ -18,7 +18,7 @@ void pirate_captain_state0_tail_hook(GB *gb) {
     CYC(b_+25, b_+28); SET_HL(wTilesetFlags);
     CYC(b_+28, b_+30); mem_wr(gb, HL, mem_rd(gb, HL) | 0x80);
   }
-  CYC(b_+30, b_+33); SET_HL((SYM(interactionCoded8__subid1Script) + 24));
+  CYC(b_+30, b_+33); SET_HL(RV((SYM(interactionCoded8__subid1Script) + 24), 0x7dc4));
   CALL_C(b_+33, interactionSetScript_hook, SYM(interactionSetScript), b_+36);
   CYC(b_+36, b_+39); TAIL(interactionIncState);
 }

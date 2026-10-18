@@ -457,7 +457,7 @@ subid0:
   CYC(b_+17, b_+19); B = 0x20;
   CYC(b_+19, b_+22); SET_HL(wTmpcfc0);
   CALL_C(b_+22, s_clearMemory, SYM(clearMemory), b_+25);
-  CYC(b_+25, b_+28); SET_HL(SYM(masterDiverScript_secretDone));
+  CYC(b_+25, b_+28); SET_HL(RV(SYM(masterDiverScript_secretDone), 0x7e73));
   CALL_C(b_+28, s_parseGivenObjectData, SYM(parseGivenObjectData_b00), b_+31);
   CYC(b_+31, b_+34);
   TAIL(interactionDelete);

@@ -90,7 +90,7 @@ state2: // interactionCodebf@state2
   CYC(b_+104, b_+106); alu_bit(gb, 0, mem_rd(gb, HL));
   if (F & FZ) { CYCT(b_+106, b_+108); goto runScriptAndAnimate; } // jr z
   CYC(b_+106, b_+108);
-  CYC(b_+108, b_+111); SET_HL((SYM(interactionCoded8__subid1Script) + 6)); // mainScripts.symmetryNpcSubid8And9Script_afterTuniNutRestored
+  CYC(b_+108, b_+111); SET_HL(RV((SYM(interactionCoded8__subid1Script) + 6), 0x7db2)); // mainScripts.symmetryNpcSubid8And9Script_afterTuniNutRestored
   CALL_C(b_+111, interactionSetScript_hook, SYM(interactionSetScript), b_+114);
   CYC(b_+114, b_+116); E = INTERACTION_BASE + OBJ_STATE;
   CYC(b_+116, b_+118); A = 0x01;

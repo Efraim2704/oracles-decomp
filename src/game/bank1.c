@@ -1057,7 +1057,7 @@ void tilesetLayoutGroup33_hook(GB *gb) {
 void cutscene14_hook(GB *gb) {
   BASE(cutscene14);
   uint16_t sp0_ = gb->sp; (void)sp0_;
-  CYC(b_+0, b_+3); SET_HL((SYM(checkInitUnderwaterWaves) + 7));
+  CYC(b_+0, b_+3); SET_HL(RV((SYM(checkInitUnderwaterWaves) + 7), GV(0x627c, (SYM(checkInitUnderwaterWaves) + 7))));
   CYC(b_+3, b_+5); E = 0x03;
   CALL_C(b_+5, interBankCall_hook, 0x008a, b_+8);
   CALL_C(b_+8, refreshLoadedTreeGfx_hook, SYM(refreshLoadedTreeGfx), b_+11);
@@ -1583,7 +1583,7 @@ static void cutscene1f_after_call_7f1d_body(GB *gb, uint16_t sp0_) {
 void cutscene1f_hook(GB *gb) {
   BASE(cutscene1f);
   uint16_t sp0_ = gb->sp; (void)sp0_;
-  CYC(b_+0, b_+3); SET_HL((SYM(cutscene02__state0) + 26));
+  CYC(b_+0, b_+3); SET_HL(RV((SYM(cutscene02__state0) + 26), 0x7cbe));
   CYC(b_+3, b_+5); E = 0x03;
   CALL_C(b_+5, interBankCall_hook, 0x008a, b_+8);
   cutscene1f_after_call_7f1d_body(gb, sp0_);

@@ -191,10 +191,10 @@ error:
   CYC(b_+65, b_+68); SET_HL(wEnemyPlacement); // wTmpcec0
   CYC(b_+68, b_+70); B = 0x20;
   CALL_C(b_+70, clearMemory_hook, SYM(clearMemory), b_+73);
-  CYC(b_+73, b_+76); SET_HL((SYM(twinrova_state1__subid00State2) + 21)); // roomInitialization.generateRandomBuffer
+  CYC(b_+73, b_+76); SET_HL(RV((SYM(twinrova_state1__subid00State2) + 21), 0x7866)); // roomInitialization.generateRandomBuffer
   CYC(b_+76, b_+78); E = 0x02; // bank of roomInitialization
   CALL_C(b_+78, interBankCall_hook, 0x008a, b_+81);
-  CYC(b_+81, b_+84); SET_HL((SYM(patch_subid00__state0) + 61)); // objectData.objectData78db
+  CYC(b_+81, b_+84); SET_HL(RV((SYM(patch_subid00__state0) + 61), 0x78d1)); // objectData.objectData78db
   CYC(b_+84, b_+87); TAIL(parseGivenObjectData_b00); // jp
 
 state2:
@@ -210,7 +210,7 @@ state2:
 state3:
   CYC(b_+98, b_+100); A = 0x01;
   CYC(b_+100, b_+103); W8(wActiveTriggers) = A;
-  CYC(b_+103, b_+106); SET_HL((SYM(interaction6b_subid05__substate1) + 32)); // agesInteractionsBank08.spawnChestAndDeleteSelf
+  CYC(b_+103, b_+106); SET_HL(RV((SYM(interaction6b_subid05__substate1) + 32), 0x4f21)); // agesInteractionsBank08.spawnChestAndDeleteSelf
   CYC(b_+106, b_+108); E = 0x08; // bank of agesInteractionsBank08
   CYC(b_+108, b_+111); TAIL(interBankCall); // jp
 
@@ -230,7 +230,7 @@ void miscPuzzles_subid01_hook(GB *gb) {
   CALL_C(b_+9, miscPuzzles_verifyTilesAtPositions_hook, SYM(miscPuzzles_verifyTilesAtPositions), b_+12);
   if (!(F & FZ)) { RET_TAKEN(b_+12); return; } // ret nz
   CYC(b_+12, b_+13);
-  CYC(b_+13, b_+16); SET_HL((SYM(interaction6b_subid05__substate1) + 32)); // agesInteractionsBank08.spawnChestAndDeleteSelf
+  CYC(b_+13, b_+16); SET_HL(RV((SYM(interaction6b_subid05__substate1) + 32), 0x4f21)); // agesInteractionsBank08.spawnChestAndDeleteSelf
   CYC(b_+16, b_+18); E = 0x08; // bank of agesInteractionsBank08
   CYC(b_+18, b_+21); TAIL(interBankCall); // jp
 }
@@ -273,7 +273,7 @@ void miscPuzzles_subid03_hook(GB *gb) {
   CALL_C(b_+9, miscPuzzles_verifyTilesAtPositions_hook, SYM(miscPuzzles_verifyTilesAtPositions), b_+12);
   if (!(F & FZ)) { RET_TAKEN(b_+12); return; } // ret nz
   CYC(b_+12, b_+13);
-  CYC(b_+13, b_+16); SET_HL((SYM(interaction6b_subid05__substate1) + 32)); // agesInteractionsBank08.spawnChestAndDeleteSelf
+  CYC(b_+13, b_+16); SET_HL(RV((SYM(interaction6b_subid05__substate1) + 32), 0x4f21)); // agesInteractionsBank08.spawnChestAndDeleteSelf
   CYC(b_+16, b_+18); E = 0x08; // bank of agesInteractionsBank08
   CYC(b_+18, b_+21); TAIL(interBankCall); // jp
 }
@@ -342,7 +342,7 @@ afterSpawnSubid1:
   CYC(b_+37, b_+39); C = 0x06;
   CYC(b_+39, b_+42); push_effect(gb, b_+42); goto spawnSubid; // call
 afterSpawnSubid2:
-  CYC(b_+42, b_+45); SET_HL((SYM(interactionCode70__substate0__nextTile) + 32)); // bank16.loadD6ChangingFloorPatternToBigBuffer
+  CYC(b_+42, b_+45); SET_HL(RV((SYM(interactionCode70__substate0__nextTile) + 32), 0x55b8)); // bank16.loadD6ChangingFloorPatternToBigBuffer
   CYC(b_+45, b_+47); E = 0x16; // bank of bank16
   CALL_C(b_+47, interBankCall_hook, 0x008a, b_+50);
   RET(b_+50); return; // ret
@@ -544,7 +544,7 @@ afterCheckLitTorches_fromState0:
 makeTorchesLightable:
   CYC(b_+121, b_+124); push_effect(gb, b_+124); goto makeTorchesUnlightable;
 afterMakeTorchesUnlightable:
-  CYC(b_+124, b_+127); SET_HL((SYM(patch_subid00__state0) + 66)); // objectData.objectData_makeTorchesLightableForD6Room
+  CYC(b_+124, b_+127); SET_HL(RV((SYM(patch_subid00__state0) + 66), 0x78d6)); // objectData.objectData_makeTorchesLightableForD6Room
   CYC(b_+127, b_+130); TAIL(parseGivenObjectData_b00); // jp
 
   // Single caller (makeTorchesLightable, above), top-level depth sp0_.
@@ -999,7 +999,7 @@ void miscPuzzles_subid11_hook(GB *gb) {
   CYC(b_+17, b_+18); push_effect(gb, DE); // push de
   CALL_C(b_+18, reloadTileMap_hook, SYM(reloadTileMap), b_+21);
   CYC(b_+21, b_+22); SET_DE(pop_effect(gb)); // pop de
-  CYC(b_+22, b_+25); SET_HL((SYM(twinrova_state1__runOtherHalf) + 15)); // mainScripts.miscPuzzles_crownDungeonOpeningScript
+  CYC(b_+22, b_+25); SET_HL(RV((SYM(twinrova_state1__runOtherHalf) + 15), 0x783f)); // mainScripts.miscPuzzles_crownDungeonOpeningScript
   TAIL(miscPuzzles_setScriptAndIncState); // falls into miscPuzzles_setScriptAndIncState
 }
 
@@ -1023,7 +1023,7 @@ void miscPuzzles_subid12_hook(GB *gb) {
   CYC(b_+9, b_+11); alu_and(gb, 0x80); // ROOMFLAG_80
   if (!(F & FZ)) { CYCT(b_+11, b_+14); interactionDelete_hook(gb); return; } // jp nz
   CYC(b_+11, b_+14);
-  CYC(b_+14, b_+17); SET_HL((SYM(twinrova_state1__runSubid06) + 2)); // mainScripts.miscPuzzles_mermaidsCaveDungeonOpeningScript
+  CYC(b_+14, b_+17); SET_HL(RV((SYM(twinrova_state1__runSubid06) + 2), 0x7859)); // mainScripts.miscPuzzles_mermaidsCaveDungeonOpeningScript
   CYC(b_+17, b_+19); TAIL(miscPuzzles_setScriptAndIncState); // jr
 }
 
@@ -1038,7 +1038,7 @@ void miscPuzzles_subid13_hook(GB *gb) {
   CYC(b_+9, b_+11); alu_and(gb, 0x80); // ROOMFLAG_80
   if (!(F & FZ)) { CYCT(b_+11, b_+14); interactionDelete_hook(gb); return; } // jp nz
   CYC(b_+11, b_+14);
-  CYC(b_+14, b_+17); SET_HL((SYM(twinrova_loadScript) + 4)); // mainScripts.miscPuzzles_eyeglassLibraryOpeningScript
+  CYC(b_+14, b_+17); SET_HL(RV((SYM(twinrova_loadScript) + 4), 0x7863)); // mainScripts.miscPuzzles_eyeglassLibraryOpeningScript
   CYC(b_+17, b_+19); TAIL(miscPuzzles_setScriptAndIncState); // jr
 }
 
@@ -1297,7 +1297,7 @@ void miscPuzzles_subid1a_hook(GB *gb) {
   CALL_C(b_+9, miscPuzzles_verifyTilesAtPositions_hook, SYM(miscPuzzles_verifyTilesAtPositions), b_+12);
   if (!(F & FZ)) { RET_TAKEN(b_+12); return; } // ret nz
   CYC(b_+12, b_+13);
-  CYC(b_+13, b_+16); SET_HL((SYM(interaction6b_subid05__substate1) + 32)); // agesInteractionsBank08.spawnChestAndDeleteSelf
+  CYC(b_+13, b_+16); SET_HL(RV((SYM(interaction6b_subid05__substate1) + 32), 0x4f21)); // agesInteractionsBank08.spawnChestAndDeleteSelf
   CYC(b_+16, b_+18); E = 0x08;
   CYC(b_+18, b_+21); TAIL(interBankCall); // jp
 }

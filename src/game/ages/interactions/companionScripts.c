@@ -260,7 +260,7 @@ void companionScript_subid00_hook(GB *gb) {
   CYC(b_+35, b_+37); A = 0x01;
   CYC(b_+37, b_+40); W8(wDisableScreenTransitions) = A;
   CYC(b_+40, b_+43); W8(wDiggingUpEnemiesForbidden) = A;
-  CYC(b_+43, b_+46); SET_HL((SYM(fallingRock_subid01__state1) + 11)); // mainScripts.companionScript_subid00Script
+  CYC(b_+43, b_+46); SET_HL(RV((SYM(fallingRock_subid01__state1) + 11), 0x7468)); // mainScripts.companionScript_subid00Script
   CYC(b_+46, b_+49); TAIL(interactionSetScript); // jp
 }
 
@@ -280,7 +280,7 @@ void companionScript_subid03_hook(GB *gb) {
   CYC(b_+15, b_+17); alu_and(gb, 0x20);
   if (!(F & FZ)) { CYCT(b_+17, b_+19); companionScript_deleteSelf_hook(gb); return; } // jr nz
   CYC(b_+17, b_+19);
-  CYC(b_+19, b_+22); SET_HL((SYM(fallingRock_subid02__angles) + 3)); // mainScripts.companionScript_subid03Script
+  CYC(b_+19, b_+22); SET_HL(RV((SYM(fallingRock_subid02__angles) + 3), 0x74e2)); // mainScripts.companionScript_subid03Script
   CYC(b_+22, b_+25); TAIL(interactionSetScript); // jp
 }
 
@@ -299,7 +299,7 @@ void companionScript_subid07_hook(GB *gb) {
   CYC(b_+13, b_+15);
   CYC(b_+15, b_+17); A = 0x01;
   CYC(b_+17, b_+18); mem_wr(gb, DE, A);
-  CYC(b_+18, b_+21); SET_HL((SYM(fallingRock_subid02__angles) + 7)); // mainScripts.companionScript_subid07Script
+  CYC(b_+18, b_+21); SET_HL(RV((SYM(fallingRock_subid02__angles) + 7), 0x74e6)); // mainScripts.companionScript_subid07Script
   CYC(b_+21, b_+24); TAIL(interactionSetScript); // jp
 }
 
@@ -396,7 +396,7 @@ state1:
   CALL_C(b_+83, objectCreateInteraction_hook, SYM(objectCreateInteraction), b_+86);
   CYC(b_+86, b_+88); L = INTERACTION_BASE + OBJ_VAR03;
   CYC(b_+88, b_+90); mem_wr(gb, HL, 0x0f);
-  CYC(b_+90, b_+93); SET_HL((SYM(fallingRock_updateSpeedAndDeleteWhenLanded) + 7)); // mainScripts.companionScript_subid08Script
+  CYC(b_+90, b_+93); SET_HL(RV((SYM(fallingRock_updateSpeedAndDeleteWhenLanded) + 7), 0x7505)); // mainScripts.companionScript_subid08Script
   CALL_C(b_+93, interactionSetScript_hook, SYM(interactionSetScript), b_+96);
   CYC(b_+96, b_+99); TAIL(interactionIncState); // jp
 }
@@ -450,7 +450,7 @@ void companionScript_subid09_hook(GB *gb) {
 l5b4b:
   CYC(b_+64, b_+65); A = mem_rd(gb, HL); SET_HL(HL + 1); // ldi a,(hl)
   CYC(b_+65, b_+68); mem_wr(gb, wTextSubstitutions + 1, A);
-  CYC(b_+68, b_+71); SET_HL(SYM(fallingRock_subid03)); // mainScripts.companionScript_subid09Script
+  CYC(b_+68, b_+71); SET_HL(RV(SYM(fallingRock_subid03), 0x7509)); // mainScripts.companionScript_subid09Script
   CYC(b_+71, b_+74); TAIL(interactionSetScript); // jp
 }
 
@@ -515,7 +515,7 @@ nextFairy:
   CYC(b_+88, b_+89); C = alu_dec8(gb, C);
   if (!(F & FZ)) { CYCT(b_+89, b_+91); goto nextFairy; } // jr nz
   CYC(b_+89, b_+91);
-  CYC(b_+91, b_+94); SET_HL((SYM(fallingRock_subid03) + 4)); // mainScripts.companionScript_subid0aScript
+  CYC(b_+91, b_+94); SET_HL(RV((SYM(fallingRock_subid03) + 4), 0x750d)); // mainScripts.companionScript_subid0aScript
   CYC(b_+94, b_+97); TAIL(interactionSetScript); // jp
 }
 
@@ -640,7 +640,7 @@ void companionScript_subid0b_hook(GB *gb) {
   CYC(b_+44, b_+47); W8(wDisabledObjects) = A;
   CYC(b_+47, b_+48); alu_xor(gb, A);
   CYC(b_+48, b_+51); W8(wTmpcfc0_fairyHideAndSeek_cfd2) = A;
-  CYC(b_+51, b_+54); SET_HL((SYM(fallingRock_subid03__state0) + 3)); // mainScripts.companionScript_subid0bScript
+  CYC(b_+51, b_+54); SET_HL(RV((SYM(fallingRock_subid03__state0) + 3), 0x7511)); // mainScripts.companionScript_subid0bScript
   CALL_C(b_+54, interactionSetScript_hook, SYM(interactionSetScript), b_+57);
   CYC(b_+57, b_+60); TAIL(interactionIncState); // jp
 }

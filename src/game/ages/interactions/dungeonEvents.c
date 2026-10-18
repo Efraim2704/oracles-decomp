@@ -387,28 +387,28 @@ void interaction21_subid0b_hook(GB *gb) {
   CYC(b_+13, b_+16); SET_HL(objectData77d4_bank12);
   CALL_C(b_+16, parseGivenObjectData_b00_hook, SYM(parseGivenObjectData_b00), b_+19);
 
-  CYC(b_+19, b_+22); SET_BC((SYM(interactionCode1f__subid0) + 1));
+  CYC(b_+19, b_+22); SET_BC(RV((SYM(interactionCode1f__subid0) + 1), 0x4b35));
   CALL_C(b_+22, makeTorchAtPositionTemporarilyLightable_hook, SYM(makeTorchAtPositionTemporarilyLightable), b_+25);
   if (!(F & FZ)) {
     CYCT(b_+25, b_+28); TAIL(interactionDelete);
   }
   CYC(b_+25, b_+28);
 
-  CYC(b_+28, b_+31); SET_BC((SYM(interactionCode1f__subid0) + 31));
+  CYC(b_+28, b_+31); SET_BC(RV((SYM(interactionCode1f__subid0) + 31), 0x4b53));
   CALL_C(b_+31, makeTorchAtPositionTemporarilyLightable_hook, SYM(makeTorchAtPositionTemporarilyLightable), b_+34);
   if (!(F & FZ)) {
     CYCT(b_+34, b_+37); TAIL(interactionDelete);
   }
   CYC(b_+34, b_+37);
 
-  CYC(b_+37, b_+40); SET_BC((SYM(interactionCode1f__subid0) + 35));
+  CYC(b_+37, b_+40); SET_BC(RV((SYM(interactionCode1f__subid0) + 35), 0x4b57));
   CALL_C(b_+40, makeTorchAtPositionTemporarilyLightable_hook, SYM(makeTorchAtPositionTemporarilyLightable), b_+43);
   if (!(F & FZ)) {
     CYCT(b_+43, b_+46); TAIL(interactionDelete);
   }
   CYC(b_+43, b_+46);
 
-  CYC(b_+46, b_+49); SET_BC((SYM(interactionCode1f__subid0__initialize) + 14));
+  CYC(b_+46, b_+49); SET_BC(RV((SYM(interactionCode1f__subid0__initialize) + 14), 0x4b75));
   CALL_C(b_+49, makeTorchAtPositionTemporarilyLightable_hook, SYM(makeTorchAtPositionTemporarilyLightable), b_+52);
   if (!(F & FZ)) {
     CYCT(b_+52, b_+55); TAIL(interactionDelete);

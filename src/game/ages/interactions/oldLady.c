@@ -251,7 +251,7 @@ initSubid0:
   CYC(b_+56, b_+58); A = 0x01;
   CYC(b_+58, b_+60); E = INTERACTION_BASE + OBJ_VAR03;
   CYC(b_+60, b_+61); mem_wr(gb, DE, A);
-  CYC(b_+61, b_+64); SET_BC((SYM(interactionCode15__subid00) + 9));
+  CYC(b_+61, b_+64); SET_BC(RV((SYM(interactionCode15__subid00) + 9), 0x4878));
   CALL_C(b_+64, interactionSetPosition_hook, SYM(interactionSetPosition), b_+67);
   oldLady_loadScript(gb);
   return;

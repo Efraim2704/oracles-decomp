@@ -94,7 +94,7 @@ afterInitGraphicsAndLoadScript:
   RET(b_+53); return; // ret
 
 subid00_alreadyGaveShovel:
-  CYC(b_+54, b_+57); SET_HL((SYM(miscPuzzles_subid0e__state1) + 1)); // mainScripts.rosa_subid00Script_alreadyGaveShovel
+  CYC(b_+54, b_+57); SET_HL(RV((SYM(miscPuzzles_subid0e__state1) + 1), 0x710b)); // mainScripts.rosa_subid00Script_alreadyGaveShovel
   CYC(b_+57, b_+60); TAIL(interactionSetScript); // jp
 
 subid00_state1:

@@ -70,7 +70,7 @@ subid2:
   CALL_C(b_+36, checkGlobalFlag_hook, SYM(checkGlobalFlag), b_+39);
   if (F & FZ) { CYCT(b_+39, b_+42); interactionDelete_hook(gb); return; } // jp z
   CYC(b_+39, b_+42);
-  CYC(b_+42, b_+45); SET_HL((SYM(interaction6e_subid02__state1) + 12)); // agesInteractionsBank08.shootingGalleryNpc
+  CYC(b_+42, b_+45); SET_HL(RV((SYM(interaction6e_subid02__state1) + 12), 0x562a)); // agesInteractionsBank08.shootingGalleryNpc
   CYC(b_+45, b_+47); E = 0x08;
   CYC(b_+47, b_+50); TAIL(interBankCall); // jp
 

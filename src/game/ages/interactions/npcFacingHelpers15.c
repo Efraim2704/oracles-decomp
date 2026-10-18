@@ -26,7 +26,7 @@ void turnToFaceSomethingAtInterval_hook(GB *gb) {
     RET_TAKEN(b_+5); return;
   }
   CYC(b_+5, b_+6);
-  CYC(b_+6, b_+9); SET_HL((SYM(symmetryNpcSubid8And9Script__almostDoneTalking_b15) + 3));
+  CYC(b_+6, b_+9); SET_HL(RV((SYM(symmetryNpcSubid8And9Script__almostDoneTalking_b15) + 3), 0x788a));
   CYC(b_+9, b_+11); E = 0x0a;
   CALL_C(b_+11, interBankCall_hook, 0x008a, b_+14);
   CALL_C(b_+14, objectGetRelativeAngle_hook, SYM(objectGetRelativeAngle), b_+17);

@@ -39,7 +39,7 @@ void interactionCode9c_choosePresentKingZoraScript_hook(GB *gb) {
   CYC(b_+105, b_+107);
   CYC(b_+107, b_+109); A = 0x14; // GLOBALFLAG_FINISHEDGAME
   CALL_C(b_+109, checkGlobalFlag_hook, SYM(checkGlobalFlag), b_+112);
-  CYC(b_+112, b_+115); SET_HL((SYM(interactiond7_makuSeed__state3Substate9) + 1)); // mainScripts.kingZoraScript_present_afterD7
+  CYC(b_+112, b_+115); SET_HL(RV((SYM(interactiond7_makuSeed__state3Substate9) + 1), 0x7b02)); // mainScripts.kingZoraScript_present_afterD7
   if (F & FZ) { CYCT(b_+115, b_+116); ret_effect(gb); return; } // ret z
   CYC(b_+115, b_+116);
   CYC(b_+116, b_+118); A = 0x05; // TREASURE_SWORD
@@ -47,30 +47,30 @@ void interactionCode9c_choosePresentKingZoraScript_hook(GB *gb) {
   CYC(b_+121, b_+123); alu_and(gb, 0x01);
   CYC(b_+123, b_+125); E = INTERACTION_BASE + OBJ_VAR03;
   CYC(b_+125, b_+126); mem_wr(gb, DE, A);
-  CYC(b_+126, b_+129); SET_HL((SYM(interactiond7_makuSeed__state3Substate9) + 7)); // mainScripts.kingZoraScript_present_postGame
+  CYC(b_+126, b_+129); SET_HL(RV((SYM(interactiond7_makuSeed__state3Substate9) + 7), 0x7b08)); // mainScripts.kingZoraScript_present_postGame
   RET(b_+129); return;
 
 pollutionNotFixed:
   CYC(b_+130, b_+132); A = 0x46; // TREASURE_LIBRARY_KEY
   CALL_C(b_+132, checkTreasureObtained_hook, SYM(checkTreasureObtained), b_+135);
-  CYC(b_+135, b_+138); SET_HL((SYM(interactiond7_makuSeed__essenceRotationCommon) + 7)); // mainScripts.kingZoraScript_present_acceptedTask
+  CYC(b_+135, b_+138); SET_HL(RV((SYM(interactiond7_makuSeed__essenceRotationCommon) + 7), 0x7aee)); // mainScripts.kingZoraScript_present_acceptedTask
   if (F & FC) { CYCT(b_+138, b_+139); ret_effect(gb); return; } // ret c
   CYC(b_+138, b_+139);
   CALL_C(b_+139, getThisRoomFlags_hook, SYM(getThisRoomFlags), b_+142);
   CYC(b_+142, b_+144); alu_bit(gb, 6, mem_rd(gb, HL));
-  CYC(b_+144, b_+147); SET_HL((SYM(interactiond7_makuSeed__state3Substate2) + 17)); // mainScripts.kingZoraScript_present_firstTime
+  CYC(b_+144, b_+147); SET_HL(RV((SYM(interactiond7_makuSeed__state3Substate2) + 17), 0x7acd)); // mainScripts.kingZoraScript_present_firstTime
   if (F & FZ) { CYCT(b_+147, b_+148); ret_effect(gb); return; } // ret z
   CYC(b_+147, b_+148);
-  CYC(b_+148, b_+151); SET_HL((SYM(interactiond7_makuSeed__state3Substate3) + 11)); // mainScripts.kingZoraScript_present_giveKey
+  CYC(b_+148, b_+151); SET_HL(RV((SYM(interactiond7_makuSeed__state3Substate3) + 11), 0x7ada)); // mainScripts.kingZoraScript_present_giveKey
   RET(b_+151); return;
 
 justCleanedWater:
   CYC(b_+152, b_+154); A = 0x31; // GLOBALFLAG_GOT_PERMISSION_TO_ENTER_JABU
   CALL_C(b_+154, checkGlobalFlag_hook, SYM(checkGlobalFlag), b_+157);
-  CYC(b_+157, b_+160); SET_HL((SYM(interactiond7_makuSeed__state3Substate8) + 4)); // mainScripts.kingZoraScript_present_justCleanedWater
+  CYC(b_+157, b_+160); SET_HL(RV((SYM(interactiond7_makuSeed__state3Substate8) + 4), 0x7af4)); // mainScripts.kingZoraScript_present_justCleanedWater
   if (F & FZ) { CYCT(b_+160, b_+161); ret_effect(gb); return; } // ret z
   CYC(b_+160, b_+161);
-  CYC(b_+161, b_+164); SET_HL((SYM(interactiond7_makuSeed__state3Substate8) + 12)); // mainScripts.kingZoraScript_present_cleanedWater
+  CYC(b_+161, b_+164); SET_HL(RV((SYM(interactiond7_makuSeed__state3Substate8) + 12), 0x7afc)); // mainScripts.kingZoraScript_present_cleanedWater
   RET(b_+164); return;
 }
 
@@ -84,25 +84,25 @@ void interactionCode9c_choosePastKingZoraScript_hook(GB *gb) {
   CYC(b_+170, b_+172);
   CYC(b_+172, b_+174); A = 0x30; // GLOBALFLAG_WATER_POLLUTION_FIXED
   CALL_C(b_+174, checkGlobalFlag_hook, SYM(checkGlobalFlag), b_+177);
-  CYC(b_+177, b_+180); SET_HL((SYM(interactiond7_makuSeed__state4Substate3) + 21)); // mainScripts.kingZoraScript_past_justCured
+  CYC(b_+177, b_+180); SET_HL(RV((SYM(interactiond7_makuSeed__state4Substate3) + 21), 0x7b8e)); // mainScripts.kingZoraScript_past_justCured
   if (F & FZ) { CYCT(b_+180, b_+181); ret_effect(gb); return; } // ret z
   CYC(b_+180, b_+181);
   CYC(b_+181, b_+183); A = 0x40; // TREASURE_ESSENCE
   CALL_C(b_+183, checkTreasureObtained_hook, SYM(checkTreasureObtained), b_+186);
   CYC(b_+186, b_+188); alu_bit(gb, 6, A);
-  CYC(b_+188, b_+191); SET_HL((SYM(interactiond7_makuSeed__state4Substate3__unlinkedGame) + 2)); // mainScripts.kingZoraScript_past_cleanedWater
+  CYC(b_+188, b_+191); SET_HL(RV((SYM(interactiond7_makuSeed__state4Substate3__unlinkedGame) + 2), 0x7b94)); // mainScripts.kingZoraScript_past_cleanedWater
   if (F & FZ) { CYCT(b_+191, b_+192); ret_effect(gb); return; } // ret z
   CYC(b_+191, b_+192);
-  CYC(b_+192, b_+195); SET_HL((SYM(interactiond7_makuSeed__state4Substate3__unlinkedGame) + 8)); // mainScripts.kingZoraScript_past_afterD7
+  CYC(b_+192, b_+195); SET_HL(RV((SYM(interactiond7_makuSeed__state4Substate3__unlinkedGame) + 8), 0x7b9a)); // mainScripts.kingZoraScript_past_afterD7
   RET(b_+195); return;
 
 notCured:
   CYC(b_+196, b_+198); A = 0x2f; // TREASURE_POTION
   CALL_C(b_+198, checkTreasureObtained_hook, SYM(checkTreasureObtained), b_+201);
-  CYC(b_+201, b_+204); SET_HL((SYM(interactiond7_makuSeed__tileReplacements) + 35)); // mainScripts.kingZoraScript_past_dontHavePotion
+  CYC(b_+201, b_+204); SET_HL(RV((SYM(interactiond7_makuSeed__tileReplacements) + 35), 0x7b5c)); // mainScripts.kingZoraScript_past_dontHavePotion
   if (!(F & FC)) { CYCT(b_+204, b_+205); ret_effect(gb); return; } // ret nc
   CYC(b_+204, b_+205);
-  CYC(b_+205, b_+208); SET_HL((SYM(interactiond7_makuSeed__state4Substate1) + 4)); // mainScripts.kingZoraScript_past_havePotion
+  CYC(b_+205, b_+208); SET_HL(RV((SYM(interactiond7_makuSeed__state4Substate1) + 4), 0x7b62)); // mainScripts.kingZoraScript_past_havePotion
   RET(b_+208); return;
 }
 

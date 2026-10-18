@@ -91,7 +91,7 @@ initializeItem:
 after1_checkTransformItem:
   if (!(F & FZ)) { CYCT(b_+58, b_+61); interactionDelete_hook(gb); return; } // jp nz
   CYC(b_+58, b_+61);
-  CYC(b_+61, b_+64); SET_HL((SYM(interactionCode93__subid0Or1) + 8)); // mainScripts.tokayShopItemScript
+  CYC(b_+61, b_+64); SET_HL(RV((SYM(interactionCode93__subid0Or1) + 8), 0x7616)); // mainScripts.tokayShopItemScript
   CALL_C(b_+64, interactionSetScript_hook, SYM(interactionSetScript), b_+67);
   CYC(b_+67, b_+69); E = INTERACTION_BASE + OBJ_PRESSED_A_BUTTON;
   CALL_C(b_+69, objectAddToAButtonSensitiveObjectList_hook, SYM(objectAddToAButtonSensitiveObjectList), b_+72);

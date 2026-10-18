@@ -282,7 +282,7 @@ subid0Substate0:
   CYC(b_+204, b_+207); TAIL(interactionIncSubstate); // jp
 
 subid0Substate1:
-  CYC(b_+207, b_+210); SET_BC((SYM(zelda_state0__initSubid00) + 5));
+  CYC(b_+207, b_+210); SET_BC(RV((SYM(zelda_state0__initSubid00) + 5), 0x6365));
 
 setGroundTilesWhenCounterIsZero:
   CALL_C(b_+210, interactionDecCounter1_hook, SYM(interactionDecCounter1), b_+213);
@@ -296,7 +296,7 @@ setGroundTilesWhenCounterIsZero:
   CYC(b_+224, b_+227); TAIL(interactionIncSubstate); // jp
 
 subid0Substate2:
-  CYC(b_+227, b_+230); SET_BC((SYM(zora_subid1B__textTable) + 17));
+  CYC(b_+227, b_+230); SET_BC(RV((SYM(zora_subid1B__textTable) + 17), 0x6266));
 
 setHoleTilesWhenCounterIsZero:
   CALL_C(b_+230, interactionDecCounter1_hook, SYM(interactionDecCounter1), b_+233);
@@ -310,15 +310,15 @@ setHoleTilesWhenCounterIsZero:
   CYC(b_+244, b_+247); TAIL(interactionIncSubstate); // jp
 
 subid0Substate3:
-  CYC(b_+247, b_+250); SET_BC((SYM(zora_subid1B__textTable) + 17));
+  CYC(b_+247, b_+250); SET_BC(RV((SYM(zora_subid1B__textTable) + 17), 0x6266));
   CYC(b_+250, b_+252); goto setGroundTilesWhenCounterIsZero; // jr
 
 subid0Substate4:
-  CYC(b_+252, b_+255); SET_BC((SYM(zora_subid0B__animationTable) + 9));
+  CYC(b_+252, b_+255); SET_BC(RV((SYM(zora_subid0B__animationTable) + 9), 0x6167));
   CYC(b_+255, b_+257); goto setHoleTilesWhenCounterIsZero; // jr
 
 subid0Substate5:
-  CYC(b_+257, b_+260); SET_BC((SYM(zora_subid0B__animationTable) + 9));
+  CYC(b_+257, b_+260); SET_BC(RV((SYM(zora_subid0B__animationTable) + 9), 0x6167));
   CYC(b_+260, b_+262); goto setGroundTilesWhenCounterIsZero; // jr
 
 subid0Substate6:
@@ -441,11 +441,11 @@ subid1Substate0:
   CYC(b_+514, b_+517); TAIL(interactionIncSubstate); // jp
 
 subid1Substate1:
-  CYC(b_+517, b_+520); SET_BC((SYM(creditsTextHorizontal_6559) + 10));
+  CYC(b_+517, b_+520); SET_BC(RV((SYM(creditsTextHorizontal_6559) + 10), 0x6563));
   CYC(b_+520, b_+523); goto setGroundTilesWhenCounterIsZero; // jp (local)
 
 subid1Substate2:
-  CYC(b_+523, b_+526); SET_BC((SYM(interactionCodeaf__state1) + 1));
+  CYC(b_+523, b_+526); SET_BC(RV((SYM(interactionCodeaf__state1) + 1), 0x6662));
 
 setHoleTilesWhenCounterZero_2:
   CALL_C(b_+526, interactionDecCounter1_hook, SYM(interactionDecCounter1), b_+529);
@@ -459,15 +459,15 @@ setHoleTilesWhenCounterZero_2:
   CYC(b_+540, b_+543); TAIL(interactionIncSubstate); // jp
 
 subid1Substate3:
-  CYC(b_+543, b_+546); SET_BC((SYM(interactionCodeaf__state1) + 1));
+  CYC(b_+543, b_+546); SET_BC(RV((SYM(interactionCodeaf__state1) + 1), 0x6662));
   CYC(b_+546, b_+549); goto setGroundTilesWhenCounterIsZero; // jp (local)
 
 subid1Substate4:
-  CYC(b_+549, b_+552); SET_BC((SYM(zora_subid0B__animationTable) + 9));
+  CYC(b_+549, b_+552); SET_BC(RV((SYM(zora_subid0B__animationTable) + 9), 0x6167));
   CYC(b_+552, b_+555); goto setHoleTilesWhenCounterZero_2; // jp (local)
 
 subid1Substate5:
-  CYC(b_+555, b_+558); SET_BC((SYM(twinrovaInCutscene_loadScript) + 1));
+  CYC(b_+555, b_+558); SET_BC(RV((SYM(twinrovaInCutscene_loadScript) + 1), 0x6761));
   CYC(b_+558, b_+561); goto setGroundTilesWhenCounterIsZero; // jp (local)
 
 subid1Substate6:

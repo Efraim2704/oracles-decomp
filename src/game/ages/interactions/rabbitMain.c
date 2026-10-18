@@ -198,7 +198,7 @@ static void rabbit_subid1_substate2(GB *gb, uint16_t sp0_) {
 
 static void rabbit_subid1_substate3(GB *gb, uint16_t sp0_) {
   BASE(rabbitSubid1);
-  CYC(b_+97, b_+100); SET_HL((SYM(enemyData) + 60));
+  CYC(b_+97, b_+100); SET_HL(RV((SYM(enemyData) + 60), 0x5d8b));
   CYC(b_+100, b_+102); E = 0x08;
   CALL_C(b_+102, interBankCall_hook, 0x008a, b_+105);
   CALL_C(b_+105, interactionDecCounter2_hook, SYM(interactionDecCounter2), b_+108);
@@ -330,7 +330,7 @@ static void rabbit_subid3_substate1(GB *gb, uint16_t sp0_) {
   CALL_C(b_+31, interactionDecCounter1_hook, SYM(interactionDecCounter1), b_+34);
   if (!(F & FZ)) {
     CYC(b_+34, b_+36);
-    CYC(b_+36, b_+39); SET_HL((SYM(tuniNut_state0) + 2));
+    CYC(b_+36, b_+39); SET_HL(RV((SYM(tuniNut_state0) + 2), 0x7b74));
     CYC(b_+39, b_+41); E = 0x08;
     CYC(b_+41, b_+44);
     TAIL(interBankCall);
@@ -417,7 +417,7 @@ static void rabbit_subid4_substate0(GB *gb, uint16_t sp0_) {
     CYC(b_+21, b_+22); H = D;
     CYC(b_+22, b_+24); L = 0x45;
     CYC(b_+24, b_+26); mem_wr(gb, HL, 0x02);
-    CYC(b_+26, b_+29); SET_HL((SYM(partData) + 655));
+    CYC(b_+26, b_+29); SET_HL(RV((SYM(partData) + 655), 0x635f));
     CYC(b_+29, b_+32);
     TAIL(interactionSetScript);
   }
@@ -688,7 +688,7 @@ static void rabbit_init_subid(GB *gb, uint16_t sp0_) {
   CYC(b_+31, b_+32); push_effect(gb, b_+32);
   do { uint16_t jt_ = (rabbit_jump_table(gb));
     if (jt_ == b_+48) {
-      CYC(b_+48, b_+51); SET_HL((SYM(partData) + 638));
+      CYC(b_+48, b_+51); SET_HL(RV((SYM(partData) + 638), 0x634e));
       CYC(b_+51, b_+54); interactionSetScript_hook(gb);
       return;
     }
@@ -781,12 +781,12 @@ static void rabbit_init_subid(GB *gb, uint16_t sp0_) {
       CYC(b_+164, b_+167);
       CYC(b_+167, b_+169); A = 0x11;
       CALL_C(b_+169, checkGlobalFlag_hook, SYM(checkGlobalFlag), b_+172);
-      CYC(b_+172, b_+175); SET_HL((SYM(partData) + 662));
+      CYC(b_+172, b_+175); SET_HL(RV((SYM(partData) + 662), 0x6366));
       if (F & FZ) {
         CYCT(b_+175, b_+178);
       } else {
         CYC(b_+175, b_+178);
-        CYC(b_+178, b_+181); SET_HL((SYM(partData) + 665));
+        CYC(b_+178, b_+181); SET_HL(RV((SYM(partData) + 665), 0x6369));
       }
       CALL_C(b_+181, interactionSetScript_hook, SYM(interactionSetScript), b_+184);
       rabbit_dispatch_state1(gb, sp0_);

@@ -66,7 +66,7 @@ initSpeedToScrollLeft:
   CYC(b_+43, b_+45); mem_wr(gb, HL, 0x18); // ANGLE_LEFT
   CYC(b_+45, b_+47); L = INTERACTION_BASE + OBJ_SPEED;
   CYC(b_+47, b_+49); mem_wr(gb, HL, 0x05); // SPEED_20
-  CYC(b_+49, b_+52); SET_BC((SYM(miscPuzzles_dropSmallKeyHere) + 11));
+  CYC(b_+49, b_+52); SET_BC(RV((SYM(miscPuzzles_dropSmallKeyHere) + 11), 0x7080));
   CYC(b_+52, b_+55); TAIL(interactionSetPosition); // jp
 
 subid2Init:

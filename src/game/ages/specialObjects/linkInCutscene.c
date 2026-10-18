@@ -416,7 +416,7 @@ void linkCutsceneFunc_73e8_hook(GB *gb) {
   CYC(b_+3, b_+5); alu_and(gb, 0x07);
   if (!(F & FZ)) { CYCT(b_+5, b_+6); ret_effect(gb); return; }
   CYC(b_+5, b_+6);
-  CYC(b_+6, b_+9); SET_HL((SYM(breakableTileCollisionTable__overworld) + 83));
+  CYC(b_+6, b_+9); SET_HL(RV((SYM(breakableTileCollisionTable__overworld) + 83), 0x788a));
   CYC(b_+9, b_+11); E = 0x0a;
   CALL_C(b_+11, interBankCall_hook, 0x008a, b_+14);
   CALL_C(b_+14, objectGetRelativeAngle_hook, SYM(objectGetRelativeAngle), b_+17);

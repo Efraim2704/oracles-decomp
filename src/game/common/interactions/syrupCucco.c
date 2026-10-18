@@ -91,7 +91,7 @@ void interactionCodec9_setScriptAndGotoState4_hook(GB *gb) {
 // targets it, and that branch's own tail-jump path bypasses it entirely; zero real callers).
 void interactionCodec9_gotoState4_hook(GB *gb) {
   BASE(interactionCodec9);
-  CYC(b_+130, b_+133); SET_HL((SYM(interactionCoded8__subid4Script) + 81)); // script pointer
+  CYC(b_+130, b_+133); SET_HL(RV((SYM(interactionCoded8__subid4Script) + 81), GV(0x7ed0, (SYM(interactionCoded8__subid4Script) + 81)))); // script pointer
   interactionCodec9_setScriptAndGotoState4_hook(gb); return;
 }
 
@@ -113,7 +113,7 @@ void interactionCodec9_func_766f_hook(GB *gb) {
   CYC(b_+120, b_+121); H = A;
   CYC(b_+121, b_+123); E = INTERACTION_BASE + OBJ_VAR3A;
   CYC(b_+123, b_+124); mem_wr(gb, DE, A);
-  CYC(b_+124, b_+127); SET_HL((SYM(interactionCoded8__subid4Script) + 81)); // script pointer
+  CYC(b_+124, b_+127); SET_HL(RV((SYM(interactionCoded8__subid4Script) + 81), GV(0x7ed0, (SYM(interactionCoded8__subid4Script) + 81)))); // script pointer
   CYC(b_+127, b_+130); interactionCodec9_setScriptAndGotoState4_hook(gb); return; // jp $768f (skips @gotoState4)
 }
 
@@ -189,7 +189,7 @@ state2:
   CYC(b_+157, b_+159); E = INTERACTION_BASE + OBJ_VAR3D;
   CYC(b_+159, b_+160); alu_xor(gb, A);
   CYC(b_+160, b_+161); mem_wr(gb, DE, A);
-  CYC(b_+161, b_+164); SET_HL((SYM(interactionCoded8__subid4Script) + 81)); // script pointer
+  CYC(b_+161, b_+164); SET_HL(RV((SYM(interactionCoded8__subid4Script) + 81), GV(0x7ed0, (SYM(interactionCoded8__subid4Script) + 81)))); // script pointer
   CYC(b_+164, b_+167); interactionCodec9_setScriptAndGotoState4_hook(gb); return; // jp $768f
 
 state3:

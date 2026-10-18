@@ -921,7 +921,7 @@ static void monkey_init_subid0(GB *gb, uint16_t sp0_) {
   BASE(interactionCode39_body);
   CYC(b_+59, b_+61); A = 0x02;
   CALL_C(b_+61, interactionSetAnimation_hook, SYM(interactionSetAnimation), b_+64);
-  CYC(b_+64, b_+67); SET_HL((SYM(objectGfxHeaderTable) + 84));
+  CYC(b_+64, b_+67); SET_HL(RV((SYM(objectGfxHeaderTable) + 84), 0x5ae1));
   CYC(b_+67, b_+70);
   interactionSetScript_hook(gb);
 }
@@ -1069,7 +1069,7 @@ static void monkey_init_subid4(GB *gb, uint16_t sp0_) {
     CYC(b_+274, b_+276);
     CYC(b_+276, b_+278); L = 0x7c;
     CYC(b_+278, b_+279); mem_wr(gb, HL, alu_inc8(gb, mem_rd(gb, HL)));
-    CYC(b_+279, b_+282); SET_BC((SYM(itemData) + 127));
+    CYC(b_+279, b_+282); SET_BC(RV((SYM(itemData) + 127), 0x6424));
     CYC(b_+282, b_+285);
     TAIL(interactionSetPosition);
   }
@@ -1100,7 +1100,7 @@ static void monkey_init_subid5(GB *gb, uint16_t sp0_) {
   CYC(b_+332, b_+334); L = 0x46;
   CYC(b_+334, b_+335); mem_wr(gb, HL, A); SET_HL(HL + 1);
   CYC(b_+335, b_+336); mem_wr(gb, HL, A);
-  CYC(b_+336, b_+339); SET_HL((SYM(objectGfxHeaderTable) + 106));
+  CYC(b_+336, b_+339); SET_HL(RV((SYM(objectGfxHeaderTable) + 106), 0x5af7));
   CYC(b_+339, b_+341); E = 0x43;
   CYC(b_+341, b_+342); A = mem_rd(gb, DE);
   CYC(b_+342, b_+344); alu_cp(gb, 0x08);
@@ -1111,7 +1111,7 @@ static void monkey_init_subid5(GB *gb, uint16_t sp0_) {
     CYC(b_+346, b_+347); push_effect(gb, AF);
     CYC(b_+347, b_+350); push_effect(gb, b_+350);
     monkey_init_bowtie(gb, sp0_);
-    CYC(b_+350, b_+353); SET_HL((SYM(objectGfxHeaderTable) + 124));
+    CYC(b_+350, b_+353); SET_HL(RV((SYM(objectGfxHeaderTable) + 124), 0x5b09));
     CYC(b_+353, b_+354); SET_AF(pop_effect(gb));
   }
   CYC(b_+354, b_+356); alu_cp(gb, 0x05);
@@ -1155,7 +1155,7 @@ static void monkey_init_subid7(GB *gb, uint16_t sp0_) {
         CYCT(b_+396, b_+399); TAIL(interactionDelete);
       }
       CYC(b_+396, b_+399);
-      CYC(b_+399, b_+402); SET_HL((SYM(objectGfxHeaderTable) + 132));
+      CYC(b_+399, b_+402); SET_HL(RV((SYM(objectGfxHeaderTable) + 132), 0x5b11));
       CALL_C(b_+402, interactionSetScript_hook, SYM(interactionSetScript), b_+405);
       CYC(b_+405, b_+407); A = 0x06;
       CYC(b_+407, b_+409);
@@ -1169,7 +1169,7 @@ static void monkey_init_subid7(GB *gb, uint16_t sp0_) {
         CYCT(b_+414, b_+417); TAIL(interactionDelete);
       }
       CYC(b_+414, b_+417);
-      CYC(b_+417, b_+420); SET_HL((SYM(objectGfxHeaderTable) + 144));
+      CYC(b_+417, b_+420); SET_HL(RV((SYM(objectGfxHeaderTable) + 144), 0x5b1d));
       CALL_C(b_+420, interactionSetScript_hook, SYM(interactionSetScript), b_+423);
       CYC(b_+423, b_+425); A = 0x05;
       CYC(b_+425, b_+427);
@@ -1191,12 +1191,12 @@ static void monkey_init_subid7(GB *gb, uint16_t sp0_) {
       CYC(b_+440, b_+443);
       CYC(b_+443, b_+445); A = 0x11;
       CALL_C(b_+445, checkGlobalFlag_hook, SYM(checkGlobalFlag), b_+448);
-      CYC(b_+448, b_+451); SET_HL((SYM(objectGfxHeaderTable) + 156));
+      CYC(b_+448, b_+451); SET_HL(RV((SYM(objectGfxHeaderTable) + 156), 0x5b29));
       if (F & FZ) {
         CYCT(b_+451, b_+454);
       } else {
         CYC(b_+451, b_+454);
-        CYC(b_+454, b_+457); SET_HL((SYM(objectGfxHeaderTable) + 168));
+        CYC(b_+454, b_+457); SET_HL(RV((SYM(objectGfxHeaderTable) + 168), 0x5b35));
       }
       CALL_C(b_+457, interactionSetScript_hook, SYM(interactionSetScript), b_+460);
       CYC(b_+460, b_+462); A = 0x05;

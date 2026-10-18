@@ -78,7 +78,7 @@ state0:
   CYC(b_+77, b_+80); W8(wMenuDisabled) = A;
   CALL_C(b_+80, interactionIncState_hook, SYM(interactionIncState), b_+83);
   CALL_C(b_+83, objectSetVisible82_hook, SYM(objectSetVisible82), b_+86);
-  CYC(b_+86, b_+89); SET_HL((SYM(miscPuzzles_subid19__state4) + 27)); // mainScripts.possessedNayru_beginFightScript
+  CYC(b_+86, b_+89); SET_HL(RV((SYM(miscPuzzles_subid19__state4) + 27), 0x729c)); // mainScripts.possessedNayru_beginFightScript
   CYC(b_+89, b_+92); TAIL(interactionSetScript); // jp
 
 state1:
@@ -142,7 +142,7 @@ state1:
   CYC(b_+31, b_+33); L = INTERACTION_BASE + OBJ_SPEED;
   CYC(b_+33, b_+35); mem_wr(gb, HL, 0x14); // SPEED_80
   CALL_C(b_+35, objectSetVisible81_hook, SYM(objectSetVisible81), b_+38);
-  CYC(b_+38, b_+41); SET_HL((SYM(miscPuzzles_subid1a) + 1)); // mainScripts.possessedNayru_veranGhostScript
+  CYC(b_+38, b_+41); SET_HL(RV((SYM(miscPuzzles_subid1a) + 1), 0x72bb)); // mainScripts.possessedNayru_veranGhostScript
   CYC(b_+41, b_+44); TAIL(interactionSetScript); // jp
 
 state2:

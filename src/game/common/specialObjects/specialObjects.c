@@ -373,7 +373,7 @@ copy_raft_position:
 void linkApplyDamage_b5_hook(GB *gb) {
   BASE(linkApplyDamage_b5);
   uint16_t sp0_ = gb->sp; (void)sp0_;
-  CYC(b_+0, b_+3); SET_HL(GV((SYM(companionDragToCenterOfHole__adjustX) + 9), 0x469a));
+  CYC(b_+0, b_+3); SET_HL(GV(RV((SYM(companionDragToCenterOfHole__adjustX) + 9), 0x4b7b), 0x469a));
   CYC(b_+3, b_+5); E = 0x06;
   CALL_C(b_+5, interBankCall_hook, 0x008a, b_+8);
   CYC(b_+8, b_+9); ret_effect(gb);
@@ -381,7 +381,7 @@ void linkApplyDamage_b5_hook(GB *gb) {
 
 void specialObjectCode_minecart_b05_hook(GB *gb) {
   BASE(specialObjectCode_minecart_b05);
-  CYC(b_+0, b_+3); SET_HL(GV(SYM(updateHeartRingCounter), 0x5588));
+  CYC(b_+0, b_+3); SET_HL(GV(RV(SYM(updateHeartRingCounter), 0x5afe), 0x5588));
   CYC(b_+3, b_+5); E = 0x06;
   CYC(b_+5, b_+8);
   TAIL(interBankCall);
@@ -389,7 +389,7 @@ void specialObjectCode_minecart_b05_hook(GB *gb) {
 
 void specialObjectCode_raft_b05_hook(GB *gb) {
   BASE(specialObjectCode_raft_b05);
-  CYC(b_+0, b_+3); SET_HL((SYM(linkUpdateFlippersSpeed__nextState) + 6));
+  CYC(b_+0, b_+3); SET_HL(RV((SYM(linkUpdateFlippersSpeed__nextState) + 6), GV(0x5caf, (SYM(linkUpdateFlippersSpeed__nextState) + 6))));
   CYC(b_+3, b_+5); E = 0x06;
   CYC(b_+5, b_+8);
   TAIL(interBankCall);

@@ -45,7 +45,7 @@ void checkLinkCanStandOnTile_hook(GB *gb) {
   CYC(b_+3, b_+4); B = A;
   CYC(b_+4, b_+7); A = W8(w1Link_xh);
   CYC(b_+7, b_+8); C = A;
-  CYC(b_+8, b_+11); SET_HL((SYM(checkDisplayEraOrSeasonInfo) + 21));
+  CYC(b_+8, b_+11); SET_HL(RV((SYM(checkDisplayEraOrSeasonInfo) + 21), 0x5e9f));
   CYC(b_+11, b_+13); E = 0x05;
   CALL_C(b_+13, interBankCall_hook, 0x008a, b_+16);
   CYC(b_+16, b_+18); B = alu_rl(gb, B);

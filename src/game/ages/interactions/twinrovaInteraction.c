@@ -206,7 +206,7 @@ afterSpawn:
   CALL_C(b_+39, twinrova_updateDirectionFromAngle_hook, SYM(twinrova_updateDirectionFromAngle), b_+42);
   CYC(b_+42, b_+44); A = 0xbb; // SND_BEAM2
   CALL_C(b_+44, playSound_b00_hook, SYM(playSound_b00), b_+47);
-  CYC(b_+47, b_+50); SET_HL((SYM(interactionCode92) + 8)); // scriptHelp.objectWritePositionTocfd5
+  CYC(b_+47, b_+50); SET_HL(RV((SYM(interactionCode92) + 8), 0x741b)); // scriptHelp.objectWritePositionTocfd5
   CYC(b_+50, b_+52); E = 0x15; // bank of scriptHelp
   CYC(b_+52, b_+55); TAIL(interBankCall); // jp
 }
@@ -349,7 +349,7 @@ void twinrova_state1_hook(GB *gb) {
   }
 
 subid00State0:
-  CYC(b_+30, b_+33); SET_HL((SYM(interactionCode92) + 8)); // scriptHelp.objectWritePositionTocfd5
+  CYC(b_+30, b_+33); SET_HL(RV((SYM(interactionCode92) + 8), 0x741b)); // scriptHelp.objectWritePositionTocfd5
   CYC(b_+33, b_+35); E = 0x15; // bank of scriptHelp
   CALL_C(b_+35, interBankCall_hook, 0x008a, b_+38);
   CALL_C(b_+38, interactionAnimate_hook, SYM(interactionAnimate), b_+41);
@@ -369,7 +369,7 @@ subid00State1:
   CYC(b_+68, b_+69);
   CYC(b_+69, b_+71); A = 0xbb; // SND_BEAM2
   CALL_C(b_+71, playSound_b00_hook, SYM(playSound_b00), b_+74);
-  CYC(b_+74, b_+77); SET_HL((SYM(interactionCode92) + 8)); // scriptHelp.objectWritePositionTocfd5
+  CYC(b_+74, b_+77); SET_HL(RV((SYM(interactionCode92) + 8), 0x741b)); // scriptHelp.objectWritePositionTocfd5
   CYC(b_+77, b_+79); E = 0x15; // bank of scriptHelp
   CALL_C(b_+79, interBankCall_hook, 0x008a, b_+82);
   CALL_C(b_+82, interactionIncSubstate_hook, SYM(interactionIncSubstate), b_+85);
@@ -380,7 +380,7 @@ subid00State1:
   CYC(b_+92, b_+95); TAIL(twinrova_loadAngleAndCounterPreset); // jp
 
 subid00State2:
-  CYC(b_+95, b_+98); SET_HL((SYM(interactionCode92) + 8)); // scriptHelp.objectWritePositionTocfd5
+  CYC(b_+95, b_+98); SET_HL(RV((SYM(interactionCode92) + 8), 0x741b)); // scriptHelp.objectWritePositionTocfd5
   CYC(b_+98, b_+100); E = 0x15; // bank of scriptHelp
   CALL_C(b_+100, interBankCall_hook, 0x008a, b_+103);
   CALL_C(b_+103, interactionAnimate_hook, SYM(interactionAnimate), b_+106);

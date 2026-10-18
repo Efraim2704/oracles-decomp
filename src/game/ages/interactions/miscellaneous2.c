@@ -75,7 +75,7 @@ void interactiondc_subid01_hook(GB *gb) {
     TAIL(interactionDelete);
   }
   CYC(b_+11, b_+14);
-  CYC(b_+14, b_+17); SET_HL((SYM(interactionCodee6__checkLinkWithinRange) + 125));
+  CYC(b_+14, b_+17); SET_HL(RV((SYM(interactionCodee6__checkLinkWithinRange) + 125), 0x7f65));
   CALL_C(b_+17, interactionSetScript_hook, SYM(interactionSetScript), b_+20);
   CALL_C(b_+20, interactionSetAlwaysUpdateBit_hook, SYM(interactionSetAlwaysUpdateBit), b_+23);
   CYC(b_+23, b_+26);
@@ -1062,7 +1062,7 @@ void interactiondc_subid17_hook(GB *gb) {
   CYC(b_+9, b_+10); B = A;
   CYC(b_+10, b_+13); A = mem_rd(gb, w1Link_xh);
   CYC(b_+13, b_+14); C = A;
-  CYC(b_+14, b_+17); SET_HL((SYM(veranFinal_beeForm_stateB__chooseQuadrant) + 5));
+  CYC(b_+14, b_+17); SET_HL(RV((SYM(veranFinal_beeForm_stateB__chooseQuadrant) + 5), 0x5e9f));
   CYC(b_+17, b_+19); E = 0x05;
   CALL_C(b_+19, interBankCall_hook, 0x008a, b_+22);
   CYC(b_+22, b_+24); B = alu_rl(gb, B);

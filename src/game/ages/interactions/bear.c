@@ -98,7 +98,7 @@ L_6d63:
   CYC(b_+40, b_+42); alu_add(gb, 0x10);
   CYC(b_+42, b_+43); mem_wr(gb, DE, A);
 L_6d70:
-  CYC(b_+43, b_+46); SET_HL((SYM(dog_subid00__dontDelete) + 19));
+  CYC(b_+43, b_+46); SET_HL(RV((SYM(dog_subid00__dontDelete) + 19), 0x6727));
   CYC(b_+46, b_+49); if (hook_is(gb, SYM(interactionSetScript), interactionSetScript_hook)) { interactionSetScript_hook(gb); return; } HANDOFF(SYM(interactionSetScript));
 L_6d76:
   CYC(b_+49, b_+50); ret_effect(gb); return;
@@ -110,7 +110,7 @@ L_6d77:
   CYC(b_+56, b_+58); A = 0x0a;
   CALL_C(b_+58, checkGlobalFlag_hook, SYM(checkGlobalFlag), b_+61);
   if ((F & FZ)) { CYCT(b_+61, b_+64); if (hook_is(gb, SYM(interactionDelete), interactionDelete_hook)) { interactionDelete_hook(gb); return; } HANDOFF(SYM(interactionDelete)); } CYC(b_+61, b_+64);
-  CYC(b_+64, b_+67); SET_HL((SYM(goronSubid02__landed) + 10));
+  CYC(b_+64, b_+67); SET_HL(RV((SYM(goronSubid02__landed) + 10), 0x77fa));
   CALL_C(b_+67, parseGivenObjectData_b00_hook, SYM(parseGivenObjectData_b00), b_+70);
   CYC(b_+70, b_+72); A = 0x14;
   CALL_C(b_+72, checkGlobalFlag_hook, SYM(checkGlobalFlag), b_+75);
@@ -132,7 +132,7 @@ L_6da8:
   CYC(b_+107, b_+109); A = 0x02;
 L_6db2:
   CALL_L(b_+109, bear_state0__chooseTextID_hook, b_+112);
-  CYC(b_+112, b_+115); SET_HL((SYM(dog_subid01__state0) + 31));
+  CYC(b_+112, b_+115); SET_HL(RV((SYM(dog_subid01__state0) + 31), 0x675d));
   CYC(b_+115, b_+118); if (hook_is(gb, SYM(interactionSetScript), interactionSetScript_hook)) { interactionSetScript_hook(gb); return; } HANDOFF(SYM(interactionSetScript));
 }
 
@@ -147,7 +147,7 @@ void bear_state0__initSubid00_hook(GB *gb) {
   CYC(b_+40, b_+42); alu_add(gb, 0x10);
   CYC(b_+42, b_+43); mem_wr(gb, DE, A);
 L_6d70:
-  CYC(b_+43, b_+46); SET_HL((SYM(dog_subid00__dontDelete) + 19));
+  CYC(b_+43, b_+46); SET_HL(RV((SYM(dog_subid00__dontDelete) + 19), 0x6727));
   CYC(b_+46, b_+49); if (hook_is(gb, SYM(interactionSetScript), interactionSetScript_hook)) { interactionSetScript_hook(gb); return; } HANDOFF(SYM(interactionSetScript));
 }
 
@@ -167,7 +167,7 @@ void bear_state0__initSubid02_hook(GB *gb) {
   CYC(b_+56, b_+58); A = 0x0a;
   CALL_C(b_+58, checkGlobalFlag_hook, SYM(checkGlobalFlag), b_+61);
   if ((F & FZ)) { CYCT(b_+61, b_+64); if (hook_is(gb, SYM(interactionDelete), interactionDelete_hook)) { interactionDelete_hook(gb); return; } HANDOFF(SYM(interactionDelete)); } CYC(b_+61, b_+64);
-  CYC(b_+64, b_+67); SET_HL((SYM(goronSubid02__landed) + 10));
+  CYC(b_+64, b_+67); SET_HL(RV((SYM(goronSubid02__landed) + 10), 0x77fa));
   CALL_C(b_+67, parseGivenObjectData_b00_hook, SYM(parseGivenObjectData_b00), b_+70);
   CYC(b_+70, b_+72); A = 0x14;
   CALL_C(b_+72, checkGlobalFlag_hook, SYM(checkGlobalFlag), b_+75);
@@ -189,7 +189,7 @@ L_6da8:
   CYC(b_+107, b_+109); A = 0x02;
 L_6db2:
   CALL_L(b_+109, bear_state0__chooseTextID_hook, b_+112);
-  CYC(b_+112, b_+115); SET_HL((SYM(dog_subid01__state0) + 31));
+  CYC(b_+112, b_+115); SET_HL(RV((SYM(dog_subid01__state0) + 31), 0x675d));
   CYC(b_+115, b_+118); if (hook_is(gb, SYM(interactionSetScript), interactionSetScript_hook)) { interactionSetScript_hook(gb); return; } HANDOFF(SYM(interactionSetScript));
 }
 
@@ -201,7 +201,7 @@ void bear_state0__var03IsNonzero_hook(GB *gb) {
   if ((F & FZ)) { CYCT(b_+104, b_+107); if (hook_is(gb, SYM(interactionDelete), interactionDelete_hook)) { interactionDelete_hook(gb); return; } HANDOFF(SYM(interactionDelete)); } CYC(b_+104, b_+107);
   CYC(b_+107, b_+109); A = 0x02;
   CALL_L(b_+109, bear_state0__chooseTextID_hook, b_+112);
-  CYC(b_+112, b_+115); SET_HL((SYM(dog_subid01__state0) + 31));
+  CYC(b_+112, b_+115); SET_HL(RV((SYM(dog_subid01__state0) + 31), 0x675d));
   CYC(b_+115, b_+118); if (hook_is(gb, SYM(interactionSetScript), interactionSetScript_hook)) { interactionSetScript_hook(gb); return; } HANDOFF(SYM(interactionSetScript));
 }
 
@@ -265,7 +265,7 @@ L_6de6:
   CALL_C(b_+45, setLinkIDOverride_hook, SYM(setLinkIDOverride), b_+48);
   CYC(b_+48, b_+50); L = 0x02;
   CYC(b_+50, b_+52); mem_wr(gb, HL, 0x03);
-  CYC(b_+52, b_+55); SET_HL((SYM(dog_subid01__state0) + 21));
+  CYC(b_+52, b_+55); SET_HL(RV((SYM(dog_subid01__state0) + 21), 0x6753));
   CALL_C(b_+55, interactionSetScript_hook, SYM(interactionSetScript), b_+58);
   CALL_C(b_+58, interactionIncSubstate_hook, SYM(interactionIncSubstate), b_+61);
 L_6e08:
@@ -318,7 +318,7 @@ void bear_state1__substate0_hook(GB *gb) {
   CALL_C(b_+45, setLinkIDOverride_hook, SYM(setLinkIDOverride), b_+48);
   CYC(b_+48, b_+50); L = 0x02;
   CYC(b_+50, b_+52); mem_wr(gb, HL, 0x03);
-  CYC(b_+52, b_+55); SET_HL((SYM(dog_subid01__state0) + 21));
+  CYC(b_+52, b_+55); SET_HL(RV((SYM(dog_subid01__state0) + 21), 0x6753));
   CALL_C(b_+55, interactionSetScript_hook, SYM(interactionSetScript), b_+58);
   CALL_C(b_+58, interactionIncSubstate_hook, SYM(interactionIncSubstate), b_+61);
   CALL_C(b_+61, interactionRunScript_hook, SYM(interactionRunScript), b_+64);

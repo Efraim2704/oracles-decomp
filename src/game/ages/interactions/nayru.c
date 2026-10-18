@@ -210,7 +210,7 @@ init04:
     CYCT(b_+147, b_+149); goto init04_setScript;
   }
   CYC(b_+147, b_+149);
-  CYC(b_+149, b_+152); SET_BC((SYM(interactionCode1e__scriptSubidTable) + 8));
+  CYC(b_+149, b_+152); SET_BC(RV((SYM(interactionCode1e__scriptSubidTable) + 8), 0x4840));
   CALL_C(b_+152, interactionSetPosition_hook, SYM(interactionSetPosition), b_+155);
   CALL_C(b_+155, checkIsLinkedGame_hook, SYM(checkIsLinkedGame), b_+158);
   if (!(F & FZ)) {
@@ -393,7 +393,7 @@ init11:
 
 init12:
   CALL_C(b_+407, interactionSetAlwaysUpdateBit_hook, SYM(interactionSetAlwaysUpdateBit), b_+410);
-  CYC(b_+410, b_+413); SET_BC((SYM(interactionCode15__subid00) + 1));
+  CYC(b_+410, b_+413); SET_BC(RV((SYM(interactionCode15__subid00) + 1), 0x4870));
   CYC(b_+413, b_+416); interactionSetPosition_hook(gb);
   return;
 

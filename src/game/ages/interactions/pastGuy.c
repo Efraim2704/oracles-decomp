@@ -148,13 +148,13 @@ L_53c1:
   CYC(b_+177, b_+180); A = mem_rd(gb, wTmpcfc0_carpenterSearch_carpentersFound);
   CYC(b_+180, b_+182); alu_cp(gb, 0x01);
   if (!(F & FZ)) { CYCT(b_+182, b_+183); ret_effect(gb); return; } CYC(b_+182, b_+183);
-  CYC(b_+183, b_+186); SET_HL((SYM(goronDance_sequenceData__platinum) + 98));
+  CYC(b_+183, b_+186); SET_HL(RV((SYM(goronDance_sequenceData__platinum) + 98), 0x7b58));
   CYC(b_+186, b_+188); E = 0x08;
   CYC(b_+188, b_+191); if (hook_enabled_at(gb, 0x008a)) { interBankCall_hook(gb); return; } HANDOFF(0x008a);
 L_53cf:
   CALL_C(b_+191, interactionDecCounter1_hook, SYM(interactionDecCounter1), b_+194);
   if ((F & FZ)) { CYCT(b_+194, b_+196); goto L_53dc; } CYC(b_+194, b_+196);
-  CYC(b_+196, b_+199); SET_HL((SYM(goronDance_sequenceData__platinum) + 126));
+  CYC(b_+196, b_+199); SET_HL(RV((SYM(goronDance_sequenceData__platinum) + 126), 0x7b74));
   CYC(b_+199, b_+201); E = 0x08;
   CYC(b_+201, b_+204); if (hook_enabled_at(gb, 0x008a)) { interBankCall_hook(gb); return; } HANDOFF(0x008a);
 L_53dc:
@@ -356,13 +356,13 @@ L_53c1:
   CYC(b_+177, b_+180); A = mem_rd(gb, wTmpcfc0_carpenterSearch_carpentersFound);
   CYC(b_+180, b_+182); alu_cp(gb, 0x01);
   if (!(F & FZ)) { CYCT(b_+182, b_+183); ret_effect(gb); return; } CYC(b_+182, b_+183);
-  CYC(b_+183, b_+186); SET_HL((SYM(goronDance_sequenceData__platinum) + 98));
+  CYC(b_+183, b_+186); SET_HL(RV((SYM(goronDance_sequenceData__platinum) + 98), 0x7b58));
   CYC(b_+186, b_+188); E = 0x08;
   CYC(b_+188, b_+191); if (hook_enabled_at(gb, 0x008a)) { interBankCall_hook(gb); return; } HANDOFF(0x008a);
 L_53cf:
   CALL_C(b_+191, interactionDecCounter1_hook, SYM(interactionDecCounter1), b_+194);
   if ((F & FZ)) { CYCT(b_+194, b_+196); goto L_53dc; } CYC(b_+194, b_+196);
-  CYC(b_+196, b_+199); SET_HL((SYM(goronDance_sequenceData__platinum) + 126));
+  CYC(b_+196, b_+199); SET_HL(RV((SYM(goronDance_sequenceData__platinum) + 126), 0x7b74));
   CYC(b_+199, b_+201); E = 0x08;
   CYC(b_+201, b_+204); if (hook_enabled_at(gb, 0x008a)) { interBankCall_hook(gb); return; } HANDOFF(0x008a);
 L_53dc:
@@ -408,13 +408,13 @@ L_53c1:
   CYC(b_+177, b_+180); A = mem_rd(gb, wTmpcfc0_carpenterSearch_carpentersFound);
   CYC(b_+180, b_+182); alu_cp(gb, 0x01);
   if (!(F & FZ)) { CYCT(b_+182, b_+183); ret_effect(gb); return; } CYC(b_+182, b_+183);
-  CYC(b_+183, b_+186); SET_HL((SYM(goronDance_sequenceData__platinum) + 98));
+  CYC(b_+183, b_+186); SET_HL(RV((SYM(goronDance_sequenceData__platinum) + 98), 0x7b58));
   CYC(b_+186, b_+188); E = 0x08;
   CYC(b_+188, b_+191); if (hook_enabled_at(gb, 0x008a)) { interBankCall_hook(gb); return; } HANDOFF(0x008a);
 L_53cf:
   CALL_C(b_+191, interactionDecCounter1_hook, SYM(interactionDecCounter1), b_+194);
   if ((F & FZ)) { CYCT(b_+194, b_+196); goto L_53dc; } CYC(b_+194, b_+196);
-  CYC(b_+196, b_+199); SET_HL((SYM(goronDance_sequenceData__platinum) + 126));
+  CYC(b_+196, b_+199); SET_HL(RV((SYM(goronDance_sequenceData__platinum) + 126), 0x7b74));
   CYC(b_+199, b_+201); E = 0x08;
   CYC(b_+201, b_+204); if (hook_enabled_at(gb, 0x008a)) { interBankCall_hook(gb); return; } HANDOFF(0x008a);
 L_53dc:
@@ -442,7 +442,7 @@ void interactionCode43__subid5__substate0_hook(GB *gb) {
   CYC(b_+177, b_+180); A = mem_rd(gb, wTmpcfc0_carpenterSearch_carpentersFound);
   CYC(b_+180, b_+182); alu_cp(gb, 0x01);
   if (!(F & FZ)) { CYCT(b_+182, b_+183); ret_effect(gb); return; } CYC(b_+182, b_+183);
-  CYC(b_+183, b_+186); SET_HL((SYM(goronDance_sequenceData__platinum) + 98));
+  CYC(b_+183, b_+186); SET_HL(RV((SYM(goronDance_sequenceData__platinum) + 98), 0x7b58));
   CYC(b_+186, b_+188); E = 0x08;
   CYC(b_+188, b_+191); if (hook_enabled_at(gb, 0x008a)) { interBankCall_hook(gb); return; } HANDOFF(0x008a);
 }
@@ -452,7 +452,7 @@ void interactionCode43__subid5__substate1_hook(GB *gb) {
   uint16_t sp0_ = gb->sp; (void)sp0_;
   CALL_C(b_+191, interactionDecCounter1_hook, SYM(interactionDecCounter1), b_+194);
   if ((F & FZ)) { CYCT(b_+194, b_+196); goto L_53dc; } CYC(b_+194, b_+196);
-  CYC(b_+196, b_+199); SET_HL((SYM(goronDance_sequenceData__platinum) + 126));
+  CYC(b_+196, b_+199); SET_HL(RV((SYM(goronDance_sequenceData__platinum) + 126), 0x7b74));
   CYC(b_+199, b_+201); E = 0x08;
   CYC(b_+201, b_+204); if (hook_enabled_at(gb, 0x008a)) { interBankCall_hook(gb); return; } HANDOFF(0x008a);
 L_53dc:

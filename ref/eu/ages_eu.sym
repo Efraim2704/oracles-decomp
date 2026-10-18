@@ -67,11 +67,11 @@ wlasymbol true
 00:06c3 _label_00_049
 00:06cc _label_00_050
 00:06d3 _label_00_051
-00:06da _label_00_056
 00:06dc _label_00_052
 00:06de _label_00_053
 00:06e8 _label_00_054
 00:06f1 _label_00_055
+00:06f3 _label_00_056
 00:06f9 func_06e0
 00:0707 _label_00_059
 00:070b _label_00_060
@@ -100,8 +100,8 @@ wlasymbol true
 00:0904 resumeThreadNextFrameAndSaveBank
 00:0917 resumeThreadNextFrame
 00:0919 resumeThreadInAFrames
-00:0922 startGame
 00:0930 _nextThread
+00:093b startGame
 00:094c _mainLoop
 00:096e _mainLoop_nextThread
 00:09a4 _countdownToRunThread
@@ -111,8 +111,8 @@ wlasymbol true
 00:09ed initializeFile
 00:09f1 saveFile
 00:09f5 loadFile
-00:09f8 vblankInterrupt
 00:09f9 eraseFile
+00:0a1a vblankInterrupt
 00:0a93 runVBlankFunctions
 00:0aa0 vblankFunctionRet
 00:0aa9 vblankFunctionOffset0
@@ -206,12 +206,12 @@ wlasymbol true
 00:11b2 tileUpdateRoomFlagsOnBreakTable@overworld
 00:11b2 tileUpdateRoomFlagsOnBreakTable@underwater
 00:11c5 tileUpdateRoomFlagsOnBreakTable@indoors
-00:11cd tileIncreaseGashaMaturityOnBreakTable@overworld
-00:11cd tileIncreaseGashaMaturityOnBreakTable@underwater
 00:11ce tileUpdateRoomFlagsOnBreakTable@dungeons
 00:11ce tileUpdateRoomFlagsOnBreakTable@five
 00:11e2 tileUpdateRoomFlagsOnBreakTable@sidescrolling
 00:11e3 tileIncreaseGashaMaturityOnBreakTable
+00:11ef tileIncreaseGashaMaturityOnBreakTable@overworld
+00:11ef tileIncreaseGashaMaturityOnBreakTable@underwater
 00:1200 tileIncreaseGashaMaturityOnBreakTable@indoors
 00:1209 tileIncreaseGashaMaturityOnBreakTable@dungeons
 00:1209 tileIncreaseGashaMaturityOnBreakTable@five
@@ -741,12 +741,12 @@ wlasymbol true
 00:3638 clearReservedInteraction1
 00:3640 clearDynamicInteractions
 00:3651 clearItems
-00:3657 dungeonsUsingToggleBlocks
 00:3662 clearEnemies
 00:3673 clearParts
 00:3684 setEnemyTargetToLinkPosition
 00:36a0 getEntryFromObjectTable2
 00:36b9 checkDungeonUsesToggleBlocks
+00:36c5 dungeonsUsingToggleBlocks
 00:36c7 loadAnimationData
 00:3706 loadAnimationData@helper
 00:3716 getIndexOfGashaSpotInRoom
@@ -757,9 +757,9 @@ wlasymbol true
 00:37a9 loadTilesetLayout@helper
 00:37e3 loadUniqueGfxHeader
 00:3804 loadTilesetGraphics
-00:3828 loadTilesetUniqueGfx
 00:3849 updateTilesetUniqueGfx
 00:3879 uniqueGfxFunc_380b
+00:3896 loadTilesetUniqueGfx
 00:38b1 loadUniqueGfxHeaderEntry
 00:38ed loadUniqueGfxHeaderEntry@loadPaletteIndex
 00:38f7 loadTilesetData
@@ -2378,7 +2378,6 @@ wlasymbol true
 01:6d6e updatePirateShipAngle@shipDirectionsPast
 01:6d6e cutscene1f@shipDirectionsPastCopy
 01:6d81 cutscene1f
-02:1a58 copyTextCharactersFromSecretTextTable
 02:4000 checkDisplayDmgModeScreen
 02:401a checkDisplayDmgModeScreen@vblankLoop
 02:403e updateTilesetFlagsForIndoorRoomInAltWorld
@@ -2641,8 +2640,8 @@ wlasymbol true
 02:5775 inventoryMenuState2
 02:577b inventoryMenuState2@subStates
 02:5785 inventoryMenuState2@subState0
-02:57a0 inventoryMenuState2@subState2
 02:57ca inventoryMenuState2@subState1
+02:57e0 inventoryMenuState2@subState2
 02:5813 inventoryMenuState2@buttonPressed
 02:5833 inventoryMenuState2@func_02_57f3
 02:5863 inventoryMenuState2@itemSubmenuWidths
@@ -10470,7 +10469,7 @@ wlasymbol true
 0b:7bf7 interactiond7_essence@state1
 0b:7c01 interactiond7_essence@state2
 0b:7c09 interactiond7_essence@state3
-0b:7c0d interactiond7_essence@playCirclingSound
+0b:7c2a interactiond7_essence@playCirclingSound
 0b:7c2f interactiond7_updateSmallSparkles
 0b:7c56 interactiond7_updateSmallSparkles@sparklePositionOffsets
 0b:7c66 interactiond7_updateFloating
@@ -10780,7 +10779,7 @@ wlasymbol true
 0c:4bbc spiritsGraveScript_spawnBracelet
 0c:4bc1 dungeonScript_minibossDeath
 0c:4bcb enableLinkAndMenu
-0c:4bcd dungeonScript_bossDeath
+0c:4bd0 dungeonScript_bossDeath
 0c:4bdb spawnHeartContainer
 0c:4be0 wingDungeonScript_bossDeath
 0c:4bf3 wingDungeonScript_bossDeath@spawnHeart
@@ -11347,7 +11346,7 @@ wlasymbol true
 0c:62bd tokayGameManagerScript_present@beginGame
 0c:62c2 tokayGameManagerScript_present@endingMinigame
 0c:62dd tokayGameManagerScript_present@alreadyGotBombUpgrade
-0c:62e1 tokayGameManagerScript_present@failedGame
+0c:62e4 tokayGameManagerScript_present@failedGame
 0c:62f0 tokayWithShieldUpgradeScript
 0c:62f4 tokayExplainingVinesScript
 0c:62f8 forestFairyScript_firstDiscovered
@@ -14129,10 +14128,10 @@ wlasymbol true
 0e:7d37 vineSprout_state4
 0e:7d4c vineSprout_updateTileAtPosition
 0e:7d56 vineSprout_updateTileAtPosition@setPosition
+0e:7d62 vineSprout_restoreTileAtPosition
 0e:7d62 vineSprout_getPosition
 0e:7d7c vineSprout_getPosition@respawnableTiles
 0e:7d88 vineSprout_getDefaultPosition
-0e:7da5 vineSprout_restoreTileAtPosition
 0e:7db3 vineSprout_checkLinkInSprout
 0e:7dcd enemyCode63
 0e:7dd4 enemyCode63@normalStatus
@@ -18896,7 +18895,7 @@ wlasymbol true
 12:77dc impaOctoroks
 12:77f0 ambisPalaceEntranceGuards
 12:77fa animalsWaitingForNayru
-12:7818 goronDancers
+12:780e goronDancers
 12:783a subrosianDancers
 12:7866 targetCartCrystals
 12:786a targetCartCrystals@crystals
@@ -26890,6 +26889,7 @@ wlasymbol true
 ; unplaced 01:7f90 func_7f90
 ; unplaced 01:7f9e func_7f90@data
 ; unplaced 01:7fb5 func_7fb5
+; unplaced 02:4107 copyTextCharactersFromSecretTextTable
 ; unplaced 02:412e b2_fileSelectScreen
 ; unplaced 02:41d6 fileSelectMode1@state1
 ; unplaced 02:486c drawNameInputCursors@secretInputOffsets

@@ -64,7 +64,7 @@ state0:
   CALL_C(b_+14, interactionInitGraphics_hook, SYM(interactionInitGraphics), b_+17);
   CYC(b_+17, b_+19); A = 0x2c;
   CALL_C(b_+19, interactionSetHighTextIndex_hook, SYM(interactionSetHighTextIndex), b_+22);
-  CYC(b_+22, b_+25); SET_HL((SYM(interactiond7_makuSeed__state4Substate3__unlinkedGame) + 14)); // mainScripts.tokkeyScript
+  CYC(b_+22, b_+25); SET_HL(RV((SYM(interactiond7_makuSeed__state4Substate3__unlinkedGame) + 14), 0x7ba0)); // mainScripts.tokkeyScript
   CALL_C(b_+25, interactionSetScript_hook, SYM(interactionSetScript), b_+28);
   CALL_C(b_+28, objectSetVisible82_hook, SYM(objectSetVisible82), b_+31);
   CYC(b_+31, b_+34); TAIL(interactionIncState); // jp
@@ -92,7 +92,7 @@ l_5519:
   CYC(b_+65, b_+67); A = 0x3c; // 60
   CYC(b_+67, b_+70); SET_BC(0xf810);
   CALL_C(b_+70, objectCreateExclamationMark_hook, SYM(objectCreateExclamationMark), b_+73);
-  CYC(b_+73, b_+76); SET_HL((SYM(interactiond7_essence) + 4)); // mainScripts.tokkeyScript_justHeardTune
+  CYC(b_+73, b_+76); SET_HL(RV((SYM(interactiond7_essence) + 4), 0x7bb3)); // mainScripts.tokkeyScript_justHeardTune
   CALL_C(b_+76, interactionSetScript_hook, SYM(interactionSetScript), b_+79);
   CYC(b_+79, b_+82); TAIL(interactionIncState); // jp
 

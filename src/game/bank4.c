@@ -636,7 +636,7 @@ void replaceToggleBlocks_hook(GB *gb) {
   CALL_C(b_+0, checkDungeonUsesToggleBlocks_hook, SYM(checkDungeonUsesToggleBlocks), b_+3);
   if (F & FZ) { CYCT(b_+3, b_+4); ret_effect(gb); return; }
   CYC(b_+3, b_+4);
-  CYC(b_+4, b_+7); SET_HL((SYM(group3WarpSources) + 197));
+  CYC(b_+4, b_+7); SET_HL(RV((SYM(group3WarpSources) + 197), 0x7ac2));
   CYC(b_+7, b_+9); E = 0x02;
   CALL_C(b_+9, interBankCall_hook, 0x008a, b_+12);
   CYC(b_+12, b_+15); SET_DE(b_+27);

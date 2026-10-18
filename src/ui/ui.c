@@ -14,9 +14,13 @@ static UiColor gbc_color(const uint8_t *p) {
 
 static UiColor darken(UiColor c, int num, int den) { return (UiColor){(uint8_t)(c.r * num / den), (uint8_t)(c.g * num / den), (uint8_t)(c.b * num / den)}; }
 
+// The European ROMs (header game code ending in 'P') moved the graphics banks: the title-screen
+// palettes one bank up, the font one bank down.
+static bool rom_is_eu(const uint8_t *rom, size_t rom_size) { return rom && rom_size > 0x150 && rom[0x142] == 'P'; }
+
 bool ui_theme_load(UiTheme *t, const uint8_t *rom, size_t rom_size, bool ages) {
   ui_theme_default(t, ages);
-  size_t off = (size_t)(ages ? 0x17 : 0x16) * 0x4000 + (0x4018 - 0x4000);
+  size_t off = (size_t)((ages ? 0x17 : 0x16) + (rom_is_eu(rom, rom_size) ? 1 : 0)) * 0x4000 + (0x4018 - 0x4000);
   if (!rom || rom_size < off + 64) return false;
   const uint8_t *pal = rom + off;                        // 8 palettes of 4 colours, 2 bytes each
   if (ages) {
@@ -37,10 +41,11 @@ bool ui_theme_load(UiTheme *t, const uint8_t *rom, size_t rom_size, bool ages) {
 }
 
 #define FONT_BANK 0x1c
+#define FONT_BANK_EU 0x1b
 #define FONT_ADDR 0x4720
 
 bool ui_font_load(UiFont *font, const uint8_t *rom, size_t rom_size) {
-  size_t off = (size_t)FONT_BANK * 0x4000 + (FONT_ADDR - 0x4000);
+  size_t off = (size_t)(rom_is_eu(rom, rom_size) ? FONT_BANK_EU : FONT_BANK) * 0x4000 + (FONT_ADDR - 0x4000);
   font->loaded = false;
   if (!rom || rom_size < off + sizeof font->glyph) return false;
   memcpy(font->glyph, rom + off, sizeof font->glyph);

@@ -3805,7 +3805,7 @@ substate1:
     CYC(b_+106, b_+108); alu_cp(gb, 0x9f);
     if (!(F & FZ)) { CYCT(b_+108, b_+110); goto ordinary_hole_warp; }
     CYC(b_+108, b_+110);
-    CYC(b_+110, b_+113); SET_HL((SYM(cliffTilesTable__sidescrolling) + 94));
+    CYC(b_+110, b_+113); SET_HL(RV((SYM(cliffTilesTable__sidescrolling) + 94), 0x6bfe));
     CYC(b_+113, b_+115); E = 0x01;
     CYC(b_+115, b_+118);
     TAIL(interBankCall);

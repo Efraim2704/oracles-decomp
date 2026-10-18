@@ -198,7 +198,7 @@ initSubid0e:
   CYC(b_+174, b_+176);
   // Veran not defeated and d7 beaten: stand in front of his stone dad
   CALL_C(b_+176, objectUnmarkSolidPosition_hook, SYM(objectUnmarkSolidPosition), b_+179);
-  CYC(b_+179, b_+182); SET_BC((SYM(interactionCode1e__scriptSubidTable) + 16));
+  CYC(b_+179, b_+182); SET_BC(RV((SYM(interactionCode1e__scriptSubidTable) + 16), 0x4848));
   CALL_C(b_+182, interactionSetPosition_hook, SYM(interactionSetPosition), b_+185);
   CALL_C(b_+185, objectMarkSolidPosition_hook, SYM(objectMarkSolidPosition), b_+188);
   CYC(b_+188, b_+189); H = D;
@@ -217,7 +217,7 @@ initSubid0e_notStone:
   CYC(b_+208, b_+211); mem_wr(gb, wTmpcfc0 + 0x13, A);
   CYC(b_+211, b_+214); SET_BC(0x9500); // INTERAC_BALL, $00
   CALL_C(b_+214, objectCreateInteraction_hook, SYM(objectCreateInteraction), b_+217);
-  CYC(b_+217, b_+220); SET_BC((SYM(interactionCode1b) + 6));
+  CYC(b_+217, b_+220); SET_BC(RV((SYM(interactionCode1b) + 6), 0x4a75));
   CALL_C(b_+220, interactionHSetPosition_hook, SYM(interactionHSetPosition), b_+223);
   CYC(b_+223, b_+224); SET_AF(pop_effect(gb));
 
@@ -317,7 +317,7 @@ initSubid0d:
   return;
 
 initSubid0d_notStone:
-  CYC(b_+339, b_+342); SET_BC(SYM(interactionCode15));
+  CYC(b_+339, b_+342); SET_BC(RV(SYM(interactionCode15), 0x4868));
   CALL_C(b_+342, interactionSetPosition_hook, SYM(interactionSetPosition), b_+345);
   // Load red palette
   CYC(b_+345, b_+347); L = INTERACTION_BASE + OBJ_OAM_FLAGS;

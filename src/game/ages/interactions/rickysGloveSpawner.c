@@ -22,7 +22,7 @@ void interactionCode74_hook(GB *gb) {
   CALL_C(b_+13, checkTreasureObtained_hook, SYM(checkTreasureObtained), b_+16);
   if (F & FC) { CYCT(b_+16, b_+18); goto deleteThis; } // jr c
   CYC(b_+16, b_+18);
-  CYC(b_+18, b_+21); SET_BC((SYM(interactionCode77__foundMatch) + 11)); // INTERAC_TREASURE, TREASURE_RICKY_GLOVES
+  CYC(b_+18, b_+21); SET_BC(RV((SYM(interactionCode77__foundMatch) + 11), 0x6048)); // INTERAC_TREASURE, TREASURE_RICKY_GLOVES
   CALL_C(b_+21, objectCreateInteraction_hook, SYM(objectCreateInteraction), b_+24);
   if (!(F & FZ)) { RET_TAKEN(b_+24); return; } // ret nz
   CYC(b_+24, b_+25);

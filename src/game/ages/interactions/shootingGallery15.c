@@ -207,7 +207,7 @@ void createSparkle_hook(GB *gb) {
 
 void shootingGallery_removeAllTargets_b15_hook(GB *gb) {
   BASE(shootingGallery_removeAllTargets_b15);
-  CYC(b_+0, b_+3); SET_HL((SYM(ralphSubid0cScript__landed_b15) + 7));
+  CYC(b_+0, b_+3); SET_HL(RV((SYM(ralphSubid0cScript__landed_b15) + 7), 0x57c1));
   CYC(b_+3, b_+5); E = 0x08;
   CYC(b_+5, b_+8); TAIL(interBankCall);
 }

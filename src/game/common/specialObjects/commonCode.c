@@ -135,7 +135,7 @@ void dealSpikeDamageToLink_hook(GB *gb) {
 void updateLinkDamageTaken_hook(GB *gb) {
   BASE(updateLinkDamageTaken);
   uint16_t sp0_ = gb->sp;
-  CYC(b_+0, b_+3); SET_HL(GV((SYM(companionDismount) + 56), 0x4647));
+  CYC(b_+0, b_+3); SET_HL(GV(RV((SYM(companionDismount) + 56), 0x4b28), 0x4647));
   CYC(b_+3, b_+5); E = 0x06;
   CALL_C(b_+5, interBankCall_hook, 0x008a, SYM(linkApplyDamage_b5));
   TAIL(linkApplyDamage_b5);

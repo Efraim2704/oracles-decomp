@@ -77,7 +77,7 @@ L_7d46:
   CALL_C(b_+43, s_checkGlobalFlag, SYM(checkGlobalFlag), b_+46);
   if (F & FZ) { CYCT(b_+46, b_+48); goto notDoneSubrosianScript; }
   CYC(b_+46, b_+48);
-  CYC(b_+48, b_+51); SET_HL(SYM(seasonsFunc_0f_7dac));
+  CYC(b_+48, b_+51); SET_HL(RV(SYM(seasonsFunc_0f_7dac), 0x7db0));
   CYC(b_+51, b_+53);
   goto setScript;
 notDoneSubrosianScript:

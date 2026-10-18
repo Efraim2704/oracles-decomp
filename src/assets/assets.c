@@ -6,10 +6,14 @@ bool assets_is_seasons(const uint8_t *rom, size_t size) {
   return size > 0x150 && memcmp(rom + 0x134, "ZELDA DIN", 9) == 0;
 }
 
+bool assets_is_eu(const uint8_t *rom, size_t size) {
+  return size > 0x150 && rom[0x142] == 'P';
+}
+
 static void code_map(const uint8_t *rom, size_t size, const CodeRange **r, size_t *n) {
-  bool s = assets_is_seasons(rom, size);
-  *r = s ? codemap_seasons : codemap_ages;
-  *n = s ? codemap_seasons_n : codemap_ages_n;
+  bool s = assets_is_seasons(rom, size), eu = assets_is_eu(rom, size);
+  *r = s ? (eu ? codemap_seasons_eu : codemap_seasons) : (eu ? codemap_ages_eu : codemap_ages);
+  *n = s ? (eu ? codemap_seasons_eu_n : codemap_seasons_n) : (eu ? codemap_ages_eu_n : codemap_ages_n);
 }
 
 uint8_t *assets_code_bits(const uint8_t *rom, size_t size) {

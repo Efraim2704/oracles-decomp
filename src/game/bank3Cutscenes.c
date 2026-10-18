@@ -745,7 +745,7 @@ void intro_titlescreen_hook(GB *gb) {
     CYC(b_+S(21), b_+S(24)); SET_HL(SYM(titlescreenPressStartSprites));
     CYC(b_+S(24), b_+S(27)); TAIL(addSpritesToOam);
   } else {
-    CYC(b_+9, b_+12); SET_HL((SYM(endgameCutsceneHandler_20__func_5953) + 10));
+    CYC(b_+9, b_+12); SET_HL(RV((SYM(endgameCutsceneHandler_20__func_5953) + 10), 0x598c));
     CYC(b_+12, b_+14); E = 0x3f;
     CALL_C(b_+14, addSpritesFromBankToOam_hook, SYM(addSpritesFromBankToOam), b_+17);
     CYC(b_+17, b_+20); A = mem_rd(gb, wTmpcbb3);
@@ -755,7 +755,7 @@ void intro_titlescreen_hook(GB *gb) {
       return;
     }
     CYC(b_+22, b_+23);
-    CYC(b_+23, b_+26); SET_HL((SYM(endgameCutsceneHandler_20__func_5995) + 21));
+    CYC(b_+23, b_+26); SET_HL(RV((SYM(endgameCutsceneHandler_20__func_5995) + 21), 0x59d9));
     CYC(b_+26, b_+28); E = 0x3f;
     CYC(b_+28, b_+31); TAIL(addSpritesFromBankToOam);
   }
@@ -1081,7 +1081,7 @@ void introCinematic_ridingHorse_state3_hook(GB *gb) {
   CYC(b_+30, b_+31); alu_xor(gb, A);
   CYC(b_+31, b_+33); mem_wr(gb, hCameraY, A);
   CYC(b_+33, b_+36); mem_wr(gb, wTmpcbbc, A);
-  CYC(b_+36, b_+39); SET_BC((SYM(func_03_7493__cbb3_00) + 29));
+  CYC(b_+36, b_+39); SET_BC(RV((SYM(func_03_7493__cbb3_00) + 29), 0x7503));
   CALL_C(b_+39, createInteraction_hook, SYM(createInteraction), b_+42);
   CYC(b_+42, b_+44); A = 0x0d;
   CYC(b_+44, b_+47); mem_wr(gb, wTmpcbb6, A);
@@ -1125,7 +1125,7 @@ void introCinematic_ridingHorse_state4_hook(GB *gb) {
 void introCinematic_ridingHorse_state4__drawLinkOnHorseAndScrollScreen_hook(GB *gb) {
   BASE(introCinematic_ridingHorse_state4);
   uint16_t sp0_ = gb->sp; (void)sp0_;
-  CYC(b_+44, b_+47); SET_HL((SYM(endgameCutsceneHandler_20__stateD) + 48));
+  CYC(b_+44, b_+47); SET_HL(RV((SYM(endgameCutsceneHandler_20__stateD) + 48), 0x5ab0));
   CYC(b_+47, b_+49); E = 0x3f;
   CALL_C(b_+49, addSpritesFromBankToOam_hook, SYM(addSpritesFromBankToOam), b_+52);
   CYC(b_+52, b_+55); A = mem_rd(gb, wIntro_frameCounter);
@@ -1197,7 +1197,7 @@ void introCinematic_ridingHorse_state5_hook(GB *gb) {
   CALL_C(b_+15, intro_incState_hook, SYM(intro_incState), b_+18);
   CYC(b_+18, b_+21); SET_HL(wTmpcbb3);
   CYC(b_+21, b_+23); mem_wr(gb, HL, 0x18);
-  CYC(b_+23, b_+26); SET_BC((SYM(func_03_7493__cbb3_00) + 30));
+  CYC(b_+23, b_+26); SET_BC(RV((SYM(func_03_7493__cbb3_00) + 30), 0x7504));
   CYC(b_+26, b_+29); TAIL(createInteraction);
 }
 
@@ -1247,7 +1247,7 @@ void introCinematic_ridingHorse_drawLinkOnHorseCloseupSprites_2_hook(GB *gb) {
   CYC(b_+6, b_+7); alu_xor(gb, A);
   CYC(b_+7, b_+9); mem_wr(gb, hOamTail, A);
   CYC(b_+9, b_+10); C = A;
-  CYC(b_+10, b_+13); SET_HL((SYM(endgameCutsceneHandler_20__state9) + 18));
+  CYC(b_+10, b_+13); SET_HL(RV((SYM(endgameCutsceneHandler_20__state9) + 18), GV(0x5a02, (SYM(endgameCutsceneHandler_20__state9) + 18))));
   CYC(b_+13, b_+15); E = 0x3f;
   CYC(b_+15, b_+18); TAIL(addSpritesFromBankToOam_withOffset);
 }
@@ -1356,7 +1356,7 @@ void introCinematic_ridingHorse_drawTempleSprites_hook(GB *gb) {
   CYC(b_+7, b_+8); alu_cpl(gb);
   CYC(b_+8, b_+9); A = alu_inc8(gb, A);
   CYC(b_+9, b_+10); C = A;
-  CYC(b_+10, b_+13); SET_HL((SYM(endgameCutsceneHandler_20__stateD) + 27));
+  CYC(b_+10, b_+13); SET_HL(RV((SYM(endgameCutsceneHandler_20__stateD) + 27), GV(0x5a9b, (SYM(endgameCutsceneHandler_20__stateD) + 27))));
   CYC(b_+13, b_+15); E = 0x3f;
   CYC(b_+15, b_+18); TAIL(addSpritesFromBankToOam_withOffset);
 }
@@ -1472,7 +1472,7 @@ void introCinematic_inTemple_state0_hook(GB *gb) {
   CYC(b_+59, b_+60); mem_wr(gb, HL, A);
   CYC(b_+60, b_+62); L = 0x0d;
   CYC(b_+62, b_+64); mem_wr(gb, HL, 0x50);
-  CYC(b_+64, b_+67); SET_HL(GV((SYM(func_7098) + 2), 0x54a8));
+  CYC(b_+64, b_+67); SET_HL(GV(RV((SYM(func_7098) + 2), 0x709a), RV(0x54a8, 0x54ae)));
   CYC(b_+67, b_+69); A = GV(0x10, 0x03);
   CALL_C(b_+69, setSimulatedInputAddress_hook, SYM(setSimulatedInputAddress), b_+72);
   CYC(b_+72, b_+74); B = 0x03;

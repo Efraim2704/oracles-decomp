@@ -26,7 +26,7 @@ static void interaction6b_isLinkWithinBox_from_call(GB *gb, uint16_t return_addr
 void interaction6b_loadMoblinsAttackingMakuSprout_hook(GB *gb) {
   BASE(interaction6b_loadMoblinsAttackingMakuSprout);
   uint16_t sp0_ = gb->sp; (void)sp0_;
-  CYC(b_+0, b_+3); SET_HL((SYM(symmetryNpcSubid8And9Script__askForSecret_b15) + 7));
+  CYC(b_+0, b_+3); SET_HL(RV((SYM(symmetryNpcSubid8And9Script__askForSecret_b15) + 7), 0x789f));
   CYC(b_+3, b_+6); TAIL(parseGivenObjectData_b00);
 }
 

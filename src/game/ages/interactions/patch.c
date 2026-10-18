@@ -109,7 +109,7 @@ checkPatchDownstairs:
   CALL_C(b_+48, objectSetVisiblec2_hook, SYM(objectSetVisiblec2), b_+51);
   CYC(b_+51, b_+53); A = 0x1f; // GLOBALFLAG_PATCH_REPAIRED_EVERYTHING
   CALL_C(b_+53, checkGlobalFlag_hook, SYM(checkGlobalFlag), b_+56);
-  CYC(b_+56, b_+59); SET_HL((SYM(interactionCode94) + 8)); // mainScripts.patch_upstairsRepairedEverythingScript
+  CYC(b_+56, b_+59); SET_HL(RV((SYM(interactionCode94) + 8), 0x7889)); // mainScripts.patch_upstairsRepairedEverythingScript
   if (!(F & FZ)) { CYCT(b_+59, b_+61); goto setScript; } // jr nz
   CYC(b_+59, b_+61);
 
@@ -128,7 +128,7 @@ checkPatchDownstairs:
   CALL_C(b_+84, checkTreasureObtained_hook, SYM(checkTreasureObtained), b_+87);
   CYC(b_+87, b_+89); alu_and(gb, 0x01);
   CYC(b_+89, b_+92); W8(wTmpcfc0_patchMinigame_swordLevel) = A;
-  CYC(b_+92, b_+95); SET_HL((SYM(interactionCode94) + 4)); // mainScripts.patch_upstairsRepairSwordScript
+  CYC(b_+92, b_+95); SET_HL(RV((SYM(interactionCode94) + 4), 0x7885)); // mainScripts.patch_upstairsRepairSwordScript
   CYC(b_+95, b_+97); goto setScript; // jr
 
 notRepairingSword:
@@ -138,7 +138,7 @@ notRepairingSword:
   CYC(b_+103, b_+106); W8(wTmpcfc0_patchMinigame_fixingSword) = A;
   CYC(b_+106, b_+108); A = 0x4c; // TREASURE_TUNI_NUT
   CALL_C(b_+108, checkTreasureObtained_hook, SYM(checkTreasureObtained), b_+111);
-  CYC(b_+111, b_+114); SET_HL(SYM(interactionCode94)); // mainScripts (bank 0c) patch_upstairsRepairTuniNutScript
+  CYC(b_+111, b_+114); SET_HL(RV(SYM(interactionCode94), 0x7881)); // mainScripts (bank 0c) patch_upstairsRepairTuniNutScript
   if (!(F & FC)) { CYCT(b_+114, b_+116); goto setVar38; } // jr nc
   CYC(b_+114, b_+116);
   CYC(b_+116, b_+117); alu_or(gb, A);
@@ -162,7 +162,7 @@ state1:
   if (!(F & FC)) { CYCT(b_+136, b_+139); npcFaceLinkAndAnimate_hook(gb); return; } // jp nc
   CYC(b_+136, b_+139);
   CALL_C(b_+139, interactionIncState_hook, SYM(interactionIncState), b_+142);
-  CYC(b_+142, b_+145); SET_HL((SYM(interactionCode94) + 15)); // mainScripts.patch_upstairsMoveToStaircaseScript
+  CYC(b_+142, b_+145); SET_HL(RV((SYM(interactionCode94) + 15), 0x7890)); // mainScripts.patch_upstairsMoveToStaircaseScript
   CYC(b_+145, b_+148); TAIL(interactionSetScript); // jp
 
 state2:
@@ -213,7 +213,7 @@ void patch_subid01_hook(GB *gb) {
   CYC(b_+44, b_+45); mem_wr(gb, HL, A); // screenFadedOut=0
   CYC(b_+45, b_+46); A = alu_inc8(gb, A);
   CYC(b_+46, b_+49); W8(wDiggingUpEnemiesForbidden) = A;
-  CYC(b_+49, b_+52); SET_HL((SYM(patch_subid00) + 3)); // mainScripts.patch_downstairsScript
+  CYC(b_+49, b_+52); SET_HL(RV((SYM(patch_subid00) + 3), 0x789a)); // mainScripts.patch_downstairsScript
   CYC(b_+52, b_+55); TAIL(interactionSetScript); // jp
 
 state1:
@@ -259,7 +259,7 @@ writeMinigameStateFlag:
   CALL_C(b_+119, interactionIncState_hook, SYM(interactionIncState), b_+122);
   CYC(b_+122, b_+124); L = INTERACTION_BASE + OBJ_VAR39;
   CYC(b_+124, b_+126); mem_wr(gb, HL, 0x00);
-  CYC(b_+126, b_+129); SET_HL((SYM(patch_subid00) + 7)); // mainScripts.patch_duringMinigameScript
+  CYC(b_+126, b_+129); SET_HL(RV((SYM(patch_subid00) + 7), 0x789e)); // mainScripts.patch_duringMinigameScript
   CALL_C(b_+129, interactionSetScript_hook, SYM(interactionSetScript), b_+132);
   // Falls straight through into state2 -- no ret between them in the ROM.
 
@@ -312,7 +312,7 @@ gameRunning:
   CYC(b_+197, b_+198); mem_wr(gb, HL, A); SET_HL(HL + 1); // ld (hl+),a
   CYC(b_+198, b_+199); mem_wr(gb, HL, D);
   CALL_C(b_+199, interactionIncState_hook, SYM(interactionIncState), b_+202);
-  CYC(b_+202, b_+205); SET_HL((SYM(patch_subid00__state0) + 6)); // mainScripts.patch_linkWonMinigameScript
+  CYC(b_+202, b_+205); SET_HL(RV((SYM(patch_subid00__state0) + 6), 0x78a7)); // mainScripts.patch_linkWonMinigameScript
   CALL_C(b_+205, interactionSetScript_hook, SYM(interactionSetScript), b_+208);
   CYC(b_+208, b_+210); A = 0x5b; // SND_SOLVEPUZZLE_2
   CALL_C(b_+210, playSound_b00_hook, SYM(playSound_b00), b_+213);
@@ -352,7 +352,7 @@ alreadyWonMinigame:
   CYC(b_+257, b_+259); E = INTERACTION_BASE + OBJ_STATE;
   CYC(b_+259, b_+261); A = 0x04;
   CYC(b_+261, b_+262); mem_wr(gb, DE, A);
-  CYC(b_+262, b_+265); SET_HL((SYM(patch_subid00__setScript) + 1)); // mainScripts.patch_downstairsAfterBeatingMinigameScript
+  CYC(b_+262, b_+265); SET_HL(RV((SYM(patch_subid00__setScript) + 1), 0x7914)); // mainScripts.patch_downstairsAfterBeatingMinigameScript
   CYC(b_+265, b_+268); TAIL(interactionSetScript); // jp
 
 // NPC after winning the game
@@ -403,7 +403,7 @@ giveBackItem:
   CYC(b_+322, b_+325); A = W8(wActiveMusic2);
   CYC(b_+325, b_+328); W8(wActiveMusic) = A;
   CALL_C(b_+328, playSound_b00_hook, SYM(playSound_b00), b_+331);
-  CYC(b_+331, b_+334); SET_HL((SYM(patch_subid00__notRepairingSword) + 5)); // mainScripts.patch_linkFailedMinigameScript
+  CYC(b_+331, b_+334); SET_HL(RV((SYM(patch_subid00__notRepairingSword) + 5), 0x78fd)); // mainScripts.patch_linkFailedMinigameScript
   CYC(b_+334, b_+337); TAIL(interactionSetScript); // jp
 
 state6:

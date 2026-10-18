@@ -138,7 +138,7 @@ afterInitGraphicsAndIncState_subid06:
 
 afterSpawnFlower_subid06:
   CYC(b_+165, b_+167); B = 0x00;
-  CYC(b_+167, b_+170); SET_HL((SYM(presetInteractionAnglesAndCounters__data4) + 7)); // mainScripts.makuTree_subid06Script_part1
+  CYC(b_+167, b_+170); SET_HL(RV((SYM(presetInteractionAnglesAndCounters__data4) + 7), 0x7797)); // mainScripts.makuTree_subid06Script_part1
   CYC(b_+170, b_+172); A = 0x35; // GLOBALFLAG_GOT_MAKU_SEED
   CYC(b_+172, b_+173); push_effect(gb, HL);
   CALL_C(b_+173, checkGlobalFlag_hook, SYM(checkGlobalFlag), b_+176);
@@ -146,7 +146,7 @@ afterSpawnFlower_subid06:
   if (F & FZ) { CYCT(b_+177, b_+179); goto subid06SetScript; } // jr z
   CYC(b_+177, b_+179);
   CYC(b_+179, b_+181); B = 0x04;
-  CYC(b_+181, b_+184); SET_HL((SYM(presetInteractionAnglesAndCounters__data4) + 11)); // mainScripts.makuTree_subid06Script_part2
+  CYC(b_+181, b_+184); SET_HL(RV((SYM(presetInteractionAnglesAndCounters__data4) + 11), 0x779b)); // mainScripts.makuTree_subid06Script_part2
 
 subid06SetScript:
   CALL_C(b_+184, interactionSetScript_hook, SYM(interactionSetScript), b_+187);

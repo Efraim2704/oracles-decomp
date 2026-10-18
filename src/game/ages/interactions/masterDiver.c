@@ -61,7 +61,7 @@ void interactionCodecd_hook(GB *gb) {
   CALL_L(b_+5, interactionCodecd_initialize_hook, b_+8);
   CYC(b_+8, b_+10); L = INTERACTION_BASE + OBJ_VAR3F;
   CYC(b_+10, b_+12); mem_wr(gb, HL, 0x03); // DIVER_SECRET & 0x0f
-  CYC(b_+12, b_+15); SET_HL((SYM(interactionCoded8__subid4Script) + 93)); // mainScripts.linkedGameNpcScript
+  CYC(b_+12, b_+15); SET_HL(RV((SYM(interactionCoded8__subid4Script) + 93), 0x7edc)); // mainScripts.linkedGameNpcScript
   CALL_C(b_+15, interactionSetScript_hook, SYM(interactionSetScript), b_+18);
   CALL_C(b_+18, interactionRunScript_hook, SYM(interactionRunScript), b_+21);
 

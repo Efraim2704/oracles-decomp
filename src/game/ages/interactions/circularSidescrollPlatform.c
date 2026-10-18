@@ -97,7 +97,7 @@ state0:
   CYC(b_+45, b_+47); E = INTERACTION_BASE + OBJ_ANGLE;
   CYC(b_+47, b_+48); A = mem_rd(gb, HL);
   CYC(b_+48, b_+49); mem_wr(gb, DE, A);
-  CYC(b_+49, b_+52); SET_BC((SYM(interactionCode9e__subid0Substate5) + 2));
+  CYC(b_+49, b_+52); SET_BC(RV((SYM(interactionCode9e__subid0Substate5) + 2), 0x5678));
   CYC(b_+52, b_+54); A = 0x35;
   CALL_C(b_+54, objectSetPositionInCircleArc_hook, SYM(objectSetPositionInCircleArc), b_+57);
   CYC(b_+57, b_+59); E = INTERACTION_BASE + OBJ_ANGLE;

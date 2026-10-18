@@ -9,7 +9,7 @@
 void interactionCodeb1_hook(GB *gb) {
   BASE(interactionCodeb1);
   uint16_t sp0_ = gb->sp; (void)sp0_;
-  CYC(b_+0, b_+3); SET_HL((SYM(interactiond7_makuSeed__state4Substate1) + 5));
+  CYC(b_+0, b_+3); SET_HL(RV((SYM(interactiond7_makuSeed__state4Substate1) + 5), 0x7b8f));
   CYC(b_+3, b_+5); E = 0x3f;
   CYC(b_+5, b_+8); TAIL(interBankCall);
 }

@@ -128,7 +128,7 @@ void agesFunc_10_70f6__func_71fd_hook(GB *gb) {
     } else {
       CYC(b_+281, b_+283);
       CYC(b_+283, b_+284); C = A;
-      CYC(b_+284, b_+287); SET_HL((SYM(twinrova_updateAnimationFromAngle) + 6));
+      CYC(b_+284, b_+287); SET_HL(RV((SYM(twinrova_updateAnimationFromAngle) + 6), 0x4d2a));
       CYC(b_+287, b_+289); E = 0x16;
       CALL_C(b_+289, addSpritesFromBankToOam_withOffset_hook, SYM(addSpritesFromBankToOam_withOffset), b_+292);
     }
@@ -140,7 +140,7 @@ void agesFunc_10_70f6__func_71fd_hook(GB *gb) {
   CYC(b_+299, b_+300); alu_add(gb, B);
   CYC(b_+300, b_+301); B = A;
   CYC(b_+301, b_+303); C = 0x38;
-  CYC(b_+303, b_+306); SET_HL((SYM(twinrova_subid1_updateTargetPosition) + 16));
+  CYC(b_+303, b_+306); SET_HL(RV((SYM(twinrova_subid1_updateTargetPosition) + 16), 0x4d73));
   CYC(b_+306, b_+308); E = 0x16;
   CYC(b_+308, b_+309); push_effect(gb, BC);
   CALL_C(b_+309, addSpritesFromBankToOam_withOffset_hook, SYM(addSpritesFromBankToOam_withOffset), b_+312);
@@ -152,7 +152,7 @@ void agesFunc_10_70f6__func_71fd_hook(GB *gb) {
     return;
   }
   CYC(b_+318, b_+319);
-  CYC(b_+319, b_+322); SET_HL((SYM(twinrova_chooseObjectToAttack) + 9));
+  CYC(b_+319, b_+322); SET_HL(RV((SYM(twinrova_chooseObjectToAttack) + 9), 0x4da8));
   CYC(b_+322, b_+324); E = 0x16;
   CYC(b_+324, b_+327); TAIL(addSpritesFromBankToOam_withOffset);
 }
@@ -244,7 +244,7 @@ void agesFunc_10_7298__playWaveSoundAtRandomIntervals_body_hook(GB *gb) {
 
 void agesFunc_10_7298__func_7450_hook(GB *gb) {
   BASE(agesFunc_10_7298);
-  CYC(b_+440, b_+443); SET_HL((SYM(twinrova_subid0_targetPositions__pattern3) + 12));
+  CYC(b_+440, b_+443); SET_HL(RV((SYM(twinrova_subid0_targetPositions__pattern3) + 12), 0x4e3e));
   CYC(b_+443, b_+445); E = 0x16;
   CYC(b_+445, b_+448); SET_BC(0x3038);
   CYC(b_+448, b_+449); alu_xor(gb, A);
@@ -298,7 +298,7 @@ void agesFunc_10_70f6__substate2_hook(GB *gb) {
     TAIL(agesFunc_10_70f6__func_7174);
   }
   CYC(b_+106, b_+108);
-  CYC(b_+108, b_+111); SET_HL((SYM(ramrockArm_state0__initSubid0) + 23));
+  CYC(b_+108, b_+111); SET_HL(RV((SYM(ramrockArm_state0__initSubid0) + 23), 0x608d));
   CYC(b_+111, b_+113); E = 0x03;
   CALL_C(b_+113, interBankCall_hook, 0x008a, b_+116);
   CYC(b_+116, b_+118); A = 0x03;
@@ -430,7 +430,7 @@ void agesFunc_10_70f6__substate8_hook(GB *gb) {
     return;
   }
   CYC(b_+399, b_+400);
-  CYC(b_+400, b_+403); SET_HL((SYM(ramrockArm_state0__initSubid0) + 23));
+  CYC(b_+400, b_+403); SET_HL(RV((SYM(ramrockArm_state0__initSubid0) + 23), 0x608d));
   CYC(b_+403, b_+405); E = 0x03;
   CALL_C(b_+405, interBankCall_hook, 0x008a, b_+408);
   CYC(b_+408, b_+410); A = 0x03;
@@ -708,13 +708,13 @@ void agesFunc_10_7298__substate0_hook(GB *gb) {
   CYC(b_+39, b_+40);
   CALL_C(b_+40, disableLcd_hook, SYM(disableLcd), b_+43);
   CALL_C(b_+43, incCbc2_hook, SYM(incCbc2), b_+46);
-  CYC(b_+46, b_+49); SET_HL((SYM(ramrockArm_subid0) + 14)); CYC(b_+49, b_+51); E = 0x03;
+  CYC(b_+46, b_+49); SET_HL(RV((SYM(ramrockArm_subid0) + 14), 0x60f8)); CYC(b_+49, b_+51); E = 0x03;
   CALL_C(b_+51, interBankCall_hook, 0x008a, b_+54);
   CALL_C(b_+54, clearDynamicInteractions_hook, SYM(clearDynamicInteractions), b_+57);
   CALL_C(b_+57, clearOam_hook, SYM(clearOam), b_+60);
   CALL_C(b_+60, checkIsLinkedGame_hook, SYM(checkIsLinkedGame), b_+63);
   if (F & FZ) { CYCT(b_+63, b_+66); CYC(b_+84, b_+86); A = 0x98; CALL_C(b_+86, loadGfxHeader_hook, SYM(loadGfxHeader), b_+89); CYC(b_+89, b_+91); A = 0xa9; CALL_C(b_+91, loadPaletteHeader_hook, SYM(loadPaletteHeader), b_+94); }
-  else { CYC(b_+63, b_+66); CYC(b_+66, b_+68); A = 0x99; CALL_C(b_+68, loadGfxHeader_hook, SYM(loadGfxHeader), b_+71); CYC(b_+71, b_+73); A = 0xaa; CALL_C(b_+73, loadPaletteHeader_hook, SYM(loadPaletteHeader), b_+76); CYC(b_+76, b_+79); SET_HL((SYM(ganon_stateC_substate4__nextSubstate) + 1)); CALL_C(b_+79, parseGivenObjectData_b00_hook, SYM(parseGivenObjectData_b00), b_+82); CYC(b_+82, b_+84); }
+  else { CYC(b_+63, b_+66); CYC(b_+66, b_+68); A = 0x99; CALL_C(b_+68, loadGfxHeader_hook, SYM(loadGfxHeader), b_+71); CYC(b_+71, b_+73); A = 0xaa; CALL_C(b_+73, loadPaletteHeader_hook, SYM(loadPaletteHeader), b_+76); CYC(b_+76, b_+79); SET_HL(RV((SYM(ganon_stateC_substate4__nextSubstate) + 1), 0x556d)); CALL_C(b_+79, parseGivenObjectData_b00_hook, SYM(parseGivenObjectData_b00), b_+82); CYC(b_+82, b_+84); }
   CYC(b_+94, b_+96); A = 0x04; CALL_C(b_+96, loadGfxRegisterStateIndex_hook, SYM(loadGfxRegisterStateIndex), b_+99);
   CYC(b_+99, b_+100); alu_xor(gb, A); CYC(b_+100, b_+103); SET_HL(hCameraY);
   CYC(b_+103, b_+104); mem_wr(gb, HL, A); SET_HL(HL + 1); CYC(b_+104, b_+105); mem_wr(gb, HL, A); SET_HL(HL + 1); CYC(b_+105, b_+106); mem_wr(gb, HL, A); SET_HL(HL + 1); CYC(b_+106, b_+107); mem_wr(gb, HL, A); CYC(b_+107, b_+110); SET_HL(wTmpcbb3); CYC(b_+110, b_+112); mem_wr(gb, HL, 0xf0); CYC(b_+112, b_+113); mem_wr(gb, HL, A);

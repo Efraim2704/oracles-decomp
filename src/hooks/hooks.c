@@ -19,6 +19,13 @@ static Hook hooks_ages[] = {
 static Hook hooks_seasons[] = {
 #include "hooks/table_seasons.h"
 };
+// the European ROMs: the hooks whose routines the EU build left unchanged (tools/eu_hooks.py)
+static Hook hooks_ages_eu[] = {
+#include "hooks/table_eu.h"
+};
+static Hook hooks_seasons_eu[] = {
+#include "hooks/table_seasons_eu.h"
+};
 #undef HOOK
 static Hook *hooks = hooks_ages;
 static size_t NHOOKS = sizeof hooks_ages / sizeof hooks_ages[0];
@@ -68,10 +75,11 @@ static Hook *lookup(const GB *gb, uint16_t pc) {
     g->hooks_checked = true;
     bool ages = gb->rom_size > 0x150 && memcmp(gb->rom + 0x134, "ZELDA NAYRU", 11) == 0;
     bool seasons = gb->rom_size > 0x150 && memcmp(gb->rom + 0x134, "ZELDA DIN", 9) == 0;
+    bool eu = gb->rom_size > 0x150 && gb->rom[0x142] == 'P';
     g->hooks_ok = ages || seasons;
-    syms_select(seasons);
-    hooks = seasons ? hooks_seasons : hooks_ages;
-    NHOOKS = seasons ? sizeof hooks_seasons / sizeof hooks_seasons[0] : sizeof hooks_ages / sizeof hooks_ages[0];
+    syms_select(seasons, eu);
+    if (seasons) { hooks = eu ? hooks_seasons_eu : hooks_seasons; NHOOKS = eu ? sizeof hooks_seasons_eu / sizeof hooks_seasons_eu[0] : sizeof hooks_seasons / sizeof hooks_seasons[0]; }
+    else { hooks = eu ? hooks_ages_eu : hooks_ages; NHOOKS = eu ? sizeof hooks_ages_eu / sizeof hooks_ages_eu[0] : sizeof hooks_ages / sizeof hooks_ages[0]; }
     hooks_init();
   }
   if (!gb->hooks_ok) return NULL;

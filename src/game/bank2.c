@@ -6198,7 +6198,7 @@ void ringMenu_state0_hook(GB *gb) {
   CALL_C(b_+21, loadGfxHeader_hook, SYM(loadGfxHeader), b_+24);
   CYC(b_+24, b_+26); A = 0x0a;
   CALL_C(b_+26, loadPaletteHeader_hook, SYM(loadPaletteHeader), b_+29);
-  CYC(b_+29, b_+32); SET_HL(GV((SYM(func_02_465c) + 19), 0x4675));
+  CYC(b_+29, b_+32); SET_HL(GV(RV((SYM(func_02_465c) + 19), 0x466f), 0x4675));
   CYC(b_+32, b_+34); E = 0x3f;
   CALL_C(b_+34, interBankCall_hook, 0x008a, b_+37);
   CALL_C(b_+37, ringMenu_calculateNumPagesForUnappraisedRings_hook, SYM(ringMenu_calculateNumPagesForUnappraisedRings), b_+40);
@@ -6459,7 +6459,7 @@ void ringMenu_unappraisedRings_state4_hook(GB *gb) {
   CYC(b_+11, b_+13); A = 0x28;
   if (!(F & FZ)) CALL_C_CC(b_+13, giveTreasure_hook, SYM(giveTreasure), b_+16);
   else CYC(b_+13, b_+16);
-  CYC(b_+16, b_+19); SET_HL(GV((SYM(label_02_038) + 24), 0x469d));
+  CYC(b_+16, b_+19); SET_HL(GV(RV((SYM(label_02_038) + 24), 0x4697), 0x469d));
   CYC(b_+19, b_+21); E = 0x3f;
   CALL_C(b_+21, interBankCall_hook, 0x008a, b_+24);
   CALL_C(b_+24, ringMenu_drawUnappraisedRings_hook, SYM(ringMenu_drawUnappraisedRings), b_+27);
@@ -7457,7 +7457,7 @@ void ringMenu_drawSpritesForRingsInBox__nextRing_hook(GB *gb) {
 void ringMenu_calculateNumPagesForUnappraisedRings_hook(GB *gb) {
   BASE(ringMenu_calculateNumPagesForUnappraisedRings);
   uint16_t sp0_ = gb->sp; (void)sp0_;
-  CYC(b_+0, b_+3); SET_HL(GV((SYM(label_02_038) + 24), 0x469d));
+  CYC(b_+0, b_+3); SET_HL(GV(RV((SYM(label_02_038) + 24), 0x4697), 0x469d));
   CYC(b_+3, b_+5); E = 0x3f;
   CALL_C(b_+5, interBankCall_hook, 0x008a, b_+8);
   CYC(b_+8, b_+11); A = W8(wNumUnappraisedRingsBcd);
@@ -9366,7 +9366,7 @@ void func_02_5afc_hook(GB *gb) {
   BASE(func_02_5afc);
   CYC(b_+0, b_+1); C = A;
   CYC(b_+1, b_+4); A = W8(wInventory_cbb8);
-  CYC(b_+4, b_+7); SET_HL(GV((SYM(seedAndHarpSpriteTable__sprite7) + 5), 0x5a70));
+  CYC(b_+4, b_+7); SET_HL(GV((SYM(seedAndHarpSpriteTable__sprite7) + 5), RV(0x5a70, 0x5f9f)));
   CYC(b_+7, b_+8); add_double_index_to_hl(gb, b_+8);
   CYC(b_+8, b_+9); A = mem_rd(gb, HL); SET_HL(HL + 1);
   CYC(b_+9, b_+10); H = mem_rd(gb, HL);
@@ -10741,7 +10741,7 @@ void reloadGraphicsOnExitMenu_body__afterCall_hook(GB *gb) {
     CYC(b_+82, b_+85); W8(wGfxRegsFinal_LCDC) = A;
     CYC(b_+85, b_+87); mem_wr(gb, IO_LCDC, A);
     CYC(b_+87, b_+88); SET_DE(pop_effect(gb));
-    CYC(b_+88, b_+91); SET_HL((SYM(mapMenu_loadPopupData__gotIcon) + 25));
+    CYC(b_+88, b_+91); SET_HL(RV((SYM(mapMenu_loadPopupData__gotIcon) + 25), 0x626e));
     CYC(b_+91, b_+93); E = 0x01;
     CYC(b_+93, b_+96); TAIL(interBankCall);
   }

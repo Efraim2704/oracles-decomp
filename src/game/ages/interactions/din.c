@@ -146,7 +146,7 @@ void interactionCodeaa_hook(GB *gb) {
 
 initSubid2: // interactionCodeaa@initSubid2
   CALL_C(b_+28, interactionSetAlwaysUpdateBit_hook, SYM(interactionSetAlwaysUpdateBit), b_+31);
-  CYC(b_+31, b_+34); SET_BC((SYM(interactionCodeb6__frame1) + 9));
+  CYC(b_+31, b_+34); SET_BC(RV((SYM(interactionCodeb6__frame1) + 9), 0x4830));
   CYC(b_+34, b_+37); TAIL(interactionSetPosition); // jp
 
 state1: // interactionCodeaa@state1

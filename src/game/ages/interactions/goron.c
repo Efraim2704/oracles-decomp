@@ -155,7 +155,7 @@ void goronDance_initNextRound_hook(GB *gb) {
   CYC(b_+3, b_+4); alu_or(gb, A);
   if (F & FZ) { CYCT(b_+4, b_+6); goronDance_clearDanceVariables_hook(gb); return; }
   CYC(b_+4, b_+6);
-  CYC(b_+6, b_+9); SET_HL((SYM(interactionCode48__initSubid06) + 6));
+  CYC(b_+6, b_+9); SET_HL(RV((SYM(interactionCode48__initSubid06) + 6), 0x5797));
   CYC(b_+9, b_+11); E = 0x08;
   CALL_C(b_+11, interBankCall_hook, 0x008a, SYM(goronDance_clearDanceVariables));
   TAIL(goronDance_clearDanceVariables);
@@ -744,7 +744,7 @@ void goronSubid0f__afterCall78ba_hook(GB *gb) {
   uint16_t sp0_ = gb->sp;
   CYC(b_+8, b_+10); L = INTERACTION_BASE + OBJ_VAR3F;
   CYC(b_+10, b_+12); mem_wr(gb, HL, 8);
-  CYC(b_+12, b_+15); SET_HL((SYM(goronDanceScriptTable) + 241));
+  CYC(b_+12, b_+15); SET_HL(RV((SYM(goronDanceScriptTable) + 241), 0x7edc));
   CALL_C(b_+15, interactionSetScript_hook, SYM(interactionSetScript), b_+18);
   CALL_C(b_+18, interactionRunScript_hook, SYM(interactionRunScript), b_+21);
   CALL_C(b_+21, interactionRunScript_hook, SYM(interactionRunScript), b_+24);
@@ -1004,14 +1004,14 @@ after_graphics:
 set_palette:
   CYC(b_+28, b_+30); E = INTERACTION_BASE + OBJ_OAM_FLAGS;
   CYC(b_+30, b_+31); mem_wr(gb, DE, A);
-  CYC(b_+31, b_+34); SET_HL((SYM(goronSubid04__state1) + 6));
+  CYC(b_+31, b_+34); SET_HL(RV((SYM(goronSubid04__state1) + 6), 0x780e));
   CALL_C(b_+34, checkIsLinkedGame_hook, SYM(checkIsLinkedGame), b_+37);
   if (F & FZ) { CYCT(b_+37, b_+39); goto load_dancers; }
   CYC(b_+37, b_+39);
   CYC(b_+39, b_+42); A = W8(wTilesetFlags);
   CYC(b_+42, b_+44); alu_and(gb, 0x80);
   if (F & FZ) { CYCT(b_+44, b_+46); goto load_dancers; }
-  CYC(b_+44, b_+46); CYC(b_+46, b_+49); SET_HL((SYM(goronSubid06__state0) + 23));
+  CYC(b_+44, b_+46); CYC(b_+46, b_+49); SET_HL(RV((SYM(goronSubid06__state0) + 23), 0x783a));
 load_dancers:
   CALL_C(b_+49, parseGivenObjectData_b00_hook, SYM(parseGivenObjectData_b00), b_+52);
   CYC(b_+52, b_+54); B = 0x20;
@@ -1027,7 +1027,7 @@ state1:
   CYC(b_+79, b_+82); CYC(b_+82, b_+85); npcFaceLinkAndAnimate_hook(gb); return;
 script_done:
   CYC(b_+85, b_+87); B = 10;
-  CYC(b_+87, b_+90); SET_HL((SYM(interactionCode48__initSubid1d) + 42));
+  CYC(b_+87, b_+90); SET_HL(RV((SYM(interactionCode48__initSubid1d) + 42), 0x578a));
   CYC(b_+90, b_+92); E = 8;
   CALL_C(b_+92, interBankCall_hook, 0x008a, b_+95);
   CYC(b_+95, b_+97); A = 2;

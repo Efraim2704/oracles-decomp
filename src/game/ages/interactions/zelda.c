@@ -128,7 +128,7 @@ initSubid04:
   CYC(b_+66, b_+69); goto commonInit; // jp
 
 initSubid03:
-  CYC(b_+69, b_+72); SET_BC((SYM(interactionCodeb6__treeDisappearanceFrames) + 2));
+  CYC(b_+69, b_+72); SET_BC(RV((SYM(interactionCodeb6__treeDisappearanceFrames) + 2), 0x4820));
   CALL_C(b_+72, interactionSetPosition_hook, SYM(interactionSetPosition), b_+75);
   CYC(b_+75, b_+77); A = 0x01;
   CALL_C(b_+77, interactionSetAnimation_hook, SYM(interactionSetAnimation), b_+80);

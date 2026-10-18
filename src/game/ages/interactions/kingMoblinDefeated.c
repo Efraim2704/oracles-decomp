@@ -95,7 +95,7 @@ after2_spawnSubservientMoblin:
   CALL_C(b_+80, clearMemory_hook, SYM(clearMemory), b_+83);
   CYC(b_+83, b_+85); A = 0x02;
   CALL_C(b_+85, fadeinFromWhiteWithDelay_hook, SYM(fadeinFromWhiteWithDelay), b_+88);
-  CYC(b_+88, b_+91); SET_HL((SYM(fallingRock_initDiagonalAngle) + 1)); // mainScripts.kingMoblinDefeated_kingScript
+  CYC(b_+88, b_+91); SET_HL(RV((SYM(fallingRock_initDiagonalAngle) + 1), 0x7515)); // mainScripts.kingMoblinDefeated_kingScript
 
 setScriptAndInitStuff:
   CALL_C(b_+91, interactionSetScript_hook, SYM(interactionSetScript), b_+94);
@@ -141,7 +141,7 @@ runScriptAndAnimate:
   CYC(b_+136, b_+139); TAIL(interactionDelete); // jp
 
 subid1State0:
-  CYC(b_+139, b_+142); SET_HL(SYM(fallingRock_initDiagonalAngle__diagonalAngles)); // mainScripts.kingMoblinDefeated_helperMoblinScript
+  CYC(b_+139, b_+142); SET_HL(RV(SYM(fallingRock_initDiagonalAngle__diagonalAngles), 0x7524)); // mainScripts.kingMoblinDefeated_helperMoblinScript
   CYC(b_+142, b_+144); goto setScriptAndInitStuff; // jr
 
 // Subid 2: Gorons who approach after he leaves; var03 is the index

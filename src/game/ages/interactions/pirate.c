@@ -187,7 +187,7 @@ haveEyeball: // interactionCodec4@haveEyeball
   CYC(b_+193, b_+196); W8(wMenuDisabled) = A;
   CYC(b_+196, b_+198); A = 0xf0; // SNDCTRL_STOPMUSIC
   CALL_C(b_+198, playSound_b00_hook, SYM(playSound_b00), b_+201);
-  CYC(b_+201, b_+204); SET_HL((SYM(interactionCoded8__subid1Script) + 52)); // mainScripts.pirateSubid4Script_insertEyeball
+  CYC(b_+201, b_+204); SET_HL(RV((SYM(interactionCoded8__subid1Script) + 52), 0x7de0)); // mainScripts.pirateSubid4Script_insertEyeball
   CALL_C(b_+204, interactionSetScript_hook, SYM(interactionSetScript), b_+207);
 
 state4: // interactionCodec4@state4

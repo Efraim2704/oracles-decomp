@@ -24,7 +24,7 @@ static void miscPuzzles_crownDungeonSpawnPuff(GB *gb, uint16_t sp0_) {
 static void miscPuzzles_crownDungeonOpeningBody(GB *gb, uint16_t sp0_) {
   BASE(miscPuzzles_drawCrownDungeonOpeningFrame3);
   CYC(b_+2, b_+3); push_effect(gb, DE);
-  CYC(b_+3, b_+6); SET_HL((SYM(interactiondc_removeGraveyardGateTiles1) + 16));
+  CYC(b_+3, b_+6); SET_HL(RV((SYM(interactiondc_removeGraveyardGateTiles1) + 16), 0x7bce));
   CYC(b_+6, b_+8); E = 0x02;
   CALL_C(b_+8, interBankCall_hook, 0x008a, b_+11);
   CALL_C(b_+11, reloadTileMap_hook, SYM(reloadTileMap), b_+14);

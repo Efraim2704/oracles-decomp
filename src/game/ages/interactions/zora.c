@@ -249,12 +249,12 @@ state0:
   CYC(b_+29, b_+31); E = INTERACTION_BASE + OBJ_SUBID;
   CYC(b_+31, b_+32); A = mem_rd(gb, DE);
   CYC(b_+32, b_+34); alu_cp(gb, 0x0c);
-  CYC(b_+34, b_+37); SET_HL((SYM(interactiond7_essence__state3) + 9));
+  CYC(b_+34, b_+37); SET_HL(RV((SYM(interactiond7_essence__state3) + 9), 0x7bf5));
   if (F & FZ) {
     CYCT(b_+37, b_+39); TAIL(zora_commonInitWithScript);
   }
   CYC(b_+37, b_+39);
-  CYC(b_+39, b_+42); SET_HL(SYM(interactiond7_essence__playCirclingSound));
+  CYC(b_+39, b_+42); SET_HL(RV(SYM(interactiond7_essence__playCirclingSound), 0x7c0d));
   CYC(b_+42, b_+44); TAIL(zora_commonInitWithScript);
 }
 
@@ -382,7 +382,7 @@ set_text_id:
   CYC(b_+35, b_+36); alu_xor(gb, A);
   CALL_C(b_+36, interactionSetAnimation_hook, SYM(interactionSetAnimation), b_+39);
   CALL_C(b_+39, objectSetVisiblec2_hook, SYM(objectSetVisiblec2), b_+42);
-  CYC(b_+42, b_+45); SET_HL((SYM(interactiond7_updateSmallSparkles) + 18));
+  CYC(b_+42, b_+45); SET_HL(RV((SYM(interactiond7_updateSmallSparkles) + 18), 0x7c24));
   CYC(b_+45, b_+48); TAIL(interactionSetScript);
 }
 

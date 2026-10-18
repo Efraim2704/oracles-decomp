@@ -92,7 +92,7 @@ void interactionCode4c__initSubid_hook(GB *gb) {
   } while (0);
 L_601a:
   CALL_C(b_+42, bird_hop_hook, SYM(bird_hop), b_+45);
-  CYC(b_+45, b_+48); SET_HL((SYM(subrosian_subid00__state0) + 2));
+  CYC(b_+45, b_+48); SET_HL(RV((SYM(subrosian_subid00__state0) + 2), 0x636c));
   CYC(b_+48, b_+51); if (hook_is(gb, SYM(interactionSetScript), interactionSetScript_hook)) { interactionSetScript_hook(gb); return; } HANDOFF(SYM(interactionSetScript));
 L_6023:
   CYC(b_+51, b_+54); A = mem_rd(gb, wEssencesObtained);
@@ -103,7 +103,7 @@ L_6023:
   CYC(b_+65, b_+67); A = 0x38;
   CALL_C(b_+67, checkGlobalFlag_hook, SYM(checkGlobalFlag), b_+70);
   if (!(F & FZ)) { CYCT(b_+70, b_+73); if (hook_is(gb, SYM(interactionDelete), interactionDelete_hook)) { interactionDelete_hook(gb); return; } HANDOFF(SYM(interactionDelete)); } CYC(b_+70, b_+73);
-  CYC(b_+73, b_+76); SET_HL((SYM(subrosian_subid00__state0) + 41));
+  CYC(b_+73, b_+76); SET_HL(RV((SYM(subrosian_subid00__state0) + 41), 0x6393));
   CALL_C(b_+76, interactionSetScript_hook, SYM(interactionSetScript), b_+79);
   CALL_C(b_+79, interactionSetAlwaysUpdateBit_hook, SYM(interactionSetAlwaysUpdateBit), b_+82);
   CYC(b_+82, b_+84); A = 0x39;
@@ -135,7 +135,7 @@ void interactionCode4c__initSubid00_hook(GB *gb) {
   BASE(interactionCode4c);
   uint16_t sp0_ = gb->sp; (void)sp0_;
   CALL_C(b_+42, bird_hop_hook, SYM(bird_hop), b_+45);
-  CYC(b_+45, b_+48); SET_HL((SYM(subrosian_subid00__state0) + 2));
+  CYC(b_+45, b_+48); SET_HL(RV((SYM(subrosian_subid00__state0) + 2), 0x636c));
   CYC(b_+48, b_+51); if (hook_is(gb, SYM(interactionSetScript), interactionSetScript_hook)) { interactionSetScript_hook(gb); return; } HANDOFF(SYM(interactionSetScript));
 }
 
@@ -150,7 +150,7 @@ void interactionCode4c__initSubid04_hook(GB *gb) {
   CYC(b_+65, b_+67); A = 0x38;
   CALL_C(b_+67, checkGlobalFlag_hook, SYM(checkGlobalFlag), b_+70);
   if (!(F & FZ)) { CYCT(b_+70, b_+73); if (hook_is(gb, SYM(interactionDelete), interactionDelete_hook)) { interactionDelete_hook(gb); return; } HANDOFF(SYM(interactionDelete)); } CYC(b_+70, b_+73);
-  CYC(b_+73, b_+76); SET_HL((SYM(subrosian_subid00__state0) + 41));
+  CYC(b_+73, b_+76); SET_HL(RV((SYM(subrosian_subid00__state0) + 41), 0x6393));
   CALL_C(b_+76, interactionSetScript_hook, SYM(interactionSetScript), b_+79);
   CALL_C(b_+79, interactionSetAlwaysUpdateBit_hook, SYM(interactionSetAlwaysUpdateBit), b_+82);
   CYC(b_+82, b_+84); A = 0x39;
