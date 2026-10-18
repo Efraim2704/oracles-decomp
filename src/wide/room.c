@@ -7,17 +7,23 @@
 typedef struct {
   int tilesets_by_group, tileset_data, temple_remains, moblin_keep;   // bank 4
   int layout_groups;                                                  // bank 4
-  int layout_table, layout_dictionaries;                             // bank 1
+  int layout_bank, layout_table, layout_dictionaries;
   int mapping_bank;                                                   // tileMappingTable at :4004
-  int gfx_headers, uncmp_gfx_headers, palette_headers;               // bank 1
+  int gfx_bank, gfx_headers;
+  int uncmp_gfx_headers, palette_headers;                             // bank 1
   int palette_bank;                                                   // paletteDataStart
   int unique_gfx_headers;                                             // bank 4
   int animation_groups, animation_gfx_headers;                        // bank 4
   int alt_world;                                                      // bank 2
+  bool localized;               // the European releases: gfx headers with a source per language
 } Tables;
 
-static const Tables ages_tables = {0x52d4, 0x4f9c, 0, 0, 0x4f6c, 0x787e, 0x7870, 0x18, 0x69da, 0x6744, 0x632c, 0x17, 0x5b28, 0x5b52, 0x5be9, 0x4057};
-static const Tables seasons_tables = {0x533c, 0x4c84, 0x52fc, 0x531c, 0x4c4c, 0x7964, 0x794e, 0x17, 0x6926, 0x66d0, 0x6290, 0x16, 0x595e, 0x59b0, 0x5a48, 0x4057};
+static const Tables ages_tables = {0x52d4, 0x4f9c, 0, 0, 0x4f6c, 0x01, 0x787e, 0x7870, 0x18, 0x01, 0x69da, 0x6744, 0x632c, 0x17, 0x5b28, 0x5b52, 0x5be9, 0x4057, false};
+static const Tables seasons_tables = {0x533c, 0x4c84, 0x52fc, 0x531c, 0x4c4c, 0x01, 0x7964, 0x794e, 0x17, 0x01, 0x6926, 0x66d0, 0x6290, 0x16, 0x595e, 0x59b0, 0x5a48, 0x4057, false};
+// The European ROMs moved the tileset layouts, the gfx header table and the tile and palette data
+// banks up (loadTileset, loadGfxHeader, loadTilesetLayout, loadPaletteHeader); the bank 4 tables stay.
+static const Tables ages_eu_tables = {0x52d4, 0x4f9c, 0, 0, 0x4f6c, 0x17, 0x5655, 0x5647, 0x19, 0x17, 0x451e, 0x6744, 0x632c, 0x18, 0x5b28, 0x5b52, 0x5be9, 0x4057, true};
+static const Tables seasons_eu_tables = {0x533c, 0x4c84, 0x52fc, 0x531c, 0x4c4c, 0x16, 0x529d, 0x5287, 0x18, 0x16, 0x4000, 0x66d6, 0x6296, 0x17, 0x595e, 0x59b0, 0x5a48, 0x4057, true};
 
 enum { TILESETFLAG_PAST = 0x80, TILESETFLAG_SIDESCROLL = 0x20, TILESETFLAG_LARGE_INDOORS = 0x10,
        TILESETFLAG_DUNGEON = 0x08, TILESETFLAG_INDOORS = 0x04, TILESETFLAG_OUTDOORS = 0x01 };
@@ -26,6 +32,7 @@ typedef struct {
   const uint8_t *rom;
   size_t size;
   const Tables *t;
+  int language;                 // wActiveLanguage (European ROMs)
 } Rom;
 
 // A bank:address as a ROM file offset (reads that run past $7fff continue in the next bank, which
@@ -96,7 +103,8 @@ static void load_layout(const Rom *r, int layout_group, int room, WideRoom *out)
 
 // loadTilesetHlpr: literals from the source, copies from a dictionary (3-byte or 2-byte references)
 static void tileset_decompress(const Rom *r, size_t src, int dict_index, int size, uint8_t *out) {
-  size_t d = at(1, le(r, at(1, r->t->layout_dictionaries + dict_index * 2)));   // a pointer to [bank|flag][addr hi][addr lo]
+  int lb = r->t->layout_bank;
+  size_t d = at(lb, le(r, at(lb, r->t->layout_dictionaries + dict_index * 2)));   // a pointer to [bank|flag][addr hi][addr lo]
   int flag_bank = b(r, d);
   size_t dict = at(flag_bank & 0x3f, be(r, d + 1));
   bool long_refs = flag_bank & 0x80;
@@ -115,7 +123,8 @@ static void tileset_decompress(const Rom *r, size_t src, int dict_index, int siz
 
 // 256 metatiles of 4 tiles and 4 attributes each
 static void load_mapping(const Rom *r, int layout_index, uint8_t mapping[256][8]) {
-  size_t header = at(1, le(r, at(1, r->t->layout_table + layout_index * 2)));
+  int lb = r->t->layout_bank;
+  size_t header = at(lb, le(r, at(lb, r->t->layout_table + layout_index * 2)));
   uint8_t indices[0x200];
   int size = (b(r, header + 6) & 0x7f) << 8 | b(r, header + 7);
   if (size > (int)sizeof indices) size = sizeof indices;
@@ -171,21 +180,32 @@ static void gfx_decompress(const Rom *r, size_t src, int mode, int n, uint8_t *o
 
 static void load_palette_header(const Rom *r, int index, WideRoom *out);
 
-// A list of 6-byte gfx headers (the continue bit chains them) into VRAM
-static void load_gfx_headers(const Rom *r, size_t e, bool uncompressed, WideRoom *out) {
+enum { GFX_COMPRESSED, GFX_UNCOMPRESSED, GFX_UNIQUE };
+
+// A list of 6-byte gfx headers (the continue bit chains them) into VRAM. In the European ROMs a
+// gfx header table entry that starts with 0 is localized: 0, five [bank|mode][source] triples (one
+// per language), then the destination and size.
+static void load_gfx_headers(const Rom *r, size_t e, int kind, WideRoom *out) {
   static uint8_t buf[0x1000 * 16];
-  for (int guard = 0; guard < 64; guard++, e += 6) {
+  for (int guard = 0; guard < 64; guard++) {
     uint8_t h0 = b(r, e);
-    if (h0 == 0 && !uncompressed) {                        // unique gfx: a palette entry
+    if (h0 == 0 && kind == GFX_UNIQUE) {                   // unique gfx: a palette entry
       uint8_t p = b(r, e + 1);
       load_palette_header(r, p & 0x7f, out);
-      e -= 4;                                              // a 2-byte entry
+      e += 2;
       if (!(p & 0x80)) return;
       continue;
     }
-    int src_bank = h0 & 0x3f, mode = uncompressed ? 0 : h0 >> 6;
-    int src = be(r, e + 1), dest = be(r, e + 3);
-    uint8_t h5 = b(r, e + 5);
+    size_t src_at = e + 1, rest = e + 3;
+    if (h0 == 0 && kind == GFX_COMPRESSED && r->t->localized) {
+      int lang = r->language >= 0 && r->language < 5 ? r->language : 0;
+      h0 = b(r, e + 1 + (size_t)lang * 3);
+      src_at = e + 2 + (size_t)lang * 3;
+      rest = e + 16;
+    }
+    int src_bank = h0 & 0x3f, mode = kind == GFX_UNCOMPRESSED ? 0 : h0 >> 6;
+    int src = be(r, src_at), dest = be(r, rest);
+    uint8_t h5 = b(r, rest + 2);
     int n = ((h5 & 0x7f) + 1) * 16, bank = dest & 1, addr = (dest & 0xfff0) - 0x8000;
     gfx_decompress(r, at(src_bank, src), mode, n, buf);
     for (int i = 0; i < n; i++) {
@@ -195,11 +215,12 @@ static void load_gfx_headers(const Rom *r, size_t e, bool uncompressed, WideRoom
       out->vram_set[bank][a / 16] = true;
     }
     if (!(h5 & 0x80)) return;
+    e = rest + 3;
   }
 }
 
-static void load_gfx(const Rom *r, size_t table, int index, bool uncompressed, WideRoom *out) {
-  load_gfx_headers(r, at(1, le(r, table + (size_t)index * 2)), uncompressed, out);
+static void load_gfx(const Rom *r, int bank, int table, int index, int kind, WideRoom *out) {
+  load_gfx_headers(r, at(bank, le(r, at(bank, table + index * 2))), kind, out);
 }
 
 // --- tile animations -----------------------------------------------------------------------------
@@ -293,7 +314,8 @@ static bool is_moblin_keep(int room) {                // moblinKeepRooms
 }
 
 bool wide_decode_room(const uint8_t *rom, size_t size, bool seasons, const WideRoomKey *key, WideRoom *out) {
-  Rom r = {rom, size, seasons ? &seasons_tables : &ages_tables};
+  bool eu = size > 0x142 && rom[0x142] == 'P';             // the game code's region letter: AZ8P, AZ7P
+  Rom r = {rom, size, eu ? (seasons ? &seasons_eu_tables : &ages_eu_tables) : (seasons ? &seasons_tables : &ages_tables), key->language};
   memset(out, 0, sizeof *out);
   if (key->group < 0 || key->group > 7 || key->room < 0 || key->room > 0xff) return false;
   int group = key->group;
@@ -337,16 +359,16 @@ bool wide_decode_room(const uint8_t *rom, size_t size, bool seasons, const WideR
       for (int k = 0; k < 4; k++) { out->tiles[pos[k]] = mt[k]; out->attrs[pos[k]] = mt[4 + k]; }
     }
 
-  load_gfx(&r, at(1, r.t->gfx_headers), tileset[3], false, out);
+  load_gfx(&r, r.t->gfx_bank, r.t->gfx_headers, tileset[3], GFX_COMPRESSED, out);
   load_palette_header(&r, tileset[4], out);
   int unique = (tileset[2] | (t & 0x80)) & 0x7f;
   if (seasons && key->group == 0 && key->room == 0x96 && !(key->room_flags & 0x80)) unique = 0x20;
   out->unique = unique;
-  if (unique) load_gfx_headers(&r, at(4, le(&r, at(4, r.t->unique_gfx_headers + unique * 2))), false, out);
+  if (unique) load_gfx(&r, 4, r.t->unique_gfx_headers, unique, GFX_UNIQUE, out);
   initialize_animations(&r, tileset[7], seasons, out);
   int dungeon = (out->flags & TILESETFLAG_DUNGEON) ? tileset[0] & 0x0f : 0xff;
   if (!seasons && dungeon != 0x0f && (out->flags & TILESETFLAG_PAST) && !(out->flags & (TILESETFLAG_OUTDOORS | TILESETFLAG_SIDESCROLL)) &&
       (out->flags & (TILESETFLAG_INDOORS | TILESETFLAG_DUNGEON | TILESETFLAG_LARGE_INDOORS)))
-    load_gfx(&r, at(1, r.t->uncmp_gfx_headers), 0x37, true, out);    // the past's chest and sign
+    load_gfx(&r, 1, r.t->uncmp_gfx_headers, 0x37, GFX_UNCOMPRESSED, out);    // the past's chest and sign
   return true;
 }

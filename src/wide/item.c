@@ -9,6 +9,9 @@ typedef struct {
 } ItemTables;
 static const ItemTables ages_items = {0x19, 0x4000, 0x6d41, 0x6d62, 0x84};
 static const ItemTables seasons_items = {0x1b, 0x7620, 0x6d63, 0x6d87, 0x86};
+// The European ROMs (game code AZ8P, AZ7P): the icons one or two banks up, the lists a little further on.
+static const ItemTables ages_eu_items = {0x1a, 0x4000, 0x6d70, 0x6d91, 0x84};
+static const ItemTables seasons_eu_items = {0x1d, 0x7620, 0x6d92, 0x6db6, 0x86};
 enum { TD_BANK = 0x3f, ITEM_SLINGSHOT = 0x13, SLINGSHOT_LEVEL = 0xb3 };   // wSlingshotLevel is $c6b3
 
 static size_t at(int bank, int addr) {
@@ -42,7 +45,8 @@ static void half_pixels(const uint8_t *rom, size_t size, const ItemTables *t, bo
 bool wide_item_icon(const uint8_t *rom, size_t size, bool seasons, uint8_t item,
                     const uint8_t *c600, WideItemIcon *out) {
   if (!rom || !item) return false;
-  const ItemTables *t = seasons ? &seasons_items : &ages_items;
+  bool eu = size > 0x142 && rom[0x142] == 'P';
+  const ItemTables *t = eu ? (seasons ? &seasons_eu_items : &ages_eu_items) : (seasons ? &seasons_items : &ages_items);
 
   // getTableIndices: walk the three-byte entries looking for this item. The list ends with a zero
   // entry whose own two remaining bytes are the default, so the walk lands on the right pair either

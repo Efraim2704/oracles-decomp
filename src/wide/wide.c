@@ -9,11 +9,12 @@ typedef struct {
   uint16_t tileset_flags, lcd_behaviour, camera_y, camera_x;
   uint16_t group, room, modifier, pack, dungeon_index, map_position, floor, dungeon_properties, dungeon_flags_h, game_over, next_lcd_behaviour;
   int room_packs, pack_seasons;       // roomPackData (bank 4; Ages a page per group), Seasons roomPackSeasonTable (bank 1)
+  int pack_seasons_eu;                // roomPackSeasonTable in the European ROM
 } GameRam;
 static const GameRam ages_ram = {0xcc34, 0xff9b, 0xffaa, 0xffac, 0xcc2d, 0xcc30, 0xcc32, 0xcc31, 0xcc39, 0xcc3a, 0xcc3b, 0xcc3c, 0xcc3d, 0xcdd6, 0xff9d,
-                                 4 * 0x4000 + 0x075c, 0};
+                                 4 * 0x4000 + 0x075c, 0, 0};
 static const GameRam seasons_ram = {0xcc50, 0xff99, 0xffa8, 0xffaa, 0xcc49, 0xcc4c, 0xcc4e, 0xcc4d, 0xcc55, 0xcc56, 0xcc57, 0xcc58, 0xcc59, 0xcc35, 0xff9b,
-                                    4 * 0x4000 + 0x073c, 1 * 0x4000 + 0x3e50};
+                                    4 * 0x4000 + 0x073c, 1 * 0x4000 + 0x3e50, 1 * 0x4000 + 0x2a68};
 enum {
   W_SCROLL_MODE = 0xcd00, W_OPENED_MENU = 0xcbcb, W_OFFSET_Y = 0xcd08, W_OFFSET_X = 0xcd09,
   W_PALETTE_FADE = 0xc4ab,            // wPaletteThread_mode: non-zero while a screen is fading
@@ -37,7 +38,10 @@ typedef struct {
   int dx, dy;                   // the grid step from the previous room to the current one while moving
 } View;
 
-enum { W_TRANSITION_DIRECTION = 0xcd02, W_TRANSITION_STATE = 0xcd04 };
+enum { W_TRANSITION_DIRECTION = 0xcd02, W_TRANSITION_STATE = 0xcd04, W_ACTIVE_LANGUAGE = 0xc62a };
+
+// The European ROMs (game code AZ8P, AZ7P) keep the same RAM; a few ROM tables moved.
+static bool rom_is_eu(const WideOptions *o) { return o->rom && o->rom_size > 0x142 && o->rom[0x142] == 'P'; }
 enum { AGES_ANIMAL_COMPANION = 0xc610, SEASONS_ANIMAL_COMPANION = 0xc610, AGES_JABU_WATER_LEVEL = 0xc6e9, AGES_PAST_ROOM_FLAGS = 0xc800,
        SPECIALOBJECT_RICKY = 0x0b, SPECIALOBJECT_MOOSH = 0x0d, ROOMPACK_NUUN = 0x7f };
 
@@ -160,6 +164,7 @@ static bool room_at(const GBSample *s, const WideOptions *o, const View *v, int 
   memset(key, 0, sizeof *key);                   // keys are compared as bytes, padding included
   key->group = group;
   key->season = rd(s, r->modifier) & 3;
+  if (rom_is_eu(o)) key->language = rd(s, W_ACTIVE_LANGUAGE);
   if (group <= 1) {
     int col = (room & 0x0f) + tx, row = (room >> 4) + ty, last = o->seasons ? 15 : 13;
     if (col < 0 || col > last || row < 0 || row > 15) return false;
@@ -176,8 +181,9 @@ static bool room_at(const GBSample *s, const WideOptions *o, const View *v, int 
       // another area starts in its own season (determineSeasonForRoomPack); while "always spring"
       // (global flag $30: before Din is captured, after Onox) only its low nibble picks the entry
       if (s->wram[0][0x6ca + 6] & 0x01) there &= 0x0f;
-      if (there != here && there != 0 && there < 0xf0 && o->rom_size > (size_t)r->pack_seasons + there)
-        key->season = o->rom[r->pack_seasons + there] & 3;
+      int pack_seasons = rom_is_eu(o) ? r->pack_seasons_eu : r->pack_seasons;
+      if (there != here && there != 0 && there < 0xf0 && o->rom_size > (size_t)pack_seasons + there)
+        key->season = o->rom[pack_seasons + there] & 3;
     }
     return true;
   }

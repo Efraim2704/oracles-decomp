@@ -87,7 +87,7 @@ static Score compare(const Recorder *r, const uint8_t *rom, size_t size, bool se
   int shown = 0;
   for (int i = 0; i < r->n; i++) {
     const Settled *st = &r->rooms[i];
-    WideRoomKey key = {st->group, st->room, st->modifier & 3, 0, 0, false, false, 0};
+    WideRoomKey key = {st->group, st->room, st->modifier & 3, 0, 0, false, false, 0, 0};
     static WideRoom d;
     ASSERT(wide_decode_room(rom, size, seasons, &key, &d));
     int bad_tiles = 0, bad_gfx = 0, bad_pal = 0, gfx_tiles = 0;

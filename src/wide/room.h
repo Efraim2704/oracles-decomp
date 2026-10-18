@@ -29,6 +29,8 @@ typedef struct {
   bool remains_lava;            // Seasons: Temple Remains filled with lava (global flag $15)
   bool keep_destroyed;          // Seasons: Moblin's Keep destroyed (global flag $16)
   int companion;                // Seasons: wAnimalCompanion, which picks the destroyed keep's tileset
+  int language;                 // European ROMs: wActiveLanguage, for the gfx that differ by language
 } WideRoomKey;
 
+// The ROM's region comes from its header (European ROMs: game code AZ8P, AZ7P).
 bool wide_decode_room(const uint8_t *rom, size_t size, bool seasons, const WideRoomKey *key, WideRoom *out);
