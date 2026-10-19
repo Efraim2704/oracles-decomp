@@ -3,7 +3,7 @@
 #include "gui/widgets.h"
 
 static const char *const tab_labels[UI_GAMES + 1] = {"Ages", "Seasons", "Settings"};
-static const char *const home_labels[HOME_ROWS] = {"Resume", "Slot 1", "Slot 2", "Slot 3", "Slot 4", "Save files", "Title screen"};
+static const char *const home_labels[HOME_ROWS] = {"Resume", "Slot 1", "Slot 2", "Slot 3", "Slot 4", "Save files", "Title screen", "Add ROM..."};
 
 static void not_installed(Home *h, const GuiTheme *t, int *button) {
   CLAY({.layout = {.sizing = {CLAY_SIZING_GROW(0)}, .layoutDirection = CLAY_TOP_TO_BOTTOM, .childGap = gui_px(12),

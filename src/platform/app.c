@@ -1440,7 +1440,7 @@ static bool run_home(SDL_Window *win, SDL_Renderer *ren, SDL_Texture *tex, const
       }
       if (r.action == LAUNCH_ADD_ROM) {
         char game[16];
-        if (pick_rom(game, cache)) { UiGame g = h.l.game; home_scan(&h, cache); home_init(&h, g); }
+        if (pick_rom(game, cache)) { home_scan(&h, cache); home_init(&h, is_ages(game) ? UI_GAME_AGES : UI_GAME_SEASONS); }
       }
       if (r.action == LAUNCH_PLAY && r.file == LAUNCH_SLOTS) {
         if (r.slot < 0) continue;

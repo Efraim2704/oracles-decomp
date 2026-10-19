@@ -84,6 +84,9 @@ static void home_leads_with_resume_and_slots(void) {
   home_press(&h, UI_DOWN);
   ASSERT_EQ(home_press(&h, UI_ACCEPT).file, LAUNCH_TITLE);
   home_press(&h, UI_DOWN);
+  ASSERT_EQ(h.row, HOME_ADD_ROM);
+  ASSERT_EQ(home_press(&h, UI_ACCEPT).action, LAUNCH_ADD_ROM);
+  home_press(&h, UI_DOWN);
   ASSERT_EQ(h.row, HOME_SLOT1 + 1);                     // wraps past Resume (none) and slot 1 (empty)
   h.l.games[UI_GAME_SEASONS].has_resume = true;
   home_tap_tab(&h, UI_GAME_SEASONS);

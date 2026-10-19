@@ -59,6 +59,7 @@ static LaunchResult pick(Home *h) {
   case HOME_RESUME: r.action = LAUNCH_PLAY; r.file = LAUNCH_RESUME; break;
   case HOME_FILES: h->files_page = true; break;
   case HOME_TITLE: r.action = LAUNCH_PLAY; r.file = LAUNCH_TITLE; break;
+  case HOME_ADD_ROM: r.action = LAUNCH_ADD_ROM; break;
   default: r.action = LAUNCH_PLAY; r.file = LAUNCH_SLOTS; r.slot = h->row - HOME_SLOT1; break;
   }
   return r;

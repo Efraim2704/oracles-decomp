@@ -1,14 +1,14 @@
 #pragma once
 // The main menu: a tab per game plus Settings. A game's tab leads with what a save-state player
 // reaches for: Resume, then the four state slots, then the game's own save files (a page of their
-// own) and the title screen. Pure state machine; src/gui draws it and turns taps into rows.
+// own), the title screen and Add ROM (another release, or a newer dump of this one). Pure state machine; src/gui draws it and turns taps into rows.
 #include <stdint.h>
 #include "ui/launcher.h"
 #include "ui/menu.h"
 
 #define HOME_SLOTS UI_SLOTS
 
-typedef enum { HOME_RESUME, HOME_SLOT1, HOME_SLOT4 = HOME_SLOT1 + HOME_SLOTS - 1, HOME_FILES, HOME_TITLE, HOME_ROWS } HomeRow;
+typedef enum { HOME_RESUME, HOME_SLOT1, HOME_SLOT4 = HOME_SLOT1 + HOME_SLOTS - 1, HOME_FILES, HOME_TITLE, HOME_ADD_ROM, HOME_ROWS } HomeRow;
 
 typedef struct {
   Launcher l;                   // the games, their files and themes; l.game is the tab shown
